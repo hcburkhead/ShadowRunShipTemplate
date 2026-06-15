@@ -14,6 +14,7 @@
     .schematic-row { display: flex; width: 100%; align-items: stretch; }
     .ship-wrap { flex: 1; position: relative; }
     .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
+    .ship-wrap svg.ov { width: 100%; height: auto; display: block; }
 
     /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
     .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -74,7 +75,7 @@
       <img src="ShipTemplate.png" alt="Ship schematic blueprint">
 
       <!-- Bloom (glow outline) overlay -->
-      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
         <g id="b-eng" class="zone" style="color:#4ade80">
           <rect x="367" y="48" width="146" height="62" rx="18"/>
           <rect x="588" y="46" width="148" height="64" rx="18"/>
@@ -103,7 +104,7 @@
       </svg>
 
       <!-- Tint (color fill) overlay -->
-      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
         <g id="t-eng" class="zone" style="color:#4ade80">
           <rect x="367" y="48" width="146" height="62" rx="18"/>
           <rect x="588" y="46" width="148" height="64" rx="18"/>
