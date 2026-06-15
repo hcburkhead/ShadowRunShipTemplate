@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ship Power Dashboard — traced overlay</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #040d04; font-family: monospace; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px; }
+
+    .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
+
+    /* --- SCHEMATIC ROW --- */
+    .schematic-row { display: flex; width: 100%; align-items: stretch; }
+    .ship-wrap { flex: 1; position: relative; }
+    .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
+    .ship-wrap svg.ov { width: 100%; height: auto; display: block; }
+
+    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
+    .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .tint { mix-blend-mode: color; }
+    .bloom { mix-blend-mode: screen; filter: blur(1.2px); opacity: .4; }
+    .zone { transition: color .3s ease; }
+    .tint-svg .zone * { fill: currentColor; stroke: none; }
+    .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 2.5; }
+    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .zone.pulse { animation: pz 1s ease-in-out infinite; }
+
+    /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
+    .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
+    .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
+    .ibar-fill { height: 100%; width: 25%; border-radius: 2px; background: #4ade80;
+                 box-shadow: 0 0 7px rgba(74, 222, 128, 0.75), inset 0 0 4px rgba(190, 255, 210, 0.5);
+                 transition: width 0.25s ease, opacity 0.25s; }
+
+    /* --- MAIN POWER PANEL (second panel) --- */
+    .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; }
+    .pp-title { background: #0a1e0a; border-bottom: 1.5px solid #1e4d1e; text-align: center; font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 8px 4px; font-weight: 500; }
+    .pp-main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 14px 16px; text-align: center; }
+    .mp-label { font-size: 10px; letter-spacing: 2px; color: #2d6a2d; }
+    .engine-status { font-size: 18px; font-weight: 600; letter-spacing: 3px; color: #4ade80; transition: color 0.2s; }
+    .pp-top-bar-wrap { width: 100%; height: 22px; background: #0a1a0a; border: 1px solid #1e4d1e; border-radius: 2px; overflow: hidden; display: flex; }
+    .seg { height: 100%; transition: width 0.25s; }
+    .total-row { display: flex; flex-direction: column; gap: 2px; font-size: 9px; color: #2d6a2d; letter-spacing: 1px; }
+    .total-val { font-size: 22px; font-weight: 600; color: #4ade80; letter-spacing: 1px; }
+    .total-val.over { color: #ef4444; }
+
+    /* --- SLIDERS --- */
+    .sliders-row { background: #061006; border-top: 1.5px solid #1e4d1e; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+    .sl-block { display: flex; flex-direction: column; gap: 3px; }
+    .sl-header { display: flex; justify-content: space-between; align-items: center; }
+    .sl-name { font-size: 9px; letter-spacing: 2px; color: #2d6a2d; }
+    .sl-pct { font-size: 13px; font-weight: 500; color: #4ade80; transition: color 0.2s; }
+    .sl-pct.low { color: #ef4444; }
+    .sl-pct.warn { color: #f59e0b; }
+    input[type=range] { width: 100%; accent-color: #4ade80; cursor: pointer; }
+
+    /* --- LOG --- */
+    .log-area { background: #040d04; border-top: 1.5px solid #1e4d1e; padding: 8px 12px; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; }
+    .log-hdr { font-size: 9px; letter-spacing: 2px; color: #1e4d1e; margin-bottom: 4px; }
+    .log-entry { font-size: 10px; line-height: 1.7; display: flex; gap: 8px; border-bottom: 0.5px solid #0a1e0a; }
+    .log-t { color: #1e6b1e; min-width: 52px; }
+    .log-m { color: #4ade80; }
+    .log-m.drop { color: #ef4444; }
+    .log-m.gain { color: #4ade80; }
+    .log-m.warn { color: #f59e0b; }
+  </style>
+</head>
+<body>
+<div class="outer">
+
+  <div class="schematic-row">
+    <!-- Ship schematic with progress bars inset over its power panel -->
+    <div class="ship-wrap">
+      <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+
+      <!-- Bloom (glow outline) overlay (traced) -->
+      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <!-- ENGINES -->
+        <g id="b-eng" class="zone" style="color:#4ade80">
+          <path d="M385 48 H495 A18 18 0 0 1 513 66 V92 A18 18 0 0 1 495 110 H385 A18 18 0 0 1 367 92 V66 A18 18 0 0 1 385 48 Z"/>
+          <path d="M606 46 H718 A18 18 0 0 1 736 64 V92 A18 18 0 0 1 718 110 H606 A18 18 0 0 1 588 92 V64 A18 18 0 0 1 606 46 Z"/>
+          <path d="M387 239 H493 A20 20 0 0 1 513 259 V297 A20 20 0 0 1 493 317 H387 A20 20 0 0 1 367 297 V259 A20 20 0 0 1 387 239 Z"/>
+          <path d="M605 242 H716 A20 20 0 0 1 736 262 V297 A20 20 0 0 1 716 317 H605 A20 20 0 0 1 585 297 V262 A20 20 0 0 1 605 242 Z"/>
+          <path d="M376 470 H478 A20 20 0 0 1 498 490 V522 A20 20 0 0 1 478 542 H376 A20 20 0 0 1 356 522 V490 A20 20 0 0 1 376 470 Z"/>
+          <path d="M918 503 A42 42 0 1 0 834 503 A42 42 0 1 0 918 503 Z"/>
+          <path d="M1058 503 A42 42 0 1 0 974 503 A42 42 0 1 0 1058 503 Z"/>
+        </g>
+
+        <!-- DRONES -->
+        <g id="b-drn" class="zone" style="color:#4ade80">
+          <path d="M381 134 H509 A8 8 0 0 1 517 142 V227 A8 8 0 0 1 509 235 H381 A8 8 0 0 1 373 227 V142 A8 8 0 0 1 381 134 Z"/>
+        </g>
+
+        <!-- WEAPONS -->
+        <g id="b-wpn" class="zone" style="color:#4ade80">
+          <path d="M535 388 H594 A4 4 0 0 1 598 392 V442 A4 4 0 0 1 594 446 H535 A4 4 0 0 1 531 442 V392 A4 4 0 0 1 535 388 Z"/>
+          <path d="M574 350 H581 A2 2 0 0 1 583 352 V388 A2 2 0 0 1 581 390 H574 A2 2 0 0 1 572 388 V352 A2 2 0 0 1 574 350 Z"/>
+          <path d="M523 434 H606 A3 3 0 0 1 609 437 V449 A3 3 0 0 1 606 452 H523 A3 3 0 0 1 520 449 V437 A3 3 0 0 1 523 434 Z"/>
+          <path d="M352 550 A33.5 24 0 1 0 285 550 A33.5 24 0 1 0 352 550 Z"/>
+          <path d="M678 620 A40 25 0 1 0 598 620 A40 25 0 1 0 678 620 Z"/>
+          <path d="M598 538 H648 A3 3 0 0 1 651 541 V557 A3 3 0 0 1 648 560 H598 A3 3 0 0 1 595 557 V541 A3 3 0 0 1 598 538 Z"/>
+          <path d="M1018 398 H1060 A4 4 0 0 1 1064 402 V438 A4 4 0 0 1 1060 442 H1018 A4 4 0 0 1 1014 438 V402 A4 4 0 0 1 1018 398 Z"/>
+          <path d="M1016 354 H1024 A2 2 0 0 1 1026 356 V400 A2 2 0 0 1 1024 402 H1016 A2 2 0 0 1 1014 400 V356 A2 2 0 0 1 1016 354 Z"/>
+        </g>
+
+        <!-- SHIELDS -->
+        <g id="b-shd" class="zone" style="color:#4ade80">
+          <path d="M935 484 L966 499 L966 529 L935 544 L904 529 L904 499 Z"/>
+          <path d="M678 420 A28 28 0 1 0 622 420 A28 28 0 1 0 678 420 Z"/>
+          <path d="M706 420 L724 436 L706 452 L682 452 L664 436 L682 420 Z"/>
+          <path d="M734 420 A28 28 0 1 0 678 420 A28 28 0 1 0 734 420 Z"/>
+        </g>
+      </svg>
+
+      <!-- Tint (color fill) overlay (traced) -->
+      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <!-- ENGINES -->
+        <g id="t-eng" class="zone" style="color:#4ade80">
+          <path d="M385 48 H495 A18 18 0 0 1 513 66 V92 A18 18 0 0 1 495 110 H385 A18 18 0 0 1 367 92 V66 A18 18 0 0 1 385 48 Z"/>
+          <path d="M606 46 H718 A18 18 0 0 1 736 64 V92 A18 18 0 0 1 718 110 H606 A18 18 0 0 1 588 92 V64 A18 18 0 0 1 606 46 Z"/>
+          <path d="M387 239 H493 A20 20 0 0 1 513 259 V297 A20 20 0 0 1 493 317 H387 A20 20 0 0 1 367 297 V259 A20 20 0 0 1 387 239 Z"/>
+          <path d="M605 242 H716 A20 20 0 0 1 736 262 V297 A20 20 0 0 1 716 317 H605 A20 20 0 0 1 585 297 V262 A20 20 0 0 1 605 242 Z"/>
+          <path d="M376 470 H478 A20 20 0 0 1 498 490 V522 A20 20 0 0 1 478 542 H376 A20 20 0 0 1 356 522 V490 A20 20 0 0 1 376 470 Z"/>
+          <path d="M918 503 A42 42 0 1 0 834 503 A42 42 0 1 0 918 503 Z"/>
+          <path d="M1058 503 A42 42 0 1 0 974 503 A42 42 0 1 0 1058 503 Z"/>
+        </g>
+
+        <!-- DRONES -->
+        <g id="t-drn" class="zone" style="color:#4ade80">
+          <path d="M381 134 H509 A8 8 0 0 1 517 142 V227 A8 8 0 0 1 509 235 H381 A8 8 0 0 1 373 227 V142 A8 8 0 0 1 381 134 Z"/>
+        </g>
+
+        <!-- WEAPONS -->
+        <g id="t-wpn" class="zone" style="color:#4ade80">
+          <path d="M535 388 H594 A4 4 0 0 1 598 392 V442 A4 4 0 0 1 594 446 H535 A4 4 0 0 1 531 442 V392 A4 4 0 0 1 535 388 Z"/>
+          <path d="M574 350 H581 A2 2 0 0 1 583 352 V388 A2 2 0 0 1 581 390 H574 A2 2 0 0 1 572 388 V352 A2 2 0 0 1 574 350 Z"/>
+          <path d="M523 434 H606 A3 3 0 0 1 609 437 V449 A3 3 0 0 1 606 452 H523 A3 3 0 0 1 520 449 V437 A3 3 0 0 1 523 434 Z"/>
+          <path d="M352 550 A33.5 24 0 1 0 285 550 A33.5 24 0 1 0 352 550 Z"/>
+          <path d="M678 620 A40 25 0 1 0 598 620 A40 25 0 1 0 678 620 Z"/>
+          <path d="M598 538 H648 A3 3 0 0 1 651 541 V557 A3 3 0 0 1 648 560 H598 A3 3 0 0 1 595 557 V541 A3 3 0 0 1 598 538 Z"/>
+          <path d="M1018 398 H1060 A4 4 0 0 1 1064 402 V438 A4 4 0 0 1 1060 442 H1018 A4 4 0 0 1 1014 438 V402 A4 4 0 0 1 1018 398 Z"/>
+          <path d="M1016 354 H1024 A2 2 0 0 1 1026 356 V400 A2 2 0 0 1 1024 402 H1016 A2 2 0 0 1 1014 400 V356 A2 2 0 0 1 1016 354 Z"/>
+        </g>
+
+        <!-- SHIELDS -->
+        <g id="t-shd" class="zone" style="color:#4ade80">
+          <path d="M935 484 L966 499 L966 529 L935 544 L904 529 L904 499 Z"/>
+          <path d="M678 420 A28 28 0 1 0 622 420 A28 28 0 1 0 678 420 Z"/>
+          <path d="M706 420 L724 436 L706 452 L682 452 L664 436 L682 420 Z"/>
+          <path d="M734 420 A28 28 0 1 0 678 420 A28 28 0 1 0 734 420 Z"/>
+        </g>
+      </svg>
+
+      <div class="bar-overlay">
+        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
+          <div class="ibar-fill" id="ifill-sys"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-drones"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-weapons"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-shields"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main power indicator (second panel) -->
+    <div class="power-panel">
+      <div class="pp-title">main power</div>
+      <div class="pp-main">
+        <span class="mp-label">reactor status</span>
+        <span class="engine-status" id="engine-status">NOMINAL</span>
+        <div class="pp-top-bar-wrap">
+          <div class="seg" id="seg-sys"     style="width:25%;background:#4ade80"></div>
+          <div class="seg" id="seg-drones"  style="width:25%;background:#2bbf6a"></div>
+          <div class="seg" id="seg-weapons" style="width:25%;background:#1c9c52"></div>
+          <div class="seg" id="seg-shields" style="width:25%;background:#137a3c"></div>
+          <div class="seg" id="seg-empty"   style="width:0%;background:#0a1a0a"></div>
+        </div>
+        <div class="total-row">
+          <span class="total-val" id="total-val-disp">100%</span>
+          <span>total allocated</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sliders -->
+  <div class="sliders-row">
+    <div class="sl-block">
+      <div class="sl-header">
+        <span class="sl-name">⬡ engines</span>
+        <span class="sl-pct" id="pct-sys">25%</span>
+      </div>
+      <input type="range" min="0" max="25" step="1" value="25" id="sl-sys" oninput="onSlide('sys',this.value)">
+    </div>
+    <div class="sl-block">
+      <div class="sl-header">
+        <span class="sl-name">⬡ drones</span>
+        <span class="sl-pct" id="pct-drones">25%</span>
+      </div>
+      <input type="range" min="0" max="25" step="1" value="25" id="sl-drones" oninput="onSlide('drones',this.value)">
+    </div>
+    <div class="sl-block">
+      <div class="sl-header">
+        <span class="sl-name">⬡ weapons</span>
+        <span class="sl-pct" id="pct-weapons">25%</span>
+      </div>
+      <input type="range" min="0" max="25" step="1" value="25" id="sl-weapons" oninput="onSlide('weapons',this.value)">
+    </div>
+    <div class="sl-block">
+      <div class="sl-header">
+        <span class="sl-name">⬡ shields</span>
+        <span class="sl-pct" id="pct-shields">25%</span>
+      </div>
+      <input type="range" min="0" max="25" step="1" value="25" id="sl-shields" oninput="onSlide('shields',this.value)">
+    </div>
+  </div>
+
+  <!-- Status Log -->
+  <div class="log-area">
+    <div class="log-hdr">▸ system status log</div>
+    <div id="log-entries">
+      <div class="log-entry">
+        <span class="log-t">00:00:00</span>
+        <span class="log-m">— power grid initialized. engines and all systems nominal at 25%.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
+  const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
+  const prev   = { sys:25, drones:25, weapons:25, shields:25 };
+
+  // Map a 0-25 power level to an overlay colour (red when offline → green at full).
+  function zoneColor(v) {
+    if (v === 0) return { c:'#ef4444', pulse:true };
+    return { c:`hsl(${(v/25)*120}, 85%, 55%)`, pulse:false };
+  }
+  const t0 = Date.now();
+
+  function ts() {
+    const s = Math.floor((Date.now()-t0)/1000);
+    return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
+      .map(n=>String(n).padStart(2,'0')).join(':');
+  }
+
+  function log(msg, type) {
+    const el = document.getElementById('log-entries');
+    const r  = document.createElement('div');
+    r.className = 'log-entry';
+    r.innerHTML = `<span class="log-t">${ts()}</span><span class="log-m ${type||''}">${msg}</span>`;
+    el.prepend(r);
+    if (el.children.length > 60) el.lastChild.remove();
+  }
+
+  function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
+
+  function onSlide(key, rawVal) {
+    let v = parseInt(rawVal);
+    const others = ['sys','drones','weapons','shields'].filter(k=>k!==key);
+    const otherSum = others.reduce((a,k)=>a+val(k), 0);
+    if (v + otherSum > 100) { v = Math.max(0, 100 - otherSum); }
+    document.getElementById('sl-'+key).value = v;
+
+    updateAll();
+
+    const p = prev[key], lbl = LABELS[key];
+    if (v < p) {
+      if (v === 0) log(`⚡ ${lbl} OFFLINE — power cut. system down.`, 'drop');
+      else         log(`↓ ${lbl} power ${p}% → ${v}%.`, 'drop');
+    } else if (v > p) {
+      if (p === 0) log(`↑ ${lbl} RESTORED — online at ${v}%.`, 'gain');
+      else         log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
+    }
+    prev[key] = v;
+  }
+
+  function updateAll() {
+    const vals = { sys:val('sys'), drones:val('drones'), weapons:val('weapons'), shields:val('shields') };
+    const total     = vals.sys + vals.drones + vals.weapons + vals.shields;
+    const remaining = Math.max(0, 100 - total);
+
+    ['sys','drones','weapons','shields'].forEach(k => {
+      const v = vals[k];
+
+      // Slider pct label
+      const pctEl = document.getElementById('pct-'+k);
+      pctEl.textContent = v+'%';
+      pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
+
+      // Inset progress bar (over the schematic's power panel)
+      const fill = document.getElementById('ifill-'+k);
+      fill.style.width   = ((v/25)*100)+'%';
+      fill.style.opacity = v===0 ? '0' : '1';
+
+      // Live system overlay (tint + bloom recolour the ship system)
+      const { c, pulse } = zoneColor(v);
+      ['t-','b-'].forEach(pre => {
+        const g = document.getElementById(pre+ZONE[k]);
+        g.style.color = c;
+        g.classList.toggle('pulse', pulse);
+      });
+
+      // Allocation segment (main power indicator)
+      document.getElementById('seg-'+k).style.width = v+'%';
+    });
+
+    document.getElementById('seg-empty').style.width = remaining+'%';
+
+    const tv = document.getElementById('total-val-disp');
+    tv.textContent = total+'%';
+    tv.className = 'total-val' + (total > 100 ? ' over' : '');
+
+    // Reactor status text (driven by engine power)
+    const es = document.getElementById('engine-status');
+    const ev = vals.sys;
+    if      (ev === 0)  { es.textContent='OFFLINE';  es.style.color='#ef4444'; }
+    else if (ev <=  8)  { es.textContent='CRITICAL'; es.style.color='#ef4444'; }
+    else if (ev <= 16)  { es.textContent='REDUCED';  es.style.color='#f59e0b'; }
+    else if (ev <  25)  { es.textContent='PARTIAL';  es.style.color='#9be8b4'; }
+    else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
+  }
+
+  updateAll();
+</script>
+</body>
+</html>
