@@ -3,38 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ship Power Dashboard</title>
+  <title>Ship Power Dashboard - Draw Tool</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #040d04; font-family: monospace; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px; }
+    body { background: #040d04; font-family: monospace; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px; user-select: none; }
 
-    .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
+    .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; position: relative; }
 
     /* --- SCHEMATIC ROW --- */
     .schematic-row { display: flex; width: 100%; align-items: stretch; }
-    .ship-wrap { flex: 1; position: relative; }
-    .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
-    .ship-wrap svg.ov { width: 100%; height: auto; display: block; }
+    .ship-wrap { flex: 1; position: relative; cursor: crosshair; }
+    .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); pointer-events: none; } /* Disabled pointer on image to prevent drag-ghosting */
+    .ship-wrap svg.ov { width: 100%; height: auto; display: block; pointer-events: auto; touch-action: none; } 
 
-    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
-    .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .tint { mix-blend-mode: color; }
+    /* --- LIVE SYSTEM OVERLAYS --- */
+    .ov { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .tint { mix-blend-mode: color; pointer-events: none; }
     .bloom { mix-blend-mode: screen; filter: blur(0.7px); opacity: .38; }
-    .zone { transition: color .3s ease; }
+    .zone { transition: color .3s ease; pointer-events: none; }
     .tint-svg .zone * { fill: currentColor; stroke: none; }
     .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 1.6; }
     @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
     .zone.pulse { animation: pz 1s ease-in-out infinite; }
 
-    /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
+    /* --- INSET PROGRESS BARS --- */
     .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
     .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
     .ibar-fill { height: 100%; width: 25%; border-radius: 2px; background: #4ade80;
                  box-shadow: 0 0 7px rgba(74, 222, 128, 0.75), inset 0 0 4px rgba(190, 255, 210, 0.5);
                  transition: width 0.25s ease, opacity 0.25s; }
 
-    /* --- MAIN POWER PANEL (second panel) --- */
-    .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; }
+    /* --- MAIN POWER PANEL --- */
+    .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; pointer-events: none; }
     .pp-title { background: #0a1e0a; border-bottom: 1.5px solid #1e4d1e; text-align: center; font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 8px 4px; font-weight: 500; }
     .pp-main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 14px 16px; text-align: center; }
     .mp-label { font-size: 10px; letter-spacing: 2px; color: #2d6a2d; }
@@ -64,60 +64,61 @@
     .log-m.drop { color: #ef4444; }
     .log-m.gain { color: #4ade80; }
     .log-m.warn { color: #f59e0b; }
+
+    /* --- TRACER TOOL CSS --- */
+    .tracer-panel { position: fixed; bottom: 20px; right: 20px; background: rgba(4, 13, 4, 0.95); border: 1px solid #0ea5e9; padding: 12px; border-radius: 6px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; width: 340px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    .tracer-title { color: #0ea5e9; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; }
+    .tracer-title span { color: #a3a3a3; font-weight: normal; }
+    
+    .apply-row { display: flex; gap: 5px; }
+    .apply-row select { flex: 1; background: #0a1a0a; color: #fff; border: 1px solid #1e4d1e; padding: 4px; font-family: monospace; font-size: 10px; border-radius: 2px; outline: none; }
+    .apply-row button { flex: 1; background: #0ea5e9; color: #040d04; border: none; padding: 6px; cursor: pointer; font-family: monospace; font-size: 10px; border-radius: 2px; font-weight: bold; transition: opacity 0.2s; }
+    .apply-row button:hover { opacity: 0.8; }
+
+    #tracer-output { width: 100%; background: #0a1a0a; color: #fff; border: 1px solid #1e4d1e; font-family: monospace; font-size: 10px; padding: 6px; resize: vertical; min-height: 50px; }
+    
+    .tracer-controls { display: flex; gap: 5px; }
+    .tracer-controls button { flex: 1; background: #1e4d1e; color: #4ade80; border: none; padding: 6px; cursor: pointer; font-family: monospace; font-size: 10px; border-radius: 2px; transition: background 0.2s; }
+    .tracer-controls button:hover { background: #2d6a2d; }
+    .tracer-controls button.clear-btn { color: #ef4444; }
+    
+    /* Tracer SVG Elements */
+    .tracer-shape { fill: rgba(14, 165, 233, 0.25); stroke: #0ea5e9; stroke-width: 2; pointer-events: none; stroke-linejoin: round; }
   </style>
 </head>
 <body>
 <div class="outer">
 
   <div class="schematic-row">
-    <!-- Ship schematic with progress bars inset over its power panel -->
     <div class="ship-wrap">
-      <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+      <img src="ShipTemplate.png" alt="Ship schematic blueprint" id="ship-img" draggable="false">
 
-      <!-- Bloom (glow outline) overlay -->
-      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <svg class="ov bloom bloom-svg" id="trace-canvas" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
         <g id="b-eng" class="zone" style="color:#4ade80">
           <polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/>
-          <polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/>
-          <polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/>
-          <polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/>
-          <polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/>
-          <circle cx="886" cy="505" r="37"/>
-          <circle cx="1047" cy="505" r="37"/>
-        </g>
+          </g>
         <g id="b-drn" class="zone" style="color:#4ade80">
           <rect x="372" y="128" width="149" height="110" rx="10"/>
         </g>
         <g id="b-wpn" class="zone" style="color:#4ade80">
           <rect x="540" y="458" width="146" height="32" rx="5"/>
-          <rect x="583" y="568" width="43" height="27" rx="3"/>
-          <rect x="625" y="580" width="57" height="9" rx="2"/>
-          <ellipse cx="598" cy="629" rx="60" ry="32"/>
         </g>
         <g id="b-shd" class="zone" style="color:#4ade80">
           <polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/>
         </g>
+        
+        <g id="tracer-layer"></g>
       </svg>
 
-      <!-- Tint (color fill) overlay -->
       <svg class="ov tint tint-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
         <g id="t-eng" class="zone" style="color:#4ade80">
           <polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/>
-          <polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/>
-          <polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/>
-          <polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/>
-          <polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/>
-          <circle cx="886" cy="505" r="37"/>
-          <circle cx="1047" cy="505" r="37"/>
         </g>
         <g id="t-drn" class="zone" style="color:#4ade80">
           <rect x="372" y="128" width="149" height="110" rx="10"/>
         </g>
         <g id="t-wpn" class="zone" style="color:#4ade80">
           <rect x="540" y="458" width="146" height="32" rx="5"/>
-          <rect x="583" y="568" width="43" height="27" rx="3"/>
-          <rect x="625" y="580" width="57" height="9" rx="2"/>
-          <ellipse cx="598" cy="629" rx="60" ry="32"/>
         </g>
         <g id="t-shd" class="zone" style="color:#4ade80">
           <polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/>
@@ -125,22 +126,13 @@
       </svg>
 
       <div class="bar-overlay">
-        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
-          <div class="ibar-fill" id="ifill-sys"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-drones"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-weapons"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-shields"></div>
-        </div>
+        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%"><div class="ibar-fill" id="ifill-sys"></div></div>
+        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-drones"></div></div>
+        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-weapons"></div></div>
+        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-shields"></div></div>
       </div>
     </div>
 
-    <!-- Main power indicator (second panel) -->
     <div class="power-panel">
       <div class="pp-title">main power</div>
       <div class="pp-main">
@@ -161,39 +153,25 @@
     </div>
   </div>
 
-  <!-- Sliders -->
   <div class="sliders-row">
     <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ engines</span>
-        <span class="sl-pct" id="pct-sys">25%</span>
-      </div>
+      <div class="sl-header"><span class="sl-name">⬡ engines</span><span class="sl-pct" id="pct-sys">25%</span></div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-sys" oninput="onSlide('sys',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ drones</span>
-        <span class="sl-pct" id="pct-drones">25%</span>
-      </div>
+      <div class="sl-header"><span class="sl-name">⬡ drones</span><span class="sl-pct" id="pct-drones">25%</span></div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-drones" oninput="onSlide('drones',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ weapons</span>
-        <span class="sl-pct" id="pct-weapons">25%</span>
-      </div>
+      <div class="sl-header"><span class="sl-name">⬡ weapons</span><span class="sl-pct" id="pct-weapons">25%</span></div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-weapons" oninput="onSlide('weapons',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ shields</span>
-        <span class="sl-pct" id="pct-shields">25%</span>
-      </div>
+      <div class="sl-header"><span class="sl-name">⬡ shields</span><span class="sl-pct" id="pct-shields">25%</span></div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-shields" oninput="onSlide('shields',this.value)">
     </div>
   </div>
 
-  <!-- Status Log -->
   <div class="log-area">
     <div class="log-hdr">▸ system status log</div>
     <div id="log-entries">
@@ -203,21 +181,43 @@
       </div>
     </div>
   </div>
+</div>
 
+<div class="tracer-panel">
+  <div class="tracer-title">SVG Draw Tool <span>(Click & Drag)</span></div>
+  
+  <div class="apply-row">
+    <select id="target-system">
+      <option value="eng">Engines</option>
+      <option value="drn">Drones</option>
+      <option value="wpn">Weapons</option>
+      <option value="shd">Shields</option>
+    </select>
+    <button onclick="applyTracedShape()">Override Path ↑</button>
+  </div>
+
+  <textarea id="tracer-output" readonly placeholder="Shape points will appear here..."></textarea>
+  
+  <div class="tracer-controls">
+    <button class="clear-btn" onclick="tracerClear()">Clear Shape</button>
+    <button onclick="tracerCopy()">Copy Raw Points</button>
+  </div>
 </div>
 
 <script>
+  // ==========================================
+  // DASHBOARD LOGIC (Unchanged)
+  // ==========================================
   const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
   const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
 
-  // Map a 0-25 power level to an overlay colour (red when offline → green at full).
   function zoneColor(v) {
     if (v === 0) return { c:'#ef4444', pulse:true };
     return { c:`hsl(${(v/25)*120}, 85%, 55%)`, pulse:false };
   }
+  
   const t0 = Date.now();
-
   function ts() {
     const s = Math.floor((Date.now()-t0)/1000);
     return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
@@ -263,25 +263,22 @@
     ['sys','drones','weapons','shields'].forEach(k => {
       const v = vals[k];
 
-      // Slider pct label
-      const pctEl = document.getElementById('pct-'+k);
-      pctEl.textContent = v+'%';
-      pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
+      document.getElementById('pct-'+k).textContent = v+'%';
+      document.getElementById('pct-'+k).className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
 
-      // Inset progress bar (over the schematic's power panel)
       const fill = document.getElementById('ifill-'+k);
       fill.style.width   = ((v/25)*100)+'%';
       fill.style.opacity = v===0 ? '0' : '1';
 
-      // Live system overlay (tint + bloom recolour the ship system)
       const { c, pulse } = zoneColor(v);
       ['t-','b-'].forEach(pre => {
         const g = document.getElementById(pre+ZONE[k]);
-        g.style.color = c;
-        g.classList.toggle('pulse', pulse);
+        if(g) {
+            g.style.color = c;
+            g.classList.toggle('pulse', pulse);
+        }
       });
 
-      // Allocation segment (main power indicator)
       document.getElementById('seg-'+k).style.width = v+'%';
     });
 
@@ -291,7 +288,6 @@
     tv.textContent = total+'%';
     tv.className = 'total-val' + (total > 100 ? ' over' : '');
 
-    // Reactor status text (driven by engine power)
     const es = document.getElementById('engine-status');
     const ev = vals.sys;
     if      (ev === 0)  { es.textContent='OFFLINE';  es.style.color='#ef4444'; }
@@ -302,6 +298,124 @@
   }
 
   updateAll();
+
+  // ==========================================
+  // DRAW TOOL & OVERRIDE LOGIC
+  // ==========================================
+  const tracerPts = [];
+  const svgCanvas = document.getElementById('trace-canvas');
+  const tracerGroup = document.getElementById('tracer-layer');
+  const tracerOutput = document.getElementById('tracer-output');
+  
+  let isDrawing = false;
+  let lastX = 0, lastY = 0;
+
+  // Start Drawing
+  svgCanvas.addEventListener('mousedown', function(e) {
+    e.preventDefault(); // Prevents dragging images/text accidentally
+    isDrawing = true;
+    tracerPts.length = 0; // Wipe previous shape
+    addPoint(e);
+  });
+
+  // Continue Drawing
+  svgCanvas.addEventListener('mousemove', function(e) {
+    if (!isDrawing) return;
+    addPoint(e);
+  });
+
+  // End Drawing
+  window.addEventListener('mouseup', function(e) {
+    if (isDrawing) {
+      isDrawing = false;
+      renderTracer(); // Renders the final closed polygon string
+    }
+  });
+  
+  // Failsafe if mouse leaves the SVG area
+  svgCanvas.addEventListener('mouseleave', function(e) {
+    if (isDrawing) {
+      isDrawing = false;
+      renderTracer();
+    }
+  });
+
+  function addPoint(e) {
+    const pt = svgCanvas.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    
+    const svgP = pt.matrixTransform(svgCanvas.getScreenCTM().inverse());
+    
+    // Throttle point creation: only log point if moved more than 4 units
+    // This keeps the SVG path from getting absurdly long and computationally heavy
+    if (tracerPts.length > 0) {
+      const dist = Math.hypot(svgP.x - lastX, svgP.y - lastY);
+      if (dist < 4) return;
+    }
+
+    lastX = svgP.x;
+    lastY = svgP.y;
+    
+    tracerPts.push(`${svgP.x.toFixed(1)},${svgP.y.toFixed(1)}`);
+    renderTracer();
+  }
+
+  function renderTracer() {
+    tracerGroup.innerHTML = ''; 
+
+    if (tracerPts.length === 0) {
+      tracerOutput.value = '';
+      return;
+    }
+
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    polygon.setAttribute("points", tracerPts.join(" "));
+    polygon.setAttribute("class", "tracer-shape");
+    tracerGroup.appendChild(polygon);
+
+    tracerOutput.value = tracerPts.join(" ");
+  }
+
+  function tracerClear() {
+    tracerPts.length = 0;
+    renderTracer();
+  }
+
+  function tracerCopy() {
+    if(tracerPts.length === 0) return;
+    tracerOutput.select();
+    document.execCommand('copy');
+    log('▸ Raw shape coordinates copied to clipboard.', 'gain');
+  }
+
+  // Inject memory path directly into selected DOM elements
+  function applyTracedShape() {
+    if (tracerPts.length < 3) {
+      log('⚠ Draw a complete shape before applying.', 'warn');
+      return;
+    }
+
+    const targetZone = document.getElementById('target-system').value;
+    const ptsString = tracerPts.join(" ");
+    
+    // Create new polygon string
+    const newShapeHTML = `<polygon points="${ptsString}" />`;
+
+    // Overwrite the specific groups in Bloom & Tint overlays
+    const bloomGroup = document.getElementById('b-' + targetZone);
+    const tintGroup = document.getElementById('t-' + targetZone);
+
+    if (bloomGroup) bloomGroup.innerHTML = newShapeHTML;
+    if (tintGroup)  tintGroup.innerHTML = newShapeHTML;
+
+    // Get friendly name for log
+    const systemName = document.querySelector(`#target-system option[value="${targetZone}"]`).textContent;
+    log(`⟳ Override deployed: Custom path applied to ${systemName.toUpperCase()}.`, 'gain');
+    
+    // Trigger color update to immediately apply the correct current hue to the newly inserted tags
+    updateAll(); 
+  }
 </script>
 </body>
 </html>
