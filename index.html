@@ -15,6 +15,16 @@
     .ship-wrap { flex: 1; position: relative; }
     .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
 
+    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
+    .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .tint { mix-blend-mode: color; }
+    .bloom { mix-blend-mode: screen; filter: blur(3px); opacity: .6; }
+    .zone { transition: color .3s ease; }
+    .tint-svg .zone * { fill: currentColor; stroke: none; }
+    .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 6; }
+    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .zone.pulse { animation: pz 1s ease-in-out infinite; }
+
     /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
     .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
     .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
@@ -62,6 +72,65 @@
     <!-- Ship schematic with progress bars inset over its power panel -->
     <div class="ship-wrap">
       <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+
+      <!-- Bloom (glow outline) overlay -->
+      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+        <g id="b-eng" class="zone" style="color:#4ade80">
+          <rect x="355" y="38" width="175" height="79" rx="40"/>
+          <rect x="580" y="40" width="172" height="114" rx="46"/>
+          <rect x="355" y="239" width="175" height="79" rx="40"/>
+          <rect x="580" y="200" width="172" height="114" rx="46"/>
+          <rect x="372" y="456" width="174" height="106" rx="50"/>
+          <circle cx="888" cy="509" r="30"/>
+          <circle cx="1040" cy="509" r="30"/>
+        </g>
+        <g id="b-drn" class="zone" style="color:#4ade80">
+          <rect x="355" y="114" width="201" height="121" rx="12"/>
+        </g>
+        <g id="b-wpn" class="zone" style="color:#4ade80">
+          <rect x="532" y="388" width="80" height="52" rx="4"/>
+          <rect x="570" y="352" width="12" height="40" rx="2"/>
+          <rect x="528" y="420" width="96" height="32" rx="3"/>
+          <ellipse cx="318.5" cy="550" rx="33.5" ry="24"/>
+          <ellipse cx="627.5" cy="614" rx="62.5" ry="42"/>
+          <rect x="595" y="538" width="56" height="22" rx="3"/>
+          <rect x="956" y="398" width="33" height="36" rx="4"/>
+          <rect x="966" y="360" width="14" height="38" rx="2"/>
+        </g>
+        <g id="b-shd" class="zone" style="color:#4ade80">
+          <polygon points="968,479 994,494.5 994,525.5 968,541 942,525.5 942,494.5"/>
+        </g>
+      </svg>
+
+      <!-- Tint (color fill) overlay -->
+      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+        <g id="t-eng" class="zone" style="color:#4ade80">
+          <rect x="355" y="38" width="175" height="79" rx="40"/>
+          <rect x="580" y="40" width="172" height="114" rx="46"/>
+          <rect x="355" y="239" width="175" height="79" rx="40"/>
+          <rect x="580" y="200" width="172" height="114" rx="46"/>
+          <rect x="372" y="456" width="174" height="106" rx="50"/>
+          <circle cx="888" cy="509" r="30"/>
+          <circle cx="1040" cy="509" r="30"/>
+        </g>
+        <g id="t-drn" class="zone" style="color:#4ade80">
+          <rect x="355" y="114" width="201" height="121" rx="12"/>
+        </g>
+        <g id="t-wpn" class="zone" style="color:#4ade80">
+          <rect x="532" y="388" width="80" height="52" rx="4"/>
+          <rect x="570" y="352" width="12" height="40" rx="2"/>
+          <rect x="528" y="420" width="96" height="32" rx="3"/>
+          <ellipse cx="318.5" cy="550" rx="33.5" ry="24"/>
+          <ellipse cx="627.5" cy="614" rx="62.5" ry="42"/>
+          <rect x="595" y="538" width="56" height="22" rx="3"/>
+          <rect x="956" y="398" width="33" height="36" rx="4"/>
+          <rect x="966" y="360" width="14" height="38" rx="2"/>
+        </g>
+        <g id="t-shd" class="zone" style="color:#4ade80">
+          <polygon points="968,479 994,494.5 994,525.5 968,541 942,525.5 942,494.5"/>
+        </g>
+      </svg>
+
       <div class="bar-overlay">
         <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
           <div class="ibar-fill" id="ifill-sys"></div>
@@ -146,7 +215,14 @@
 
 <script>
   const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
+  const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
+
+  // Map a 0-25 power level to an overlay colour (red when offline → green at full).
+  function zoneColor(v) {
+    if (v === 0) return { c:'#ef4444', pulse:true };
+    return { c:`hsl(${(v/25)*120}, 85%, 55%)`, pulse:false };
+  }
   const t0 = Date.now();
 
   function ts() {
@@ -203,6 +279,14 @@
       const fill = document.getElementById('ifill-'+k);
       fill.style.width   = ((v/25)*100)+'%';
       fill.style.opacity = v===0 ? '0' : '1';
+
+      // Live system overlay (tint + bloom recolour the ship system)
+      const { c, pulse } = zoneColor(v);
+      ['t-','b-'].forEach(pre => {
+        const g = document.getElementById(pre+ZONE[k]);
+        g.style.color = c;
+        g.classList.toggle('pulse', pulse);
+      });
 
       // Allocation segment (main power indicator)
       document.getElementById('seg-'+k).style.width = v+'%';
