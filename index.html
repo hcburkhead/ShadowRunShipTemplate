@@ -11,25 +11,37 @@
     .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
 
     /* --- SCHEMATIC ROW --- */
-    .schematic-row { display: flex; width: 100%; }
-    .ship-wrap { flex: 1; position: relative; min-height: 320px; }
-    .ship-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; filter: brightness(0.85); }
+    .schematic-row { display: flex; width: 100%; align-items: stretch; }
+    .ship-wrap { flex: 1; position: relative; }
+    .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
 
-    /* --- POWER PANEL --- */
+    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
+    .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .tint { mix-blend-mode: color; }
+    .bloom { mix-blend-mode: screen; filter: blur(3px); opacity: .6; }
+    .zone { transition: color .3s ease; }
+    .tint-svg .zone * { fill: currentColor; stroke: none; }
+    .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 6; }
+    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .zone.pulse { animation: pz 1s ease-in-out infinite; }
+
+    /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
+    .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
+    .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
+    .ibar-fill { height: 100%; width: 25%; border-radius: 2px; background: #4ade80;
+                 box-shadow: 0 0 7px rgba(74, 222, 128, 0.75), inset 0 0 4px rgba(190, 255, 210, 0.5);
+                 transition: width 0.25s ease, opacity 0.25s; }
+
+    /* --- MAIN POWER PANEL (second panel) --- */
     .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; }
     .pp-title { background: #0a1e0a; border-bottom: 1.5px solid #1e4d1e; text-align: center; font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 8px 4px; font-weight: 500; }
-    .pp-section { border-bottom: 0.5px solid #1e4d1e; }
-    .pp-label { font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 7px 10px 5px; display: block; text-align: center; }
-    .pp-bar-wrap { height: 18px; margin: 0 8px 8px; background: #0a1a0a; border: 1px solid #1e4d1e; border-radius: 2px; overflow: hidden; position: relative; }
-    .pp-bar { height: 100%; border-radius: 1px; transition: width 0.25s, background 0.25s; position: relative; }
-    .pp-bar-val { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 9px; letter-spacing: 1px; color: #0a1a0a; font-weight: 500; mix-blend-mode: difference; filter: invert(1); }
-    .pp-top { border-bottom: 0.5px solid #1e4d1e; }
-    .pp-top-bar-wrap { height: 22px; margin: 4px 8px 8px; background: #0a1a0a; border: 1px solid #1e4d1e; border-radius: 2px; overflow: hidden; display: flex; }
+    .pp-main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 14px 16px; text-align: center; }
+    .mp-label { font-size: 10px; letter-spacing: 2px; color: #2d6a2d; }
+    .engine-status { font-size: 18px; font-weight: 600; letter-spacing: 3px; color: #4ade80; transition: color 0.2s; }
+    .pp-top-bar-wrap { width: 100%; height: 22px; background: #0a1a0a; border: 1px solid #1e4d1e; border-radius: 2px; overflow: hidden; display: flex; }
     .seg { height: 100%; transition: width 0.25s; }
-    .engine-label { font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 5px 10px 3px; display: block; text-align: center; }
-    .engine-status { font-size: 13px; font-weight: 500; letter-spacing: 3px; text-align: center; padding: 3px 10px 6px; transition: color 0.2s; display: block; }
-    .total-row { display: flex; justify-content: space-between; font-size: 9px; color: #2d6a2d; padding: 4px 10px 0; letter-spacing: 1px; }
-    .total-val { color: #4ade80; }
+    .total-row { display: flex; flex-direction: column; gap: 2px; font-size: 9px; color: #2d6a2d; letter-spacing: 1px; }
+    .total-val { font-size: 22px; font-weight: 600; color: #4ade80; letter-spacing: 1px; }
     .total-val.over { color: #ef4444; }
 
     /* --- SLIDERS --- */
@@ -57,64 +69,100 @@
 <div class="outer">
 
   <div class="schematic-row">
-    <!-- Ship schematic -->
+    <!-- Ship schematic with progress bars inset over its power panel -->
     <div class="ship-wrap">
       <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+
+      <!-- Bloom (glow outline) overlay -->
+      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+        <g id="b-eng" class="zone" style="color:#4ade80">
+          <rect x="355" y="38" width="175" height="79" rx="40"/>
+          <rect x="580" y="40" width="172" height="114" rx="46"/>
+          <rect x="355" y="239" width="175" height="79" rx="40"/>
+          <rect x="580" y="200" width="172" height="114" rx="46"/>
+          <rect x="372" y="456" width="174" height="106" rx="50"/>
+          <circle cx="888" cy="509" r="30"/>
+          <circle cx="1040" cy="509" r="30"/>
+        </g>
+        <g id="b-drn" class="zone" style="color:#4ade80">
+          <rect x="355" y="114" width="201" height="121" rx="12"/>
+        </g>
+        <g id="b-wpn" class="zone" style="color:#4ade80">
+          <rect x="532" y="388" width="80" height="52" rx="4"/>
+          <rect x="570" y="352" width="12" height="40" rx="2"/>
+          <rect x="528" y="420" width="96" height="32" rx="3"/>
+          <ellipse cx="318.5" cy="550" rx="33.5" ry="24"/>
+          <ellipse cx="627.5" cy="614" rx="62.5" ry="42"/>
+          <rect x="595" y="538" width="56" height="22" rx="3"/>
+          <rect x="956" y="398" width="33" height="36" rx="4"/>
+          <rect x="966" y="360" width="14" height="38" rx="2"/>
+        </g>
+        <g id="b-shd" class="zone" style="color:#4ade80">
+          <polygon points="968,479 994,494.5 994,525.5 968,541 942,525.5 942,494.5"/>
+        </g>
+      </svg>
+
+      <!-- Tint (color fill) overlay -->
+      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" preserveAspectRatio="none">
+        <g id="t-eng" class="zone" style="color:#4ade80">
+          <rect x="355" y="38" width="175" height="79" rx="40"/>
+          <rect x="580" y="40" width="172" height="114" rx="46"/>
+          <rect x="355" y="239" width="175" height="79" rx="40"/>
+          <rect x="580" y="200" width="172" height="114" rx="46"/>
+          <rect x="372" y="456" width="174" height="106" rx="50"/>
+          <circle cx="888" cy="509" r="30"/>
+          <circle cx="1040" cy="509" r="30"/>
+        </g>
+        <g id="t-drn" class="zone" style="color:#4ade80">
+          <rect x="355" y="114" width="201" height="121" rx="12"/>
+        </g>
+        <g id="t-wpn" class="zone" style="color:#4ade80">
+          <rect x="532" y="388" width="80" height="52" rx="4"/>
+          <rect x="570" y="352" width="12" height="40" rx="2"/>
+          <rect x="528" y="420" width="96" height="32" rx="3"/>
+          <ellipse cx="318.5" cy="550" rx="33.5" ry="24"/>
+          <ellipse cx="627.5" cy="614" rx="62.5" ry="42"/>
+          <rect x="595" y="538" width="56" height="22" rx="3"/>
+          <rect x="956" y="398" width="33" height="36" rx="4"/>
+          <rect x="966" y="360" width="14" height="38" rx="2"/>
+        </g>
+        <g id="t-shd" class="zone" style="color:#4ade80">
+          <polygon points="968,479 994,494.5 994,525.5 968,541 942,525.5 942,494.5"/>
+        </g>
+      </svg>
+
+      <div class="bar-overlay">
+        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
+          <div class="ibar-fill" id="ifill-sys"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-drones"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-weapons"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-shields"></div>
+        </div>
+      </div>
     </div>
 
-    <!-- Power panel (mirrors the graphic's right sidebar) -->
+    <!-- Main power indicator (second panel) -->
     <div class="power-panel">
-      <div class="pp-title">system power levels</div>
-
-      <!-- Engines (replaces ?????? on the graphic) -->
-      <div class="pp-top">
-        <span class="engine-label">engines</span>
-        <div class="pp-bar-wrap" style="margin-bottom:4px">
-          <div class="pp-bar" id="ppbar-engines" style="width:100%;background:#4ade80">
-            <span class="pp-bar-val" id="ppval-engines">25%</span>
-          </div>
-        </div>
-        <span class="engine-status" id="engine-status" style="color:#4ade80">NOMINAL</span>
+      <div class="pp-title">main power</div>
+      <div class="pp-main">
+        <span class="mp-label">reactor status</span>
+        <span class="engine-status" id="engine-status">NOMINAL</span>
         <div class="pp-top-bar-wrap">
           <div class="seg" id="seg-sys"     style="width:25%;background:#4ade80"></div>
-          <div class="seg" id="seg-drones"  style="width:25%;background:#60a5fa"></div>
-          <div class="seg" id="seg-weapons" style="width:25%;background:#f59e0b"></div>
-          <div class="seg" id="seg-shields" style="width:25%;background:#a78bfa"></div>
+          <div class="seg" id="seg-drones"  style="width:25%;background:#2bbf6a"></div>
+          <div class="seg" id="seg-weapons" style="width:25%;background:#1c9c52"></div>
+          <div class="seg" id="seg-shields" style="width:25%;background:#137a3c"></div>
           <div class="seg" id="seg-empty"   style="width:0%;background:#0a1a0a"></div>
         </div>
         <div class="total-row">
-          <span>total allocated</span>
           <span class="total-val" id="total-val-disp">100%</span>
-        </div>
-      </div>
-
-      <!-- Drones -->
-      <div class="pp-section">
-        <span class="pp-label">drones</span>
-        <div class="pp-bar-wrap">
-          <div class="pp-bar" id="ppbar-drones" style="width:100%;background:#60a5fa">
-            <span class="pp-bar-val" id="ppval-drones">25%</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Weapons -->
-      <div class="pp-section">
-        <span class="pp-label">weapons</span>
-        <div class="pp-bar-wrap">
-          <div class="pp-bar" id="ppbar-weapons" style="width:100%;background:#f59e0b">
-            <span class="pp-bar-val" id="ppval-weapons">25%</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Shields -->
-      <div class="pp-section" style="border-bottom:none">
-        <span class="pp-label">shields</span>
-        <div class="pp-bar-wrap">
-          <div class="pp-bar" id="ppbar-shields" style="width:100%;background:#a78bfa">
-            <span class="pp-bar-val" id="ppval-shields">25%</span>
-          </div>
+          <span>total allocated</span>
         </div>
       </div>
     </div>
@@ -166,9 +214,15 @@
 </div>
 
 <script>
-  const COLORS = { sys:'#4ade80', drones:'#60a5fa', weapons:'#f59e0b', shields:'#a78bfa' };
   const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
+  const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
+
+  // Map a 0-25 power level to an overlay colour (red when offline → green at full).
+  function zoneColor(v) {
+    if (v === 0) return { c:'#ef4444', pulse:true };
+    return { c:`hsl(${(v/25)*120}, 85%, 55%)`, pulse:false };
+  }
   const t0 = Date.now();
 
   function ts() {
@@ -221,14 +275,20 @@
       pctEl.textContent = v+'%';
       pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
 
-      // Panel bar
-      const barId = k==='sys' ? 'engines' : k;
-      const bar   = document.getElementById('ppbar-'+barId);
-      bar.style.width      = ((v/25)*100)+'%';
-      bar.style.background = v===0 ? '#1a1a1a' : v<=8 ? '#ef4444' : COLORS[k];
-      document.getElementById('ppval-'+barId).textContent = v+'%';
+      // Inset progress bar (over the schematic's power panel)
+      const fill = document.getElementById('ifill-'+k);
+      fill.style.width   = ((v/25)*100)+'%';
+      fill.style.opacity = v===0 ? '0' : '1';
 
-      // Allocation segment
+      // Live system overlay (tint + bloom recolour the ship system)
+      const { c, pulse } = zoneColor(v);
+      ['t-','b-'].forEach(pre => {
+        const g = document.getElementById(pre+ZONE[k]);
+        g.style.color = c;
+        g.classList.toggle('pulse', pulse);
+      });
+
+      // Allocation segment (main power indicator)
       document.getElementById('seg-'+k).style.width = v+'%';
     });
 
@@ -238,15 +298,17 @@
     tv.textContent = total+'%';
     tv.className = 'total-val' + (total > 100 ? ' over' : '');
 
-    // Engine status text
+    // Reactor status text (driven by engine power)
     const es = document.getElementById('engine-status');
     const ev = vals.sys;
     if      (ev === 0)  { es.textContent='OFFLINE';  es.style.color='#ef4444'; }
     else if (ev <=  8)  { es.textContent='CRITICAL'; es.style.color='#ef4444'; }
     else if (ev <= 16)  { es.textContent='REDUCED';  es.style.color='#f59e0b'; }
-    else if (ev <  25)  { es.textContent='PARTIAL';  es.style.color='#f59e0b'; }
+    else if (ev <  25)  { es.textContent='PARTIAL';  es.style.color='#9be8b4'; }
     else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
   }
+
+  updateAll();
 </script>
 </body>
 </html>
