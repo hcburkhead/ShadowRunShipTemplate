@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overlay Tracer — debug tool</title>
+<style>
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; background:#0a0f0a; color:#cfe; font:13px/1.4 monospace; }
+  body { display:flex; flex-direction:column; }
+  #bar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center;
+         padding:8px 12px; background:#0e160e; border-bottom:1px solid #1e4d1e; }
+  #bar .grp { display:flex; gap:4px; align-items:center; }
+  #bar label { color:#7fbf9a; }
+  button { background:#102510; color:#bdf5cf; border:1px solid #2c6a2c; border-radius:4px;
+           padding:5px 9px; cursor:pointer; font:inherit; }
+  button:hover { background:#173a17; }
+  button.on { background:#2c6a2c; color:#eaffea; border-color:#4ade80; }
+  select, input[type=number] { background:#102510; color:#bdf5cf; border:1px solid #2c6a2c; border-radius:4px; padding:4px; font:inherit; }
+  input[type=range] { vertical-align:middle; accent-color:#4ade80; }
+  #wrap { flex:1; overflow:auto; background:#050805 repeating-linear-gradient(0deg,#070a07 0 1px,transparent 1px 22px),
+                                  repeating-linear-gradient(90deg,#070a07 0 1px,transparent 1px 22px); position:relative; }
+  #stage { position:relative; transform-origin:0 0; }
+  #stage img { display:block; width:100%; height:100%; }
+  #stage svg { position:absolute; inset:0; width:100%; height:100%; }
+  #ref { pointer-events:none; }
+  #draw { cursor:crosshair; }
+  #hud { position:fixed; bottom:0; left:0; right:0; display:flex; gap:18px; align-items:center;
+         padding:5px 12px; background:#0e160ecc; border-top:1px solid #1e4d1e; backdrop-filter:blur(2px); }
+  #hud b { color:#4ade80; }
+  #outwrap { position:fixed; top:46px; right:0; width:360px; max-height:60vh; display:flex; flex-direction:column;
+             background:#0e160ef2; border:1px solid #2c6a2c; border-radius:0 0 0 6px; }
+  #outwrap.hidden { display:none; }
+  #outwrap header { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-bottom:1px solid #1e4d1e; }
+  #out { flex:1; min-height:200px; background:#060a06; color:#bdf5cf; border:0; padding:8px; font:12px/1.35 monospace; resize:vertical; white-space:pre; overflow:auto; }
+  .sw { display:inline-block; width:11px; height:11px; border-radius:2px; vertical-align:-1px; }
+  kbd { background:#102510; border:1px solid #2c6a2c; border-radius:3px; padding:0 4px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div class="grp">
+    <label>Tool</label>
+    <button data-mode="poly" class="on">Polygon</button>
+    <button data-mode="circle">Circle</button>
+    <button data-mode="ellipse">Ellipse</button>
+    <button data-mode="rect">Rect</button>
+  </div>
+  <div class="grp">
+    <label>System</label>
+    <select id="sys">
+      <option value="eng">eng · engines</option>
+      <option value="drn">drn · drones</option>
+      <option value="wpn">wpn · weapons</option>
+      <option value="shd">shd · shields</option>
+    </select>
+  </div>
+  <div class="grp"><label>rx</label><input id="rx" type="number" value="6" min="0" max="80" style="width:54px"></div>
+  <div class="grp"><label>Zoom</label><input id="zoom" type="range" min="0.5" max="6" step="0.1" value="1.2"><span id="zoomv">1.2×</span></div>
+  <div class="grp"><label>Bright</label><input id="bright" type="range" min="0.8" max="4" step="0.1" value="1.8"></div>
+  <div class="grp"><label><input id="snap" type="checkbox" checked> snap</label></div>
+  <div class="grp"><label><input id="showref" type="checkbox" checked> show current</label></div>
+  <div class="grp">
+    <button id="undo">Undo pt</button>
+    <button id="finish">Finish ⏎</button>
+    <button id="delshape">Del shape</button>
+    <button id="clear">Clear</button>
+    <button id="copy">Copy SVG</button>
+    <button id="toggleout" class="on">Output</button>
+  </div>
+</div>
+
+<div id="wrap">
+  <div id="stage">
+    <img id="img" src="ShipTemplate.png" alt="">
+    <svg id="ref" viewBox="0 0 1538 688" preserveAspectRatio="none"></svg>
+    <svg id="draw" viewBox="0 0 1538 688" preserveAspectRatio="none"></svg>
+  </div>
+</div>
+
+<div id="outwrap">
+  <header><span>SVG output (grouped by system)</span><button id="closeout">×</button></header>
+  <textarea id="out" spellcheck="false" readonly></textarea>
+</div>
+
+<div id="hud">
+  <span>x <b id="cx">–</b>  y <b id="cy">–</b></span>
+  <span id="hint">Click to place points · <kbd>Enter</kbd> finish · <kbd>Backspace</kbd> undo pt · <kbd>Esc</kbd> cancel · click near 1st pt to close</span>
+  <span style="margin-left:auto" id="count"></span>
+</div>
+
+<script>
+const W=1538, H=688;
+const SYSCOL = {eng:'#22d3ee', drn:'#e879f9', wpn:'#facc15', shd:'#fb923c'};
+
+// ---- current zones (reference layer snapshot) ----
+const REF = {
+ eng:`<polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510,114.4 510,114.6 500.7,114.8 482.1,114.9 454.1,115 416.9,115 388.8,114 369.8,112 359.9,109 359.1,105 358.6,99.4 358.2,92.1 358,83.2 358,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365,52.2 369,49.8 379.9,47.9 397.6,46.6 422.2,46 453.8,46 477.9,50.2 494.8,58.8"/>
+<polygon points="735,49.4 735,51.6 734.1,56.5 732.2,64 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701,113 693,113 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582,82.1 582,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46 685.1,46 710.1,46.6 726.7,47.7"/>
+<polygon points="515,245.5 515,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315 419.8,315 394.6,314.5 376.9,313.5 366.5,312 363.5,310 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358,282.8 358,267.2 367.8,255.6 387.4,247.9 416.9,244 456.1,244 485.6,244.2 505.2,244.8"/>
+<polygon points="725,268.5 729,283.5 732,295.3 734,303.9 735,309.4 735,311.6 725.6,313.3 706.7,314.4 678.4,315 640.6,315 612.3,310.7 593.4,302.1 584,289.1 584,271.9 592.4,258.9 609.3,250.3 634.6,246 668.4,246 694.7,249.8 713.6,257.2"/>
+<polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499,539.9 499,541.1 491.8,542.1 477.4,542.7 455.9,543 427.1,543 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527 352.6,526.6 352.4,526.4 352.2,524 352.1,519.5 352,512.9 352,504.1 352.1,497.5 352.2,493 352.4,490.6 352.6,490.4 353.1,490 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476 446.9,476 461.7,476.1 472.6,476.2"/>
+<circle cx="886" cy="505" r="37"/><circle cx="1047" cy="505" r="37"/>`,
+ drn:`<rect x="372" y="128" width="149" height="110" rx="10"/>`,
+ wpn:`<rect x="540" y="458" width="146" height="32" rx="5"/><rect x="583" y="568" width="43" height="27" rx="3"/><rect x="625" y="580" width="57" height="9" rx="2"/><ellipse cx="598" cy="629" rx="60" ry="32"/>`,
+ shd:`<polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/>`,
+};
+
+const stage=document.getElementById('stage'), img=document.getElementById('img'),
+      refSvg=document.getElementById('ref'), draw=document.getElementById('draw'),
+      out=document.getElementById('out');
+let mode='poly', zoom=1.2, sys='eng';
+let shapes=[];           // committed {type,sys,...}
+let poly=[];             // current polygon pts
+let drag=null;           // {x0,y0,x,y} for drag tools
+let cursor=[0,0];
+
+function applyZoom(){
+  stage.style.width=(W*zoom)+'px'; stage.style.height=(H*zoom)+'px';
+  document.getElementById('zoomv').textContent=zoom.toFixed(1)+'×';
+}
+function applyBright(){ img.style.filter='brightness('+document.getElementById('bright').value+')'; }
+function buildRef(){
+  refSvg.innerHTML = document.getElementById('showref').checked
+    ? Object.entries(REF).map(([s,c])=>`<g fill="none" stroke="${SYSCOL[s]}" stroke-width="1.2" opacity="0.85">${c}</g>`).join('')
+    : '';
+}
+
+function r1(v){ return Math.round(v*10)/10; }
+function evt2svg(e){
+  const r=draw.getBoundingClientRect();
+  let x=(e.clientX-r.left)/r.width*W, y=(e.clientY-r.top)/r.height*H;
+  x=Math.max(0,Math.min(W,x)); y=Math.max(0,Math.min(H,y));
+  return [x,y];
+}
+function dist(a,b){ return Math.hypot(a[0]-b[0],a[1]-b[1]); }
+
+function svgString(s){
+  if(s.type==='poly')  return `<polygon points="${s.pts.map(p=>r1(p[0])+','+r1(p[1])).join(' ')}"/>`;
+  if(s.type==='circle')return `<circle cx="${r1(s.cx)}" cy="${r1(s.cy)}" r="${r1(s.r)}"/>`;
+  if(s.type==='ellipse')return `<ellipse cx="${r1(s.cx)}" cy="${r1(s.cy)}" rx="${r1(s.rx)}" ry="${r1(s.ry)}"/>`;
+  if(s.type==='rect')  return `<rect x="${r1(s.x)}" y="${r1(s.y)}" width="${r1(s.w)}" height="${r1(s.h)}" rx="${s.rx}"/>`;
+}
+function shapeEl(s,opts){
+  const col=SYSCOL[s.sys]||'#fff';
+  const o=opts||{};
+  const stroke=o.stroke||col, sw=o.sw||1.5, fill=o.fill||'none', dash=o.dash?'stroke-dasharray="4 3"':'';
+  return svgString(s).replace('/>',` fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${dash}/>`);
+}
+
+function render(){
+  let s='';
+  // committed shapes
+  shapes.forEach(sh=> s+=shapeEl(sh,{sw:1.6, fill:SYSCOL[sh.sys]+'22'}));
+  // in-progress polygon
+  if(mode==='poly' && poly.length){
+    const col=SYSCOL[sys];
+    let pts=poly.map(p=>p[0]+','+p[1]).join(' ');
+    let rubber = poly.length? pts+' '+cursor[0]+','+cursor[1] : '';
+    s+=`<polyline points="${rubber}" fill="none" stroke="${col}" stroke-width="1.5"/>`;
+    poly.forEach((p,i)=> s+=`<circle cx="${p[0]}" cy="${p[1]}" r="${i===0?3.2:2.2}" fill="${i===0?'#fff':col}" stroke="${col}"/>`);
+  }
+  // drag preview
+  if(drag){
+    const col=SYSCOL[sys];
+    if(mode==='circle'){ const r=dist([drag.x0,drag.y0],[drag.x,drag.y]); s+=`<circle cx="${drag.x0}" cy="${drag.y0}" r="${r}" fill="${col}22" stroke="${col}" stroke-width="1.5"/>`;}
+    else { const x=Math.min(drag.x0,drag.x),y=Math.min(drag.y0,drag.y),w=Math.abs(drag.x-drag.x0),h=Math.abs(drag.y-drag.y0);
+      if(mode==='ellipse') s+=`<ellipse cx="${x+w/2}" cy="${y+h/2}" rx="${w/2}" ry="${h/2}" fill="${col}22" stroke="${col}" stroke-width="1.5"/>`;
+      else s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${document.getElementById('rx').value}" fill="${col}22" stroke="${col}" stroke-width="1.5"/>`;
+    }
+  }
+  // crosshair
+  s+=`<line x1="${cursor[0]}" y1="0" x2="${cursor[0]}" y2="${H}" stroke="#ffffff33" stroke-width="0.7"/>
+      <line x1="0" y1="${cursor[1]}" x2="${W}" y2="${cursor[1]}" stroke="#ffffff33" stroke-width="0.7"/>`;
+  draw.innerHTML=s;
+  updateOut();
+  document.getElementById('count').textContent =
+    shapes.length+' shape(s)'+(poly.length?` · ${poly.length} pts in progress`:'');
+}
+function updateOut(){
+  const g={eng:[],drn:[],wpn:[],shd:[]};
+  shapes.forEach(sh=> g[sh.sys].push('  '+svgString(sh)));
+  out.value=['eng','drn','wpn','shd'].filter(k=>g[k].length)
+    .map(k=>`<!-- ${k} -->\n${g[k].join('\n')}`).join('\n\n');
+}
+
+// ---- snapping to bright pixels (uses a hidden canvas of the image) ----
+let idata=null;
+img.addEventListener('load',()=>{
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const cx=cv.getContext('2d'); cx.drawImage(img,0,0,W,H);
+  try{ idata=cx.getImageData(0,0,W,H).data; }catch(e){ idata=null; } // tainted on file:// in some browsers
+});
+function snap(x,y){
+  if(!idata || !document.getElementById('snap').checked) return [x,y];
+  const R=4; let best=null,bv=-1, ix=Math.round(x),iy=Math.round(y);
+  for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+    const px=ix+dx,py=iy+dy; if(px<0||py<0||px>=W||py>=H)continue;
+    const i=(py*W+px)*4; const v=idata[i+1]*0.6+idata[i+2]*0.4; // green+blue brightness
+    if(v>bv){bv=v;best=[px,py];}
+  }
+  return bv>70?best:[x,y];
+}
+
+// ---- pointer handling ----
+function onDown(e){
+  e.preventDefault();
+  let p=snap(...evt2svg(e));
+  if(mode==='poly'){
+    if(poly.length>=3 && dist(p,poly[0])< (7/zoom)){ finishPoly(); return; }
+    poly.push(p); render();
+  } else { drag={x0:p[0],y0:p[1],x:p[0],y:p[1]}; }
+}
+function onMove(e){
+  cursor=snap(...evt2svg(e));
+  document.getElementById('cx').textContent=r1(cursor[0]);
+  document.getElementById('cy').textContent=r1(cursor[1]);
+  if(drag){ drag.x=cursor[0]; drag.y=cursor[1]; }
+  render();
+}
+function onUp(e){
+  if(!drag) return;
+  let p=snap(...evt2svg(e));
+  const a=[drag.x0,drag.y0];
+  if(dist(a,p)>2){
+    if(mode==='circle') shapes.push({type:'circle',sys,cx:a[0],cy:a[1],r:dist(a,p)});
+    else { const x=Math.min(a[0],p[0]),y=Math.min(a[1],p[1]),w=Math.abs(p[0]-a[0]),h=Math.abs(p[1]-a[1]);
+      if(mode==='ellipse') shapes.push({type:'ellipse',sys,cx:x+w/2,cy:y+h/2,rx:w/2,ry:h/2});
+      else shapes.push({type:'rect',sys,x,y,w,h,rx:+document.getElementById('rx').value});
+    }
+  }
+  drag=null; render();
+}
+function finishPoly(){
+  if(poly.length>=3){ shapes.push({type:'poly',sys,pts:poly.slice()}); }
+  poly=[]; render();
+}
+
+draw.addEventListener('mousedown',onDown);
+draw.addEventListener('mousemove',onMove);
+window.addEventListener('mouseup',onUp);
+window.addEventListener('keydown',e=>{
+  if(e.key==='Enter') finishPoly();
+  else if(e.key==='Backspace'){ e.preventDefault(); if(poly.length) poly.pop(); render(); }
+  else if(e.key==='Escape'){ poly=[]; drag=null; render(); }
+});
+
+// ---- toolbar ----
+document.querySelectorAll('#bar [data-mode]').forEach(b=>b.onclick=()=>{
+  mode=b.dataset.mode; poly=[]; drag=null;
+  document.querySelectorAll('#bar [data-mode]').forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+document.getElementById('sys').onchange=e=>{ sys=e.target.value; render(); };
+document.getElementById('zoom').oninput=e=>{ zoom=+e.target.value; applyZoom(); };
+document.getElementById('bright').oninput=applyBright;
+document.getElementById('showref').onchange=buildRef;
+document.getElementById('rx').oninput=render;
+document.getElementById('undo').onclick=()=>{ if(poly.length)poly.pop(); render(); };
+document.getElementById('finish').onclick=finishPoly;
+document.getElementById('delshape').onclick=()=>{ shapes.pop(); render(); };
+document.getElementById('clear').onclick=()=>{ if(confirm('Clear all drawn shapes?')){shapes=[];poly=[];render();} };
+document.getElementById('copy').onclick=()=>{ out.select(); navigator.clipboard?.writeText(out.value); document.getElementById('copy').textContent='Copied!'; setTimeout(()=>document.getElementById('copy').textContent='Copy SVG',900); };
+const ow=document.getElementById('outwrap');
+document.getElementById('toggleout').onclick=function(){ ow.classList.toggle('hidden'); this.classList.toggle('on'); };
+document.getElementById('closeout').onclick=()=>{ ow.classList.add('hidden'); document.getElementById('toggleout').classList.remove('on'); };
+
+applyZoom(); applyBright(); buildRef(); render();
+</script>
+</body>
+</html>
