@@ -232,6 +232,28 @@
 
   function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
 
+  // --- persistent power levels (survive across sessions / page reloads) ---
+  const STORE_KEY = 'shipPowerLevels';
+  function clamp25(n){ n = parseInt(n); return Number.isFinite(n) ? Math.max(0, Math.min(25, n)) : null; }
+  function saveState() {
+    try {
+      const data = {};
+      ['sys','drones','weapons','shields'].forEach(k => data[k] = val(k));
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    } catch (e) { /* storage unavailable (private mode / file restrictions) */ }
+  }
+  function loadState() {
+    try {
+      const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!data) return false;
+      ['sys','drones','weapons','shields'].forEach(k => {
+        const n = clamp25(data[k]);
+        if (n !== null) { document.getElementById('sl-'+k).value = n; prev[k] = n; }
+      });
+      return true;
+    } catch (e) { return false; }
+  }
+
   function onSlide(key, rawVal) {
     let v = parseInt(rawVal);
     const others = ['sys','drones','weapons','shields'].filter(k=>k!==key);
@@ -250,6 +272,7 @@
       else         log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
     }
     prev[key] = v;
+    saveState();
   }
 
   function updateAll() {
@@ -298,7 +321,9 @@
     else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
   }
 
+  const __restored = loadState();
   updateAll();
+  if (__restored) log('— power configuration restored from last session.');
 </script>
 </body>
 </html>
