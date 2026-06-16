@@ -57,7 +57,9 @@
 
     /* --- LOG --- */
     .log-area { background: #040d04; border-top: 1.5px solid #1e4d1e; padding: 8px 12px; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; }
-    .log-hdr { font-size: 9px; letter-spacing: 2px; color: #1e4d1e; margin-bottom: 4px; }
+    .log-hdr { font-size: 9px; letter-spacing: 2px; color: #1e4d1e; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #040d04; padding: 2px 0; }
+    .log-clear { font: inherit; font-size: 9px; letter-spacing: 1px; color: #2d6a2d; background: transparent; border: 1px solid #1e4d1e; border-radius: 3px; padding: 2px 8px; cursor: pointer; }
+    .log-clear:hover { color: #4ade80; border-color: #2c6a2c; background: #0a1a0a; }
     .log-entry { font-size: 10px; line-height: 1.7; display: flex; gap: 8px; border-bottom: 0.5px solid #0a1e0a; }
     .log-t { color: #1e6b1e; min-width: 52px; }
     .log-m { color: #4ade80; }
@@ -187,7 +189,7 @@
   </div>
 
   <div class="log-area">
-    <div class="log-hdr">▸ system status log</div>
+    <div class="log-hdr"><span>▸ system status log</span><button class="log-clear" onclick="clearLog()">clear</button></div>
     <div id="log-entries">
       <div class="log-entry">
         <span class="log-t">00:00:00</span>
@@ -230,7 +232,34 @@
     if (el.children.length > 60) el.lastChild.remove();
   }
 
+  function clearLog() {
+    document.getElementById('log-entries').innerHTML = '';
+    log('— log cleared.');
+  }
+
   function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
+
+  // --- persistent power levels (survive across sessions / page reloads) ---
+  const STORE_KEY = 'shipPowerLevels';
+  function clamp25(n){ n = parseInt(n); return Number.isFinite(n) ? Math.max(0, Math.min(25, n)) : null; }
+  function saveState() {
+    try {
+      const data = {};
+      ['sys','drones','weapons','shields'].forEach(k => data[k] = val(k));
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    } catch (e) { /* storage unavailable (private mode / file restrictions) */ }
+  }
+  function loadState() {
+    try {
+      const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!data) return false;
+      ['sys','drones','weapons','shields'].forEach(k => {
+        const n = clamp25(data[k]);
+        if (n !== null) { document.getElementById('sl-'+k).value = n; prev[k] = n; }
+      });
+      return true;
+    } catch (e) { return false; }
+  }
 
   function onSlide(key, rawVal) {
     let v = parseInt(rawVal);
@@ -250,6 +279,7 @@
       else         log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
     }
     prev[key] = v;
+    saveState();
   }
 
   function updateAll() {
@@ -298,7 +328,9 @@
     else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
   }
 
+  const __restored = loadState();
   updateAll();
+  if (__restored) log('— power configuration restored from last session.');
 </script>
 </body>
 </html>
