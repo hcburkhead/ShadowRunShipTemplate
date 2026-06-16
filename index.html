@@ -24,7 +24,7 @@
     .tint-svg .zone * { fill: currentColor; stroke: none; }
     .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 1.6; }
     @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.15} }
-    .zone.pulse { animation: pz 0.8s ease-in-out infinite; }
+    .zone.pulse, .ibar-fill.pulse { animation: pz 0.8s ease-in-out infinite; }
 
     /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
     .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -295,13 +295,19 @@
       pctEl.textContent = v+'%';
       pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
 
+      // Power-band colour + flash state (shared by the bar and the ship overlay)
+      const { c, pulse } = zoneColor(v);
+
       // Inset progress bar (over the schematic's power panel)
       const fill = document.getElementById('ifill-'+k);
-      fill.style.width   = ((v/25)*100)+'%';
-      fill.style.opacity = v===0 ? '0' : '1';
+      fill.style.width      = ((v/25)*100)+'%';
+      fill.style.background = c;
+      fill.style.boxShadow  = v===0 ? 'none'
+                            : `0 0 7px ${c}bf, inset 0 0 4px rgba(235,255,240,0.45)`;
+      fill.style.opacity    = v===0 ? '0' : '';
+      fill.classList.toggle('pulse', pulse && v>0);
 
       // Live system overlay (tint + bloom recolour the ship system)
-      const { c, pulse } = zoneColor(v);
       ['t-','b-'].forEach(pre => {
         const g = document.getElementById(pre+ZONE[k]);
         g.style.color = c;
