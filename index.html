@@ -23,8 +23,8 @@
     .zone { transition: color .3s ease; }
     .tint-svg .zone * { fill: currentColor; stroke: none; }
     .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 1.6; }
-    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
-    .zone.pulse { animation: pz 1s ease-in-out infinite; }
+    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.15} }
+    .zone.pulse { animation: pz 0.8s ease-in-out infinite; }
 
     /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
     .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -203,10 +203,15 @@
   const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
 
-  // Map a 0-25 power level to an overlay colour (red when offline → green at full).
+  // Map a 0-25 power level to an overlay colour + flash state.
+  //   0-4   flashing red      5-10  flashing orange
+  //   11-15 solid orange      16-20 solid yellow      21-25 solid green
   function zoneColor(v) {
-    if (v === 0) return { c:'#ef4444', pulse:true };
-    return { c:`hsl(${(v/25)*120}, 85%, 55%)`, pulse:false };
+    if (v <= 4)  return { c:'#ef4444', pulse:true  };
+    if (v <= 10) return { c:'#f97316', pulse:true  };
+    if (v <= 15) return { c:'#f97316', pulse:false };
+    if (v <= 20) return { c:'#facc15', pulse:false };
+    return         { c:'#4ade80', pulse:false };
   }
   const t0 = Date.now();
 
