@@ -10,6 +10,10 @@
 
     .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
 
+    /* --- DISPLAY MODE MODIFIERS --- */
+    body.display-mode .sliders-row { display: none; }
+    body.display-mode .log-clear { display: none; }
+
     /* --- SCHEMATIC ROW --- */
     .schematic-row { display: flex; width: 100%; align-items: stretch; }
     .ship-wrap { flex: 1; position: relative; }
@@ -189,39 +193,49 @@
   </div>
 
   <div class="log-area">
-    <div class="log-hdr"><span>▸ system status log</span><button class="log-clear" onclick="clearLog()">clear</button></div>
+    <div class="log-hdr"><span id="log-title">▸ system status log</span><button class="log-clear" onclick="clearLog()">clear</button></div>
     <div id="log-entries"></div>
   </div>
 
 </div>
 
 <script>
+  // --- Initialization & Setup ---
   const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
   const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
+  
+  const STORE_KEY = 'shipPowerLevels';
+  const CLEAR_KEY = 'shipPowerClearLog';
+  const syncChannel = new BroadcastChannel('ship_power_sync');
+  
+  // Detect if URL has "?display"
+  const isDisplayMode = new URLSearchParams(window.location.search).has('display');
+  if (isDisplayMode) {
+    document.body.classList.add('display-mode');
+    document.getElementById('log-title').textContent = '▸ viewer uplink initialized';
+  }
 
   // Map a 0-25 power level to an overlay colour + flash state.
-  //   0-4   flashing red      5-10  flashing orange
-  //   11-15 solid orange      16-20 solid yellow      21-25 solid green
   function zoneColor(v) {
-    if (v <= 4)  return { c:'#ef4444', pulse:true  };
-    if (v <= 10) return { c:'#f97316', pulse:true  };
-    if (v <= 15) return { c:'#f97316', pulse:false };
-    if (v <= 20) return { c:'#facc15', pulse:false };
+    if (v <= 1)  return { c:'#ef4444', pulse:true  };
+    if (v <= 2.5)return { c:'#f97316', pulse:true  };
+    if (v <= 3.75)return { c:'#f97316', pulse:false };
+    if (v <= 5)  return { c:'#facc15', pulse:false };
     return         { c:'#4ade80', pulse:false };
   }
 
   // Map a 0-25 power level to a status label + log colour class.
   function statusOf(v) {
     if (v === 0) return { label:'OFFLINE',  type:'drop' };
-    if (v <= 4)  return { label:'CRITICAL', type:'drop' };
-    if (v <= 10) return { label:'LOW',      type:'warn' };
-    if (v <= 15) return { label:'REDUCED',  type:'warn' };
-    if (v <= 20) return { label:'PARTIAL',  type:'warn' };
+    if (v <= 1)  return { label:'CRITICAL', type:'drop' };
+    if (v <= 2.5)return { label:'LOW',      type:'warn' };
+    if (v <= 3.75)return { label:'REDUCED', type:'warn' };
+    if (v <= 5)  return { label:'PARTIAL',  type:'warn' };
     return         { label:'NOMINAL',  type:'gain' };
   }
+  
   const t0 = Date.now();
-
   function ts() {
     const s = Math.floor((Date.now()-t0)/1000);
     return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
@@ -240,9 +254,17 @@
   function clearLog() {
     document.getElementById('log-entries').innerHTML = '';
     log('— log cleared.');
+    if (!isDisplayMode) {
+      localStorage.setItem(CLEAR_KEY, Date.now());
+      syncChannel.postMessage({ type: 'CLEAR' });
+    }
   }
 
-  // Report the live status of every system (newest entries end up on top, so emit bottom-up).
+  function clearLocalLog() {
+    document.getElementById('log-entries').innerHTML = '';
+    log('— log cleared remotely.');
+  }
+
   function statusReport(header) {
     const rows = [];
     ['shields','weapons','drones','sys'].forEach(k => {
@@ -254,30 +276,62 @@
   }
 
   function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
-
-  // --- persistent power levels (survive across sessions / page reloads) ---
-  const STORE_KEY = 'shipPowerLevels';
   function clamp25(n){ n = parseInt(n); return Number.isFinite(n) ? Math.max(0, Math.min(25, n)) : null; }
+
+  // --- State Management ---
   function saveState() {
     try {
       const data = {};
       ['sys','drones','weapons','shields'].forEach(k => data[k] = val(k));
       localStorage.setItem(STORE_KEY, JSON.stringify(data));
-    } catch (e) { /* storage unavailable (private mode / file restrictions) */ }
+      syncChannel.postMessage({ type: 'SYNC', data });
+    } catch (e) {}
   }
+
   function loadState() {
     try {
       const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
       if (!data) return false;
-      ['sys','drones','weapons','shields'].forEach(k => {
-        const n = clamp25(data[k]);
-        if (n !== null) { document.getElementById('sl-'+k).value = n; prev[k] = n; }
-      });
+      
+      // If we are booting up in operator mode, just set the values silently
+      if (!isDisplayMode) {
+        ['sys','drones','weapons','shields'].forEach(k => {
+          const n = clamp25(data[k]);
+          if (n !== null) { document.getElementById('sl-'+k).value = n; prev[k] = n; }
+        });
+        return true;
+      }
+      
+      // If we are in display mode, we want to apply it as remote data to generate logs
+      applyRemoteData(data);
       return true;
     } catch (e) { return false; }
   }
 
+  // Applies remote state data to the sliders and logs the changes
+  function applyRemoteData(data) {
+    let changed = false;
+    ['sys','drones','weapons','shields'].forEach(k => {
+      const n = clamp25(data[k]);
+      if (n !== null) { 
+        const current = val(k);
+        if (n !== current) {
+          document.getElementById('sl-'+k).value = n; 
+          const s = statusOf(n), arrow = n < current ? '↓' : '↑';
+          const tag = n === 0 ? ' — power cut' : '';
+          log(`[REMOTE] ${arrow} ${LABELS[k]} ${s.label} — ${current}% → ${n}%${tag}.`, s.type);
+          prev[k] = n; 
+          changed = true;
+        }
+      }
+    });
+    if (changed) updateAll();
+  }
+
+  // --- Interaction & UI Updates ---
   function onSlide(key, rawVal) {
+    if (isDisplayMode) return; // Failsafe, though controls are hidden
+    
     let v = parseInt(rawVal);
     const others = ['sys','drones','weapons','shields'].filter(k=>k!==key);
     const otherSum = others.reduce((a,k)=>a+val(k), 0);
@@ -304,15 +358,12 @@
     ['sys','drones','weapons','shields'].forEach(k => {
       const v = vals[k];
 
-      // Slider pct label
       const pctEl = document.getElementById('pct-'+k);
       pctEl.textContent = v+'%';
       pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
 
-      // Power-band colour + flash state (shared by the bar and the ship overlay)
       const { c, pulse } = zoneColor(v);
 
-      // Inset progress bar (over the schematic's power panel)
       const fill = document.getElementById('ifill-'+k);
       fill.style.width      = ((v/25)*100)+'%';
       fill.style.background = c;
@@ -321,14 +372,12 @@
       fill.style.opacity    = v===0 ? '0' : '';
       fill.classList.toggle('pulse', pulse && v>0);
 
-      // Live system overlay (tint + bloom recolour the ship system)
       ['t-','b-'].forEach(pre => {
         const g = document.getElementById(pre+ZONE[k]);
         g.style.color = c;
         g.classList.toggle('pulse', pulse);
       });
 
-      // Allocation segment (main power indicator)
       document.getElementById('seg-'+k).style.width = v+'%';
     });
 
@@ -338,17 +387,43 @@
     tv.textContent = total+'%';
     tv.className = 'total-val' + (total > 100 ? ' over' : '');
 
-    // Reactor status text (driven by engine power, same bands as the overlays)
     const es = document.getElementById('engine-status');
     es.textContent  = statusOf(vals.sys).label;
     es.style.color  = zoneColor(vals.sys).c;
   }
 
+  // --- Boot Sequence ---
   const __restored = loadState();
   updateAll();
-  statusReport(__restored
-    ? '▸ power grid online — configuration restored from last session:'
-    : '▸ power grid online — system status:');
+  
+  if (isDisplayMode) {
+    statusReport(__restored 
+      ? '▸ telemetry synced — monitoring remote configuration:' 
+      : '▸ awaiting remote configuration — system status:');
+  } else {
+    statusReport(__restored
+      ? '▸ power grid online — configuration restored from last session:'
+      : '▸ power grid online — system status:');
+  }
+
+  // --- Display Mode Listeners (Cross-Tab Sync) ---
+  if (isDisplayMode) {
+    // 1. BroadcastChannel (fastest, covers cross-window on same browser)
+    syncChannel.onmessage = (event) => {
+      if (event.data.type === 'SYNC') applyRemoteData(event.data.data);
+      if (event.data.type === 'CLEAR') clearLocalLog();
+    };
+
+    // 2. localStorage Event (fallback/persistence layer across tabs)
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORE_KEY && e.newValue) {
+        applyRemoteData(JSON.parse(e.newValue));
+      } else if (e.key === CLEAR_KEY) {
+        clearLocalLog();
+      }
+    });
+  }
+
 </script>
 </body>
 </html>
