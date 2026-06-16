@@ -190,12 +190,7 @@
 
   <div class="log-area">
     <div class="log-hdr"><span>▸ system status log</span><button class="log-clear" onclick="clearLog()">clear</button></div>
-    <div id="log-entries">
-      <div class="log-entry">
-        <span class="log-t">00:00:00</span>
-        <span class="log-m">— power grid initialized. engines and all systems nominal at 25%.</span>
-      </div>
-    </div>
+    <div id="log-entries"></div>
   </div>
 
 </div>
@@ -214,6 +209,16 @@
     if (v <= 15) return { c:'#f97316', pulse:false };
     if (v <= 20) return { c:'#facc15', pulse:false };
     return         { c:'#4ade80', pulse:false };
+  }
+
+  // Map a 0-25 power level to a status label + log colour class.
+  function statusOf(v) {
+    if (v === 0) return { label:'OFFLINE',  type:'drop' };
+    if (v <= 4)  return { label:'CRITICAL', type:'drop' };
+    if (v <= 10) return { label:'LOW',      type:'warn' };
+    if (v <= 15) return { label:'REDUCED',  type:'warn' };
+    if (v <= 20) return { label:'PARTIAL',  type:'warn' };
+    return         { label:'NOMINAL',  type:'gain' };
   }
   const t0 = Date.now();
 
@@ -235,6 +240,17 @@
   function clearLog() {
     document.getElementById('log-entries').innerHTML = '';
     log('— log cleared.');
+  }
+
+  // Report the live status of every system (newest entries end up on top, so emit bottom-up).
+  function statusReport(header) {
+    const rows = [];
+    ['shields','weapons','drones','sys'].forEach(k => {
+      const v = val(k), s = statusOf(v);
+      rows.push([`${LABELS[k]}: ${s.label} — ${v}%`, s.type]);
+    });
+    rows.forEach(([m,t]) => log(m, t));
+    if (header) log(header);
   }
 
   function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
@@ -271,12 +287,10 @@
     updateAll();
 
     const p = prev[key], lbl = LABELS[key];
-    if (v < p) {
-      if (v === 0) log(`⚡ ${lbl} OFFLINE — power cut. system down.`, 'drop');
-      else         log(`↓ ${lbl} power ${p}% → ${v}%.`, 'drop');
-    } else if (v > p) {
-      if (p === 0) log(`↑ ${lbl} RESTORED — online at ${v}%.`, 'gain');
-      else         log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
+    if (v !== p) {
+      const s = statusOf(v), arrow = v < p ? '↓' : '↑';
+      const tag = v === 0 ? ' — power cut. system down' : '';
+      log(`${arrow} ${lbl} ${s.label} — ${p}% → ${v}%${tag}.`, s.type);
     }
     prev[key] = v;
     saveState();
@@ -324,19 +338,17 @@
     tv.textContent = total+'%';
     tv.className = 'total-val' + (total > 100 ? ' over' : '');
 
-    // Reactor status text (driven by engine power)
+    // Reactor status text (driven by engine power, same bands as the overlays)
     const es = document.getElementById('engine-status');
-    const ev = vals.sys;
-    if      (ev === 0)  { es.textContent='OFFLINE';  es.style.color='#ef4444'; }
-    else if (ev <=  8)  { es.textContent='CRITICAL'; es.style.color='#ef4444'; }
-    else if (ev <= 16)  { es.textContent='REDUCED';  es.style.color='#f59e0b'; }
-    else if (ev <  25)  { es.textContent='PARTIAL';  es.style.color='#9be8b4'; }
-    else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
+    es.textContent  = statusOf(vals.sys).label;
+    es.style.color  = zoneColor(vals.sys).c;
   }
 
   const __restored = loadState();
   updateAll();
-  if (__restored) log('— power configuration restored from last session.');
+  statusReport(__restored
+    ? '▸ power grid online — configuration restored from last session:'
+    : '▸ power grid online — system status:');
 </script>
 </body>
 </html>
