@@ -24,7 +24,7 @@ updates the total-allocated readout in the main-power panel.
 |---------|----------------|
 | Engines | 4 dorsal turbine nacelles, side-profile turbine, 2 bow intake rings |
 | Drones  | internal drone bay (2×2) |
-| Weapons | conning tower + battery box, ventral pods + gun, bow mast |
+| Weapons | mounted rail gun |
 | Shields | bow hexagon emitter |
 
 ## Rules
