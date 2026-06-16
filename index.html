@@ -16,24 +16,26 @@
     .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
     .ship-wrap svg.ov { width: 100%; height: auto; display: block; }
 
-    /* --- LIVE SYSTEM OVERLAYS --- */
+    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
     .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .tint { mix-blend-mode: color; }
     .bloom { mix-blend-mode: screen; filter: blur(0.7px); opacity: .38; }
     .zone { transition: color .3s ease; }
     .tint-svg .zone * { fill: currentColor; stroke: none; }
     .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 1.6; }
-    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.25} }
-    .zone.pulse { animation: pz 1s ease-in-out infinite; }
+    
+    /* Updated flashing animation behavior */
+    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.15} }
+    .zone.pulse { animation: pz 0.8s ease-in-out infinite; }
 
-    /* --- INSET PROGRESS BARS --- */
+    /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
     .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
     .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
     .ibar-fill { height: 100%; width: 25%; border-radius: 2px; background: #4ade80;
                  box-shadow: 0 0 7px rgba(74, 222, 128, 0.75), inset 0 0 4px rgba(190, 255, 210, 0.5);
                  transition: width 0.25s ease, opacity 0.25s; }
 
-    /* --- MAIN POWER PANEL --- */
+    /* --- MAIN POWER PANEL (second panel) --- */
     .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; }
     .pp-title { background: #0a1e0a; border-bottom: 1.5px solid #1e4d1e; text-align: center; font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 8px 4px; font-weight: 500; }
     .pp-main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 14px 16px; text-align: center; }
@@ -51,6 +53,8 @@
     .sl-header { display: flex; justify-content: space-between; align-items: center; }
     .sl-name { font-size: 9px; letter-spacing: 2px; color: #2d6a2d; }
     .sl-pct { font-size: 13px; font-weight: 500; color: #4ade80; transition: color 0.2s; }
+    .sl-pct.low { color: #ef4444; }
+    .sl-pct.warn { color: #f59e0b; }
     input[type=range] { width: 100%; accent-color: #4ade80; cursor: pointer; }
 
     /* --- LOG --- */
@@ -66,39 +70,86 @@
 </head>
 <body>
 <div class="outer">
+
   <div class="schematic-row">
     <div class="ship-wrap">
       <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+
       <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <g id="b-eng" class="zone" style="color:#4ade80"><polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/><polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/><polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/><polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/><polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/><circle cx="886" cy="505" r="37"/><circle cx="1047" cy="505" r="37"/></g>
-        <g id="b-drn" class="zone" style="color:#4ade80"><rect x="372" y="128" width="149" height="110" rx="10"/></g>
-        <g id="b-wpn" class="zone" style="color:#4ade80"><rect x="540" y="458" width="146" height="32" rx="5"/><rect x="583" y="568" width="43" height="27" rx="3"/><rect x="625" y="580" width="57" height="9" rx="2"/><ellipse cx="598" cy="629" rx="60" ry="32"/></g>
-        <g id="b-shd" class="zone" style="color:#4ade80"><polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/></g>
+        <g id="b-eng" class="zone" style="color:#4ade80">
+          <polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/>
+          <polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/>
+          <polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/>
+          <polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/>
+          <polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/>
+          <circle cx="886" cy="505" r="37"/>
+          <circle cx="1047" cy="505" r="37"/>
+        </g>
+        <g id="b-drn" class="zone" style="color:#4ade80">
+          <polygon points="364.5,131.6 369.5,127.1 511.4,127.1 514.1,129.8 514.1,168.5 508.6,171.2 508.6,191.6 513.2,196.2 512.7,232.1 510,236.6 366.4,236.6 364.5,234.4 364.5,196.2 365,190.7 369.5,189.4 369.5,172.1 365,170.3"/>
+        </g>
+        <g id="b-wpn" class="zone" style="color:#4ade80">
+          <rect x="540" y="458" width="146" height="32" rx="5"/>
+          <rect x="583" y="568" width="43" height="27" rx="3"/>
+          <rect x="625" y="580" width="57" height="9" rx="2"/>
+          <ellipse cx="598" cy="629" rx="60" ry="32"/>
+        </g>
+        <g id="b-shd" class="zone" style="color:#4ade80">
+          <polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/>
+        </g>
       </svg>
+
       <svg class="ov tint tint-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <g id="t-eng" class="zone" style="color:#4ade80"><polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/><polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/><polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/><polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/><polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/><circle cx="886" cy="505" r="37"/><circle cx="1047" cy="505" r="37"/></g>
-        <g id="t-drn" class="zone" style="color:#4ade80"><rect x="372" y="128" width="149" height="110" rx="10"/></g>
-        <g id="t-wpn" class="zone" style="color:#4ade80"><rect x="540" y="458" width="146" height="32" rx="5"/><rect x="583" y="568" width="43" height="27" rx="3"/><rect x="625" y="580" width="57" height="9" rx="2"/><ellipse cx="598" cy="629" rx="60" ry="32"/></g>
-        <g id="t-shd" class="zone" style="color:#4ade80"><polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/></g>
+        <g id="t-eng" class="zone" style="color:#4ade80">
+          <polygon points="504.4,71.5 506.6,88.5 508.3,101.3 509.4,109.9 510.0,114.4 510.0,114.6 500.7,114.8 482.1,114.9 454.1,115.0 416.9,115.0 388.8,114.0 369.8,112.0 359.9,109.0 359.1,105.0 358.6,99.4 358.2,92.1 358.0,83.2 358.0,72.8 358.1,64.8 358.2,59.4 358.4,56.6 358.6,56.4 359.8,55.6 361.9,54.2 365.0,52.2 369.0,49.8 379.9,47.9 397.6,46.6 422.2,46.0 453.8,46.0 477.9,50.2 494.8,58.8"/>
+          <polygon points="735.0,49.4 735.0,51.6 734.1,56.5 732.2,64.0 729.4,74.1 725.6,86.9 722.4,96.9 719.6,104.1 717.4,108.6 715.6,110.4 712.3,111.7 707.4,112.6 701.0,113.0 693.0,113.0 682.9,112.8 670.6,112.2 656.2,111.5 639.8,110.5 625.8,109.2 614.2,107.6 605.2,105.6 598.8,103.4 593.5,101.5 589.5,100.0 586.8,98.9 585.2,98.1 584.1,97.5 583.2,97.0 582.6,96.6 582.4,96.4 582.2,93.9 582.1,89.1 582.0,82.1 582.0,72.9 582.1,65.9 582.2,61.1 582.4,58.6 582.6,58.4 584.0,57.4 586.5,55.8 590.1,53.5 594.9,50.5 606.8,48.2 625.8,46.8 651.9,46.0 685.1,46.0 710.1,46.6 726.7,47.7"/>
+          <polygon points="515.0,245.5 515.0,246.5 514.1,251.4 512.4,260.3 509.8,273.1 506.2,289.9 495.5,302.4 477.5,310.8 452.2,315.0 419.8,315.0 394.6,314.5 376.9,313.5 366.5,312.0 363.5,310.0 361.2,308.4 359.6,307.3 358.6,306.6 358.4,306.4 358.2,302.3 358.1,294.4 358.0,282.8 358.0,267.2 367.8,255.6 387.4,247.9 416.9,244.0 456.1,244.0 485.6,244.2 505.2,244.8"/>
+          <polygon points="725.0,268.5 729.0,283.5 732.0,295.3 734.0,303.9 735.0,309.4 735.0,311.6 725.6,313.3 706.7,314.4 678.4,315.0 640.6,315.0 612.3,310.7 593.4,302.1 584.0,289.1 584.0,271.9 592.4,258.9 609.3,250.3 634.6,246.0 668.4,246.0 694.7,249.8 713.6,257.2"/>
+          <polygon points="479.5,476.4 482.5,476.6 485.1,476.9 487.2,477.1 488.9,477.4 490.1,477.6 491.2,477.9 492.1,478.1 492.8,478.4 493.2,478.6 493.7,478.9 494.1,479.1 494.4,479.4 494.6,479.6 495.1,483.4 495.7,490.8 496.5,501.8 497.5,516.2 498.2,527.4 498.8,535.3 499.0,539.9 499.0,541.1 491.8,542.1 477.4,542.7 455.9,543.0 427.1,543.0 403.9,542.2 386.3,540.6 374.2,538.1 367.8,534.9 362.6,532.2 358.7,530.2 356.1,528.9 354.9,528.1 353.9,527.5 353.1,527.0 352.6,526.6 352.4,526.4 352.2,524.0 352.1,519.5 352.0,512.9 352.0,504.1 352.1,497.5 352.2,493.0 352.4,490.6 352.6,490.4 353.1,490.0 353.9,489.5 354.9,488.9 356.1,488.1 357.3,487.4 358.4,486.8 359.5,486.2 360.5,485.8 361.6,485.2 362.7,484.8 363.9,484.2 365.1,483.8 367.1,483.1 369.9,482.4 373.4,481.5 377.6,480.5 381.4,479.6 384.8,478.9 387.8,478.2 390.2,477.8 392.5,477.3 394.5,476.9 396.2,476.6 397.8,476.4 403.6,476.2 413.7,476.1 428.1,476.0 446.9,476.0 461.7,476.1 472.6,476.2"/>
+          <circle cx="886" cy="505" r="37"/>
+          <circle cx="1047" cy="505" r="37"/>
+        </g>
+        <g id="t-drn" class="zone" style="color:#4ade80">
+          <polygon points="364.5,131.6 369.5,127.1 511.4,127.1 514.1,129.8 514.1,168.5 508.6,171.2 508.6,191.6 513.2,196.2 512.7,232.1 510,236.6 366.4,236.6 364.5,234.4 364.5,196.2 365,190.7 369.5,189.4 369.5,172.1 365,170.3"/>
+        </g>
+        <g id="t-wpn" class="zone" style="color:#4ade80">
+          <rect x="540" y="458" width="146" height="32" rx="5"/>
+          <rect x="583" y="568" width="43" height="27" rx="3"/>
+          <rect x="625" y="580" width="57" height="9" rx="2"/>
+          <ellipse cx="598" cy="629" rx="60" ry="32"/>
+        </g>
+        <g id="t-shd" class="zone" style="color:#4ade80">
+          <polygon points="958,490 992,508 992,538 958,556 925,538 925,508"/>
+        </g>
       </svg>
+
       <div class="bar-overlay">
-        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%"><div class="ibar-fill" id="ifill-sys"></div></div>
-        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-drones"></div></div>
-        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-weapons"></div></div>
-        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%"><div class="ibar-fill" id="ifill-shields"></div></div>
+        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
+          <div class="ibar-fill" id="ifill-sys"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-drones"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-weapons"></div>
+        </div>
+        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%">
+          <div class="ibar-fill" id="ifill-shields"></div>
+        </div>
       </div>
     </div>
+
     <div class="power-panel">
       <div class="pp-title">main power</div>
       <div class="pp-main">
         <span class="mp-label">reactor status</span>
         <span class="engine-status" id="engine-status">NOMINAL</span>
         <div class="pp-top-bar-wrap">
-          <div class="seg" id="seg-sys" style="width:25%;background:#4ade80"></div>
-          <div class="seg" id="seg-drones" style="width:25%;background:#2bbf6a"></div>
+          <div class="seg" id="seg-sys"     style="width:25%;background:#4ade80"></div>
+          <div class="seg" id="seg-drones"  style="width:25%;background:#2bbf6a"></div>
           <div class="seg" id="seg-weapons" style="width:25%;background:#1c9c52"></div>
           <div class="seg" id="seg-shields" style="width:25%;background:#137a3c"></div>
-          <div class="seg" id="seg-empty" style="width:0%;background:#0a1a0a"></div>
+          <div class="seg" id="seg-empty"   style="width:0%;background:#0a1a0a"></div>
         </div>
         <div class="total-row">
           <span class="total-val" id="total-val-disp">100%</span>
@@ -107,53 +158,71 @@
       </div>
     </div>
   </div>
+
   <div class="sliders-row">
     <div class="sl-block">
-      <div class="sl-header"><span class="sl-name">⬡ ENGINES</span><span class="sl-pct" id="pct-sys">25%</span></div>
+      <div class="sl-header">
+        <span class="sl-name">⬡ ENGINES</span>
+        <span class="sl-pct" id="pct-sys">25%</span>
+      </div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-sys" oninput="onSlide('sys',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header"><span class="sl-name">⬡ DRONES</span><span class="sl-pct" id="pct-drones">25%</span></div>
+      <div class="sl-header">
+        <span class="sl-name">⬡ DRONES</span>
+        <span class="sl-pct" id="pct-drones">25%</span>
+      </div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-drones" oninput="onSlide('drones',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header"><span class="sl-name">⬡ WEAPONS</span><span class="sl-pct" id="pct-weapons">25%</span></div>
+      <div class="sl-header">
+        <span class="sl-name">⬡ WEAPONS</span>
+        <span class="sl-pct" id="pct-weapons">25%</span>
+      </div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-weapons" oninput="onSlide('weapons',this.value)">
     </div>
     <div class="sl-block">
-      <div class="sl-header"><span class="sl-name">⬡ SHIELDS</span><span class="sl-pct" id="pct-shields">25%</span></div>
+      <div class="sl-header">
+        <span class="sl-name">⬡ SHIELDS</span>
+        <span class="sl-pct" id="pct-shields">25%</span>
+      </div>
       <input type="range" min="0" max="25" step="1" value="25" id="sl-shields" oninput="onSlide('shields',this.value)">
     </div>
   </div>
+
   <div class="log-area">
     <div class="log-hdr">▸ system status log</div>
     <div id="log-entries">
-      <div class="log-entry"><span class="log-t">00:00:00</span><span class="log-m">— power grid initialized. engines and all systems nominal at 25%.</span></div>
+      <div class="log-entry">
+        <span class="log-t">00:00:00</span>
+        <span class="log-m">— power grid initialized. engines and all systems nominal at 25%.</span>
+      </div>
     </div>
   </div>
+
 </div>
+
 <script>
   const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
   const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
   const prev   = { sys:25, drones:25, weapons:25, shields:25 };
 
+  // Trigger flashing on 0% (red) or <= 10% (yellow warning)
   function zoneColor(v) {
-    // 0-4% (0-1): Red Flash
-    if (v <= 1) return { c:'#ef4444', pulse:true };
-    // 5-10% (1.25-2.5): Orange Flash
-    if (v <= 2.5) return { c:'#f59e0b', pulse:true };
-    // 11-15% (2.75-3.75): Solid Orange
-    if (v <= 3.75) return { c:'#f59e0b', pulse:false };
-    // 16-20% (4-5): Solid Yellow
-    if (v <= 5) return { c:'#eab308', pulse:false };
-    // 21-25% (5.25-6.25): Solid Green
-    return { c:'#4ade80', pulse:false };
+    if (v === 0) {
+      return { c: '#ef4444', pulse: true };
+    }
+    if (v <= 2.5) { // 10% or less of max capacity (25)
+      return { c: '#f59e0b', pulse: true };
+    }
+    return { c: `hsl(${(v/25)*120}, 85%, 55%)`, pulse: false };
   }
-
   const t0 = Date.now();
+
   function ts() {
     const s = Math.floor((Date.now()-t0)/1000);
-    return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60].map(n=>String(n).padStart(2,'0')).join(':');
+    return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
+      .map(n=>String(n).padStart(2,'0')).join(':');
   }
 
   function log(msg, type) {
@@ -173,57 +242,66 @@
     const otherSum = others.reduce((a,k)=>a+val(k), 0);
     if (v + otherSum > 100) { v = Math.max(0, 100 - otherSum); }
     document.getElementById('sl-'+key).value = v;
+
     updateAll();
 
     const p = prev[key], lbl = LABELS[key];
     if (v < p) {
       if (v === 0) log(`⚡ ${lbl} OFFLINE — power cut. system down.`, 'drop');
-      else log(`↓ ${lbl} power ${p}% → ${v}%.`, 'drop');
+      else         log(`↓ ${lbl} power ${p}% → ${v}%.`, 'drop');
     } else if (v > p) {
       if (p === 0) log(`↑ ${lbl} RESTORED — online at ${v}%.`, 'gain');
-      else log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
+      else         log(`↑ ${lbl} power ${p}% → ${v}%.`, 'gain');
     }
     prev[key] = v;
   }
 
   function updateAll() {
     const vals = { sys:val('sys'), drones:val('drones'), weapons:val('weapons'), shields:val('shields') };
-    const total = vals.sys + vals.drones + vals.weapons + vals.shields;
+    const total     = vals.sys + vals.drones + vals.weapons + vals.shields;
     const remaining = Math.max(0, 100 - total);
 
     ['sys','drones','weapons','shields'].forEach(k => {
       const v = vals[k];
-      const { c, pulse } = zoneColor(v);
 
+      // Slider pct label
       const pctEl = document.getElementById('pct-'+k);
       pctEl.textContent = v+'%';
-      pctEl.style.color = c;
+      pctEl.className = 'sl-pct' + (v===0?' low': v<=2.5?' warn':'');
 
+      // Inset progress bar
       const fill = document.getElementById('ifill-'+k);
-      fill.style.width = ((v/25)*100)+'%';
+      fill.style.width   = ((v/25)*100)+'%';
       fill.style.opacity = v===0 ? '0' : '1';
 
+      // Live system overlay (triggers custom flash speeds/colors defined above)
+      const { c, pulse } = zoneColor(v);
       ['t-','b-'].forEach(pre => {
         const g = document.getElementById(pre+ZONE[k]);
         g.style.color = c;
         g.classList.toggle('pulse', pulse);
       });
+
+      // Allocation segment
       document.getElementById('seg-'+k).style.width = v+'%';
     });
 
     document.getElementById('seg-empty').style.width = remaining+'%';
+
     const tv = document.getElementById('total-val-disp');
     tv.textContent = total+'%';
     tv.className = 'total-val' + (total > 100 ? ' over' : '');
 
+    // Reactor status text
     const es = document.getElementById('engine-status');
     const ev = vals.sys;
-    if (ev === 0) { es.textContent='OFFLINE'; es.style.color='#ef4444'; }
-    else if (ev <= 2) { es.textContent='CRITICAL'; es.style.color='#ef4444'; }
-    else if (ev <= 4) { es.textContent='REDUCED'; es.style.color='#f59e0b'; }
-    else if (ev < 25) { es.textContent='PARTIAL'; es.style.color='#9be8b4'; }
-    else { es.textContent='NOMINAL'; es.style.color='#4ade80'; }
+    if      (ev === 0)  { es.textContent='OFFLINE';  es.style.color='#ef4444'; }
+    else if (ev <=  2.5){ es.textContent='CRITICAL'; es.style.color='#ef4444'; }
+    else if (ev <= 12)  { es.textContent='REDUCED';  es.style.color='#f59e0b'; }
+    else if (ev <  25)  { es.textContent='PARTIAL';  es.style.color='#9be8b4'; }
+    else                { es.textContent='NOMINAL';  es.style.color='#4ade80'; }
   }
+
   updateAll();
 </script>
 </body>
