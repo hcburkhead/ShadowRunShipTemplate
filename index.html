@@ -66,9 +66,25 @@
     .log-m.drop { color: #ef4444; }
     .log-m.gain { color: #4ade80; }
     .log-m.warn { color: #f59e0b; }
+
+    /* --- participant / display view (read-only, live) --- */
+    .view-link, .display-badge { position: fixed; top: 10px; right: 10px; z-index: 30;
+        font: 10px/1 monospace; letter-spacing: 1px; padding: 6px 10px; border-radius: 4px;
+        border: 1px solid #2c6a2c; background: #0e160e; color: #4ade80; text-decoration: none; }
+    .view-link:hover { background: #173a17; }
+    .display-badge { display: none; }
+    .display-badge .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+        background: #4ade80; margin-right: 6px; animation: pz 1.4s ease-in-out infinite; }
+    body.display .view-link { display: none; }
+    body.display .display-badge { display: block; }
+    body.display .sliders-row { display: none; }
+    body.display .log-clear { display: none; }
+    body.display input[type=range] { pointer-events: none; }
   </style>
 </head>
 <body>
+<a class="view-link" href="?display" target="_blank" rel="noopener" title="Open a locked, live, read-only view for participants">⤢ Participant view</a>
+<div class="display-badge"><span class="dot"></span>PARTICIPANT VIEW · LIVE</div>
 <div class="outer">
 
   <div class="schematic-row">
@@ -257,6 +273,8 @@
 
   // --- persistent power levels (survive across sessions / page reloads) ---
   const STORE_KEY = 'shipPowerLevels';
+  const DISPLAY = new URLSearchParams(location.search).has('display');  // ?display = locked participant view
+  let __bc = null; try { __bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
   function clamp25(n){ n = parseInt(n); return Number.isFinite(n) ? Math.max(0, Math.min(25, n)) : null; }
   function saveState() {
     try {
@@ -264,6 +282,24 @@
       ['sys','drones','weapons','shields'].forEach(k => data[k] = val(k));
       localStorage.setItem(STORE_KEY, JSON.stringify(data));
     } catch (e) { /* storage unavailable (private mode / file restrictions) */ }
+    if (__bc) { try { __bc.postMessage(Date.now()); } catch (e) {} }  // ping participant views
+  }
+  // Participant view: pull the operator's latest state and reflect it live.
+  function syncFromStore() {
+    let data; try { data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { return; }
+    if (!data) return;
+    let changed = false;
+    ['sys','drones','weapons','shields'].forEach(k => {
+      const n = clamp25(data[k]); if (n === null) return;
+      const el = document.getElementById('sl-'+k), old = parseInt(el.value);
+      if (n !== old) {
+        el.value = n; changed = true;
+        const s = statusOf(n), arrow = n < old ? '↓' : '↑';
+        log(`${arrow} ${LABELS[k]} ${s.label} — ${old}% → ${n}%.`, s.type);
+        prev[k] = n;
+      }
+    });
+    if (changed) updateAll();
   }
   function loadState() {
     try {
@@ -344,11 +380,16 @@
     es.style.color  = zoneColor(vals.sys).c;
   }
 
+  if (DISPLAY) document.body.classList.add('display');
   const __restored = loadState();
   updateAll();
-  statusReport(__restored
-    ? '▸ power grid online — configuration restored from last session:'
-    : '▸ power grid online — system status:');
+  statusReport(DISPLAY ? '▸ participant view online — live system status:'
+             : __restored ? '▸ power grid online — configuration restored from last session:'
+             : '▸ power grid online — system status:');
+  if (DISPLAY) {
+    window.addEventListener('storage', e => { if (e.key === STORE_KEY) syncFromStore(); });
+    if (__bc) __bc.onmessage = syncFromStore;
+  }
 </script>
 </body>
 </html>
