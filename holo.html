@@ -55,7 +55,7 @@
 
 <div class="hud" id="hud-tl">
   <div class="t1">▸ HOLOGRAPHIC PROJECTION</div>
-  <div class="t2">HULL CLASS · CARRIER-CRUISER &nbsp;|&nbsp; WIREFRAME MODE</div>
+  <div class="t2">S.H.I.E.L.D. HELICARRIER &nbsp;|&nbsp; WIREFRAME MODE</div>
 </div>
 <div class="hud" id="hud-tr">
   <div class="live"><span class="dot"></span>PROJECTOR ONLINE</div>
@@ -89,21 +89,22 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x02161a, 0.0016);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 4000);
-camera.position.set(210, 120, 235);
+camera.position.set(110, 72, 120);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 6, 0);
+controls.target.set(0, 2, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.enablePan = false;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
-controls.minDistance = 130;
+controls.minDistance = 90;
 controls.maxDistance = 620;
 controls.maxPolarAngle = Math.PI * 0.52;
 renderer.domElement.addEventListener('dblclick', () => {
-  camera.position.set(210, 120, 235); controls.target.set(0, 6, 0);
+  camera.position.set(110, 72, 120); controls.target.set(0, 2, 0);
 });
+if (new URLSearchParams(location.search).has('dev')) window.__holo = { camera, controls };
 
 // ---------- wireframe helpers ----------
 function wire(geom, { color = GREEN, opacity = 0.92, mesh = false, threshold = 24 } = {}) {
@@ -130,102 +131,109 @@ function segs(pairs, color = DIM, opacity = 0.6) {
             opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
 }
 
-// ---------- the ship (procedural, stylised to the reference) ----------
+// ---------- the ship: S.H.I.E.L.D. Helicarrier (procedural wireframe) ----------
 const ship = new THREE.Group();
 scene.add(ship);
 
-// HULL — extruded manta/arrowhead silhouette (top-down), laid flat
-(function hull() {
-  const half = [ [64,0],[57,5],[45,11],[28,19],[10,27],[-10,28],[-30,23],[-46,15],[-56,9],[-62,4],[-67,1] ];
-  const s = new THREE.Shape();
-  s.moveTo(half[0][0], half[0][1]);
-  for (let i = 1; i < half.length; i++) s.lineTo(half[i][0], half[i][1]);
-  for (let i = half.length - 1; i >= 0; i--) s.lineTo(half[i][0], -half[i][1]);
-  s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: 11, bevelEnabled: true, bevelThickness: 4, bevelSize: 4, bevelSegments: 2, steps: 1 });
-  g.center();
-  const h = add(ship, g, { color: GREEN, opacity: 0.5, threshold: 32 });
-  h.rotation.x = -Math.PI / 2;
+// loft a tapered hull between a top outline (yTop) and a scaled bottom (yBot)
+function loft(top, yTop, bottom, yBot, color, opacity) {
+  const p = [];
+  const ring = (pts, y) => { for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    p.push([a[0], y, a[1]], [b[0], y, b[1]]); } };
+  ring(top, yTop); ring(bottom, yBot);
+  for (let i = 0; i < top.length; i++)
+    p.push([top[i][0], yTop, top[i][1]], [bottom[i][0], yBot, bottom[i][1]]);
+  return segs(p, color, opacity);
+}
 
-  // deck panel + runway detail lines on the top
-  const y = 7.5, dl = [];
-  for (const z of [-22, -8, 8, 22]) dl.push([56, y, z], [-58, y, z]);     // longitudinals
-  for (let x = -55; x <= 55; x += 13) dl.push([x, y, -26], [x, y, 26]);   // cross panels
-  dl.push([60, y, 0], [-66, y, 0]);                                        // centerline
-  ship.add(segs(dl, DIM, 0.45));
+// carrier flight-deck outline (starboard half, bow at +X) mirrored to a loop
+const HALF = [ [96,0],[91,9],[82,16],[58,21],[12,23.5],[-46,23.5],[-82,21],[-92,12],[-97,0] ];
+const DECK = HALF.concat(HALF.slice(1, -1).reverse().map(([x, z]) => [x, -z]));
+const KEEL = DECK.map(([x, z]) => [x * 0.92, z * 0.5]);
+
+// HULL — tapered body down to keel, plus the raised flight-deck lip
+ship.add(loft(DECK, 1,  KEEL, -22, GREEN, 0.5));   // hull sides → keel
+ship.add(loft(DECK, 4,  DECK,   1, GREEN, 0.7));   // deck-edge thickness
+
+// FLIGHT DECK markings — runway centerline, canted strip, panel ticks, elevators
+(function deck() {
+  const y = 4.4, d = [];
+  for (let x = -82; x <= 78; x += 12) d.push([x, y, 0], [x + 7, y, 0]);     // centerline dashes
+  d.push([74, y, -3], [-60, y, -17], [72, y, 3], [-62, y, -11]);            // port canted strip
+  d.push([80, y, 7], [-44, y, 15]);                                         // starboard take-off strip
+  for (let x = -80; x <= 86; x += 16) { d.push([x, y, -21], [x, y, -15], [x, y, 15], [x, y, 21]); }
+  const elev = (cx, cz, w, h) => { const x0 = cx-w/2, x1 = cx+w/2, z0 = cz-h/2, z1 = cz+h/2;
+    d.push([x0,y,z0],[x1,y,z0], [x1,y,z0],[x1,y,z1], [x1,y,z1],[x0,y,z1], [x0,y,z1],[x0,y,z0]); };
+  elev(42, 21, 14, 9); elev(-28, -21, 14, 9);                              // deck-edge elevators
+  ship.add(segs(d, DIM, 0.5));
 })();
 
-// 4 DUCTED-FAN NACELLES at the wing corners
+// 4 LIFT-FAN PODS on outrigger sponsons (2 forward, 2 aft)
 const fans = [];
-function nacelle(x, z) {
+function fanPod(x, z) {
   const g = new THREE.Group();
-  // housing pod
-  const pod = new THREE.BoxGeometry(30, 12, 30);
-  add(g, pod, { color: GREEN, opacity: 0.7, pos: [0, 0, 0] });
-  // outer duct ring (fan faces up: axis = Y)
-  const duct = new THREE.TorusGeometry(13, 1.4, 6, 30);
-  add(g, duct, { color: GREEN, opacity: 0.95, mesh: true, pos: [0, 7, 0], rot: [Math.PI/2, 0, 0] });
-  const inner = new THREE.TorusGeometry(10.5, 0.8, 5, 26);
-  add(g, inner, { color: DIM, opacity: 0.6, mesh: true, pos: [0, 7, 0], rot: [Math.PI/2, 0, 0] });
-  // hub + fan blades — spun together in a dedicated group
-  const fan = new THREE.Group();
-  fan.position.set(0, 7, 0);
-  add(fan, new THREE.CylinderGeometry(2.2, 2.6, 4, 10), { color: GREEN, opacity: 0.9 });
-  const blades = [];
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2;
-    blades.push([Math.cos(a)*2.6, 0, Math.sin(a)*2.6], [Math.cos(a)*10, 0.6, Math.sin(a)*10]);
-  }
-  fan.add(segs(blades, CYAN, 0.5));
-  g.add(fan);
-  fans.push(fan);
-  g.position.set(x, 4, z);
+  const side = Math.sign(z), R = 19;
+  // sponson platform bridging the hull edge out to the pod
+  add(g, new THREE.BoxGeometry(42, 8, 28), { color: GREEN, opacity: 0.5, pos: [0, 0, -side * 8] });
+  // ducted housing — open cylinder gives two clean rim circles, axis = Y (lift)
+  add(g, new THREE.CylinderGeometry(R, R, 10, 48, 1, true), { color: GREEN, opacity: 0.85 });
+  add(g, new THREE.TorusGeometry(R, 1.3, 6, 50), { color: GREEN, opacity: 0.95, mesh: true, pos: [0, 5, 0], rot: [Math.PI/2, 0, 0] });
+  add(g, new THREE.TorusGeometry(R - 3, 0.7, 5, 44), { color: DIM, opacity: 0.45, mesh: true, pos: [0, 5, 0], rot: [Math.PI/2, 0, 0] });
+  // hub + radial fan blades (spun in animate)
+  const fan = new THREE.Group(); fan.position.y = 1;
+  add(fan, new THREE.CylinderGeometry(3.4, 4, 6, 12), { color: GREEN, opacity: 0.9 });
+  const bl = [];
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2;
+    bl.push([Math.cos(a)*3.8, 0, Math.sin(a)*3.8], [Math.cos(a)*(R-1.5), 1.4, Math.sin(a)*(R-1.5)]); }
+  fan.add(segs(bl, CYAN, 0.5));
+  g.add(fan); fans.push(fan);
+  g.position.set(x, -1, z);
   ship.add(g);
 }
-nacelle( 26,  37); nacelle( 26, -37);
-nacelle(-30,  37); nacelle(-30, -37);
+fanPod( 44,  40); fanPod( 44, -40);
+fanPod(-50,  40); fanPod(-50, -40);
 
-// CONNING TOWER / ISLAND (forward, offset to starboard) + mast
+// ISLAND superstructure (starboard, forward of midships) + radar mast
 (function island() {
   const g = new THREE.Group();
-  const tiers = [ [18, 7, 14, 0], [14, 6, 11, 7], [10, 6, 8, 13], [7, 7, 6, 19] ];
+  const tiers = [ [30,8,12,0], [24,7,10,8], [16,7,9,15], [11,8,8,22] ];
   for (const [w, h, d, y] of tiers) add(g, new THREE.BoxGeometry(w, h, d), { color: GREEN, opacity: 0.85, pos: [0, y, 0] });
-  // bridge window band
-  add(g, new THREE.BoxGeometry(18.4, 2.2, 14.4), { color: CYAN, opacity: 0.55, pos: [0, 3, 0] });
-  // mast
-  add(g, new THREE.CylinderGeometry(0.3, 1.2, 20, 6), { color: GREEN, opacity: 0.9, pos: [0, 32, 0] });
-  g.add(segs([[-6,30,0],[6,30,0],[-4,36,0],[4,36,0],[0,42,0],[0,22,0]], CYAN, 0.6)); // cross bars + tip
-  g.position.set(16, 13, 7);
+  add(g, new THREE.BoxGeometry(30.4, 2.4, 12.4), { color: CYAN, opacity: 0.55, pos: [0, 3.5, 0] }); // bridge windows
+  add(g, new THREE.SphereGeometry(5, 12, 8), { color: GREEN, opacity: 0.65, mesh: true, pos: [4, 30, 0] }); // radar dome
+  add(g, new THREE.CylinderGeometry(0.4, 1.1, 26, 6), { color: GREEN, opacity: 0.9, pos: [-9, 30, 0] });    // mast
+  g.add(segs([[-13,34,0],[-5,34,0], [-12,40,0],[-6,40,0], [-9,17,0],[-9,46,0], [-9,45,-4],[-9,45,4]], CYAN, 0.6)); // yardarms
+  g.position.set(22, 4, 14);
   ship.add(g);
 })();
 
-// STERN THRUSTERS
-for (const z of [-7, 0, 7]) {
-  add(ship, new THREE.CylinderGeometry(2.6, 3.4, 8, 10), { color: GREEN, opacity: 0.8, mesh: true,
-      pos: [-66, 4, z], rot: [0, 0, Math.PI/2] });
-}
+// STERN exhaust bank
+for (const z of [-12, -4, 4, 12])
+  add(ship, new THREE.CylinderGeometry(3, 4, 9, 12, 1, true), { color: GREEN, opacity: 0.8, pos: [-99, -3, z], rot: [0, 0, Math.PI/2] });
 
-// a couple of parked craft on the deck (delta silhouettes), for flavour
+// parked quinjets on deck (delta silhouettes), for flavour
 function jet(x, z, rot) {
-  const g = new THREE.ConeGeometry(2.4, 9, 4);
-  const l = add(ship, g, { color: CYAN, opacity: 0.5, pos: [x, 9.5, z], rot: [Math.PI/2, 0, rot] });
+  const j = new THREE.Group();
+  add(j, new THREE.ConeGeometry(3, 12, 3), { color: CYAN, opacity: 0.55, rot: [Math.PI/2, 0, -Math.PI/2] });
+  add(j, new THREE.BoxGeometry(17, 1.5, 2), { color: CYAN, opacity: 0.4 });
+  j.position.set(x, 6, z); j.rotation.y = rot; ship.add(j);
 }
-jet(34, -10, 0.4); jet(20, 12, -0.3); jet(-2, -6, 1.2);
+jet(58, 12, 0.18); jet(34, -8, -0.12); jet(2, 16, 0.08); jet(-22, -13, 3.0);
 
-ship.scale.setScalar(1.15);
+ship.scale.setScalar(0.95);
 
 // ---------- holographic projector base (static, ship hovers above) ----------
 const base = new THREE.Group();
 base.position.y = -34;
 scene.add(base);
-add(base, new THREE.TorusGeometry(150, 0.8, 6, 96), { color: CYAN, opacity: 0.8, mesh: true, rot: [Math.PI/2, 0, 0] });
-add(base, new THREE.TorusGeometry(120, 0.5, 6, 80), { color: DIM, opacity: 0.45, mesh: true, rot: [Math.PI/2, 0, 0] });
-const grid = new THREE.PolarGridHelper(150, 16, 8, 96, 0x1d6b58, 0x124034);
+add(base, new THREE.TorusGeometry(118, 0.8, 6, 96), { color: CYAN, opacity: 0.8, mesh: true, rot: [Math.PI/2, 0, 0] });
+add(base, new THREE.TorusGeometry(92, 0.5, 6, 80), { color: DIM, opacity: 0.45, mesh: true, rot: [Math.PI/2, 0, 0] });
+const grid = new THREE.PolarGridHelper(118, 16, 8, 96, 0x1d6b58, 0x124034);
 grid.material.transparent = true; grid.material.opacity = 0.35; grid.material.blending = THREE.AdditiveBlending; grid.material.depthWrite = false;
 base.add(grid);
 // faint projection cone from base up toward the ship
-const cone = add(base, new THREE.CylinderGeometry(150, 18, 60, 48, 1, true),
-                 { color: 0x0e3a33, opacity: 0.16, mesh: true, pos: [0, 30, 0] });
+const cone = add(base, new THREE.CylinderGeometry(118, 16, 56, 48, 1, true),
+                 { color: 0x0e3a33, opacity: 0.16, mesh: true, pos: [0, 28, 0] });
 
 // ---------- animate ----------
 const ro = document.getElementById('readout');
