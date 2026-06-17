@@ -6,17 +6,17 @@
 <title>Holographic Projection — Ship</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; overflow: hidden; background: #02060a; font-family: monospace; color: #7df9c0; }
+  html, body { height: 100%; overflow: hidden; background: #020805; font-family: monospace; color: #4ade80; }
   #app { position: fixed; inset: 0; }
-  /* deep teal projection backdrop */
+  /* deep green projection backdrop — matches the dashboard demo */
   #app::before { content:""; position:absolute; inset:0; z-index:0;
-    background: radial-gradient(120% 90% at 50% 38%, #06231f 0%, #04141a 45%, #01060a 100%); }
+    background: radial-gradient(120% 90% at 50% 38%, #0b2a16 0%, #06140a 45%, #020805 100%); }
   canvas { position: relative; z-index: 1; display: block; }
 
   /* hologram FX overlays */
   .fx { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
   .scanlines { background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,40,30,0.25) 2px 3px); mix-blend-mode: multiply; opacity: .55; }
-  .sweep { background: linear-gradient(0deg, transparent 0%, rgba(110,243,255,0.06) 48%, rgba(110,243,255,0.10) 50%, rgba(110,243,255,0.06) 52%, transparent 100%);
+  .sweep { background: linear-gradient(0deg, transparent 0%, rgba(74,222,128,0.06) 48%, rgba(74,222,128,0.12) 50%, rgba(74,222,128,0.06) 52%, transparent 100%);
            height: 220px; top: -220px; animation: sweep 6s linear infinite; }
   @keyframes sweep { 0%{ transform: translateY(0); } 100%{ transform: translateY(120vh); } }
   .vignette { background: radial-gradient(120% 100% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%); }
@@ -24,17 +24,17 @@
   @keyframes flick { 0%,100%{opacity:.5} 7%{opacity:.9} 9%{opacity:.4} 40%{opacity:.7} 41%{opacity:1} 60%{opacity:.55} 95%{opacity:.8} }
 
   /* HUD */
-  .hud { position: absolute; z-index: 10; color: #6df3ff; letter-spacing: 2px; text-shadow: 0 0 8px rgba(80,255,200,.6); pointer-events: none; }
+  .hud { position: absolute; z-index: 10; color: #4ade80; letter-spacing: 2px; text-shadow: 0 0 8px rgba(74,222,128,.6); pointer-events: none; }
   #hud-tl { top: 18px; left: 20px; }
-  #hud-tl .t1 { font-size: 13px; color: #8effca; }
-  #hud-tl .t2 { font-size: 10px; color: #3f9e8a; margin-top: 3px; }
-  #hud-tr { top: 18px; right: 20px; text-align: right; font-size: 10px; color: #6df3ff; }
-  #hud-tr .live { color: #53ffa8; }
-  #hud-tr .live .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#53ffa8; margin-right:6px; box-shadow:0 0 8px #53ffa8; animation: blink 1.4s ease-in-out infinite; }
+  #hud-tl .t1 { font-size: 13px; color: #bef9d2; }
+  #hud-tl .t2 { font-size: 10px; color: #2d6a2d; margin-top: 3px; }
+  #hud-tr { top: 18px; right: 20px; text-align: right; font-size: 10px; color: #4ade80; }
+  #hud-tr .live { color: #4ade80; }
+  #hud-tr .live .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#4ade80; margin-right:6px; box-shadow:0 0 8px #4ade80; animation: blink 1.4s ease-in-out infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
-  #hud-bl { bottom: 16px; left: 20px; font-size: 10px; color: #3f9e8a; }
-  #hud-br { bottom: 16px; right: 20px; font-size: 10px; color: #3f9e8a; text-align: right; }
-  .corner { position:absolute; z-index:10; width:26px; height:26px; border:1px solid rgba(110,243,255,.4); pointer-events:none; }
+  #hud-bl { bottom: 16px; left: 20px; font-size: 10px; color: #2d6a2d; }
+  #hud-br { bottom: 16px; right: 20px; font-size: 10px; color: #2d6a2d; text-align: right; }
+  .corner { position:absolute; z-index:10; width:26px; height:26px; border:1px solid rgba(74,222,128,.4); pointer-events:none; }
   .corner.tl { top:10px; left:10px; border-right:0; border-bottom:0; }
   .corner.tr { top:10px; right:10px; border-left:0; border-bottom:0; }
   .corner.bl { bottom:10px; left:10px; border-right:0; border-top:0; }
@@ -59,7 +59,7 @@
 </div>
 <div class="hud" id="hud-tr">
   <div class="live"><span class="dot"></span>PROJECTOR ONLINE</div>
-  <div id="readout" style="margin-top:6px;color:#3f9e8a"></div>
+  <div id="readout" style="margin-top:6px;color:#2d6a2d"></div>
 </div>
 <div class="hud" id="hud-bl">drag to rotate · scroll to zoom · double-click to reset</div>
 <div class="hud" id="hud-br">3D MESH · EDGES ONLY · NO FACES</div>
@@ -73,7 +73,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 
-const GREEN = 0x53ffa8, DIM = 0x2ad79a, CYAN = 0x6df3ff;
+const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const app = document.getElementById('app');
 
 let renderer;
@@ -86,7 +86,7 @@ renderer.setClearColor(0x000000, 0);
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x02161a, 0.0016);
+scene.fog = new THREE.FogExp2(0x031208, 0.0016);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 4000);
 camera.position.set(110, 72, 120);
@@ -147,25 +147,28 @@ function loft(top, yTop, bottom, yBot, color, opacity) {
   return segs(p, color, opacity);
 }
 
-// carrier flight-deck outline (starboard half, bow at +X) mirrored to a loop
-const HALF = [ [96,0],[91,9],[82,16],[58,21],[12,23.5],[-46,23.5],[-82,21],[-92,12],[-97,0] ];
-const DECK = HALF.concat(HALF.slice(1, -1).reverse().map(([x, z]) => [x, -z]));
-const KEEL = DECK.map(([x, z]) => [x * 0.92, z * 0.5]);
+// supercarrier flight-deck outline (blunt angular bow, squared stern)
+const HALF = [ [103,0],[101,6],[97,12],[88,18],[64,21.5],[14,22.5],[-52,22.5],[-88,21],[-97,16],[-101,8],[-103,0] ];
+const DECK  = HALF.concat(HALF.slice(1, -1).reverse().map(([x, z]) => [x, -z]));
+const KNUCK = DECK.map(([x, z]) => [x * 1.0,  z * 0.86]);   // hull knuckle / chine
+const KEEL  = DECK.map(([x, z]) => [x * 0.93, z * 0.40]);   // keel
 
-// HULL — tapered body down to keel, plus the raised flight-deck lip
-ship.add(loft(DECK, 1,  KEEL, -22, GREEN, 0.5));   // hull sides → keel
-ship.add(loft(DECK, 4,  DECK,   1, GREEN, 0.7));   // deck-edge thickness
+// HULL — deck → chine → keel, plus the raised flight-deck lip
+ship.add(loft(DECK,  2, KNUCK,  -9, GREEN, 0.5));   // upper hull side
+ship.add(loft(KNUCK,-9, KEEL,  -27, GREEN, 0.45));  // lower hull → keel
+ship.add(loft(DECK,  5, DECK,    2, GREEN, 0.7));   // deck-edge thickness
 
-// FLIGHT DECK markings — runway centerline, canted strip, panel ticks, elevators
+// FLIGHT DECK markings — centerline, canted strip, catapults, arrestor wires, elevators
 (function deck() {
-  const y = 4.4, d = [];
-  for (let x = -82; x <= 78; x += 12) d.push([x, y, 0], [x + 7, y, 0]);     // centerline dashes
-  d.push([74, y, -3], [-60, y, -17], [72, y, 3], [-62, y, -11]);            // port canted strip
-  d.push([80, y, 7], [-44, y, 15]);                                         // starboard take-off strip
-  for (let x = -80; x <= 86; x += 16) { d.push([x, y, -21], [x, y, -15], [x, y, 15], [x, y, 21]); }
-  const elev = (cx, cz, w, h) => { const x0 = cx-w/2, x1 = cx+w/2, z0 = cz-h/2, z1 = cz+h/2;
-    d.push([x0,y,z0],[x1,y,z0], [x1,y,z0],[x1,y,z1], [x1,y,z1],[x0,y,z1], [x0,y,z1],[x0,y,z0]); };
-  elev(42, 21, 14, 9); elev(-28, -21, 14, 9);                              // deck-edge elevators
+  const y = 5.3, d = [];
+  for (let x = -86; x <= 84; x += 11) d.push([x, y, 0], [x + 6, y, 0]);    // centerline dashes
+  d.push([90, y, 6], [-40, y, 17],  [88, y, 11], [-44, y, 11]);           // starboard catapult strip
+  d.push([86, y, -8], [-62, y, -18], [84, y, -2], [-64, y, -12]);         // port angled (canted) strip
+  for (let x = -84; x <= 92; x += 15) { d.push([x, y, -21.5], [x, y, -16], [x, y, 16], [x, y, 21.5]); } // panel ticks
+  for (const ax of [-72, -78, -84]) d.push([ax, y, -14], [ax, y, 14]);    // stern arrestor wires
+  const rect = (cx, cz, w, h) => { const x0=cx-w/2,x1=cx+w/2,z0=cz-h/2,z1=cz+h/2;
+    d.push([x0,y,z0],[x1,y,z0],[x1,y,z0],[x1,y,z1],[x1,y,z1],[x0,y,z1],[x0,y,z1],[x0,y,z0]); };
+  rect(50, 19, 15, 10); rect(-12, -19, 15, 10); rect(-46, 18, 13, 9);     // deck-edge elevators
   ship.add(segs(d, DIM, 0.5));
 })();
 
@@ -173,67 +176,87 @@ ship.add(loft(DECK, 4,  DECK,   1, GREEN, 0.7));   // deck-edge thickness
 const fans = [];
 function fanPod(x, z) {
   const g = new THREE.Group();
-  const side = Math.sign(z), R = 19;
-  // sponson platform bridging the hull edge out to the pod
-  add(g, new THREE.BoxGeometry(42, 8, 28), { color: GREEN, opacity: 0.5, pos: [0, 0, -side * 8] });
+  const side = Math.sign(z), R = 22;
+  // sponson platform bridging hull edge out to the pod, + a boxy housing frame
+  add(g, new THREE.BoxGeometry(50, 7, 44), { color: GREEN, opacity: 0.5, pos: [0, 0, -side * 9] });
+  g.add(segs([ [26,4,26],[26,4,-26], [26,4,-26],[-26,4,-26], [-26,4,-26],[-26,4,26], [-26,4,26],[26,4,26] ], GREEN, 0.7)); // housing frame
+  // support struts down to the hull
+  g.add(segs([ [15,-3,-side*8],[15,-8,-side*26], [-15,-3,-side*8],[-15,-8,-side*26] ], DIM, 0.5));
   // ducted housing — open cylinder gives two clean rim circles, axis = Y (lift)
-  add(g, new THREE.CylinderGeometry(R, R, 10, 48, 1, true), { color: GREEN, opacity: 0.85 });
-  add(g, new THREE.TorusGeometry(R, 1.3, 6, 50), { color: GREEN, opacity: 0.95, mesh: true, pos: [0, 5, 0], rot: [Math.PI/2, 0, 0] });
-  add(g, new THREE.TorusGeometry(R - 3, 0.7, 5, 44), { color: DIM, opacity: 0.45, mesh: true, pos: [0, 5, 0], rot: [Math.PI/2, 0, 0] });
+  add(g, new THREE.CylinderGeometry(R, R, 11, 56, 1, true), { color: GREEN, opacity: 0.85 });
+  add(g, new THREE.TorusGeometry(R, 1.3, 6, 58), { color: GREEN, opacity: 0.95, mesh: true, pos: [0, 5.5, 0], rot: [Math.PI/2, 0, 0] });
+  add(g, new THREE.TorusGeometry(R - 3.5, 0.7, 5, 50), { color: DIM, opacity: 0.45, mesh: true, pos: [0, 5.5, 0], rot: [Math.PI/2, 0, 0] });
   // hub + radial fan blades (spun in animate)
   const fan = new THREE.Group(); fan.position.y = 1;
-  add(fan, new THREE.CylinderGeometry(3.4, 4, 6, 12), { color: GREEN, opacity: 0.9 });
+  add(fan, new THREE.CylinderGeometry(3.6, 4.2, 6, 12), { color: GREEN, opacity: 0.9 });
   const bl = [];
-  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2;
-    bl.push([Math.cos(a)*3.8, 0, Math.sin(a)*3.8], [Math.cos(a)*(R-1.5), 1.4, Math.sin(a)*(R-1.5)]); }
-  fan.add(segs(bl, CYAN, 0.5));
+  for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2;
+    bl.push([Math.cos(a)*4, 0, Math.sin(a)*4], [Math.cos(a)*(R-1.5), 1.5, Math.sin(a)*(R-1.5)]); }
+  fan.add(segs(bl, GLINT, 0.5));
   g.add(fan); fans.push(fan);
   g.position.set(x, -1, z);
   ship.add(g);
 }
-fanPod( 44,  40); fanPod( 44, -40);
-fanPod(-50,  40); fanPod(-50, -40);
+fanPod( 50,  47); fanPod( 50, -47);
+fanPod(-56,  47); fanPod(-56, -47);
 
-// ISLAND superstructure (starboard, forward of midships) + radar mast
+// ISLAND superstructure (starboard, forward of midships): angular tower, SPY panels, lattice mast
 (function island() {
   const g = new THREE.Group();
-  const tiers = [ [30,8,12,0], [24,7,10,8], [16,7,9,15], [11,8,8,22] ];
+  const tiers = [ [38,11,15,0], [29,10,12,10.5], [21,9,10,20], [14,7,8,28] ];
   for (const [w, h, d, y] of tiers) add(g, new THREE.BoxGeometry(w, h, d), { color: GREEN, opacity: 0.85, pos: [0, y, 0] });
-  add(g, new THREE.BoxGeometry(30.4, 2.4, 12.4), { color: CYAN, opacity: 0.55, pos: [0, 3.5, 0] }); // bridge windows
-  add(g, new THREE.SphereGeometry(5, 12, 8), { color: GREEN, opacity: 0.65, mesh: true, pos: [4, 30, 0] }); // radar dome
-  add(g, new THREE.CylinderGeometry(0.4, 1.1, 26, 6), { color: GREEN, opacity: 0.9, pos: [-9, 30, 0] });    // mast
-  g.add(segs([[-13,34,0],[-5,34,0], [-12,40,0],[-6,40,0], [-9,17,0],[-9,46,0], [-9,45,-4],[-9,45,4]], CYAN, 0.6)); // yardarms
-  g.position.set(22, 4, 14);
+  add(g, new THREE.BoxGeometry(38.4, 2.6, 15.4), { color: GLINT, opacity: 0.55, pos: [0, 4, 0] });    // bridge windows
+  // flat SPY-radar phased-array panels on the faces
+  add(g, new THREE.BoxGeometry(1.2, 8, 8), { color: GLINT, opacity: 0.4, pos: [19, 9, -3] });
+  add(g, new THREE.BoxGeometry(8, 8, 1.2), { color: GLINT, opacity: 0.4, pos: [4, 9, 7.6] });
+  add(g, new THREE.BoxGeometry(1.2, 8, 8), { color: GLINT, opacity: 0.4, pos: [-19, 9, 3] });
+  // forward dome + lattice mast aft with yardarms and a comms dish
+  add(g, new THREE.SphereGeometry(4, 12, 8), { color: GREEN, opacity: 0.6, mesh: true, pos: [9, 33, 0] });
+  add(g, new THREE.CylinderGeometry(0.4, 1.2, 30, 6), { color: GREEN, opacity: 0.9, pos: [-12, 34, 0] });
+  add(g, new THREE.TorusGeometry(3, 0.4, 5, 18), { color: GREEN, opacity: 0.7, mesh: true, pos: [-12, 50, 0], rot: [0, 0, 0.5] }); // dish
+  g.add(segs([ [-16,38,0],[-8,38,0], [-15,44,0],[-9,44,0], [-12,20,0],[-12,52,0],
+               [-12,42,-5],[-12,42,5], [-12,47,-3],[-12,47,3] ], GLINT, 0.55)); // yardarms + verticals
+  g.position.set(14, 2, 14);
   ship.add(g);
 })();
 
-// STERN exhaust bank
-for (const z of [-12, -4, 4, 12])
-  add(ship, new THREE.CylinderGeometry(3, 4, 9, 12, 1, true), { color: GREEN, opacity: 0.8, pos: [-99, -3, z], rot: [0, 0, Math.PI/2] });
+// deck-edge defensive turrets (CIWS) around the perimeter
+function turret(x, z) {
+  const g = new THREE.Group();
+  add(g, new THREE.CylinderGeometry(1.6, 2, 2.4, 8), { color: GREEN, opacity: 0.8 });
+  add(g, new THREE.CylinderGeometry(0.3, 0.3, 5, 6), { color: DIM, opacity: 0.7, pos: [2.5, 1, 0], rot: [0, 0, Math.PI/2] });
+  g.position.set(x, 6, z); ship.add(g);
+}
+turret(78, 17); turret(78, -17); turret(-6, 22); turret(-6, -22); turret(-80, 16); turret(-80, -16);
 
-// parked quinjets on deck (delta silhouettes), for flavour
+// STERN exhaust bank
+for (const z of [-14, -5, 5, 14])
+  add(ship, new THREE.CylinderGeometry(3, 4, 9, 12, 1, true), { color: GREEN, opacity: 0.8, pos: [-104, -4, z], rot: [0, 0, Math.PI/2] });
+
+// parked quinjets on deck (VTOL delta silhouettes)
 function jet(x, z, rot) {
   const j = new THREE.Group();
-  add(j, new THREE.ConeGeometry(3, 12, 3), { color: CYAN, opacity: 0.55, rot: [Math.PI/2, 0, -Math.PI/2] });
-  add(j, new THREE.BoxGeometry(17, 1.5, 2), { color: CYAN, opacity: 0.4 });
-  j.position.set(x, 6, z); j.rotation.y = rot; ship.add(j);
+  add(j, new THREE.BoxGeometry(15, 2, 3), { color: GLINT, opacity: 0.45 });          // fuselage
+  add(j, new THREE.ConeGeometry(2.2, 6, 4), { color: GLINT, opacity: 0.5, pos: [8, 0, 0], rot: [0, 0, -Math.PI/2] }); // nose
+  j.add(segs([ [-2,0,0],[-6,0,11], [-2,0,0],[-6,0,-11], [-6,0,11],[-9,0,9], [-6,0,-11],[-9,0,-9] ], GLINT, 0.4)); // swept wings
+  j.position.set(x, 6.5, z); j.rotation.y = rot; ship.add(j);
 }
-jet(58, 12, 0.18); jet(34, -8, -0.12); jet(2, 16, 0.08); jet(-22, -13, 3.0);
+jet(60, 13, 0.2); jet(36, -9, -0.15); jet(4, 17, 0.1); jet(-26, -14, 3.0);
 
-ship.scale.setScalar(0.95);
+ship.scale.setScalar(0.86);
 
 // ---------- holographic projector base (static, ship hovers above) ----------
 const base = new THREE.Group();
 base.position.y = -34;
 scene.add(base);
-add(base, new THREE.TorusGeometry(118, 0.8, 6, 96), { color: CYAN, opacity: 0.8, mesh: true, rot: [Math.PI/2, 0, 0] });
+add(base, new THREE.TorusGeometry(118, 0.8, 6, 96), { color: GREEN, opacity: 0.8, mesh: true, rot: [Math.PI/2, 0, 0] });
 add(base, new THREE.TorusGeometry(92, 0.5, 6, 80), { color: DIM, opacity: 0.45, mesh: true, rot: [Math.PI/2, 0, 0] });
-const grid = new THREE.PolarGridHelper(118, 16, 8, 96, 0x1d6b58, 0x124034);
+const grid = new THREE.PolarGridHelper(118, 16, 8, 96, 0x1c9c52, 0x0d3a22);
 grid.material.transparent = true; grid.material.opacity = 0.35; grid.material.blending = THREE.AdditiveBlending; grid.material.depthWrite = false;
 base.add(grid);
 // faint projection cone from base up toward the ship
 const cone = add(base, new THREE.CylinderGeometry(118, 16, 56, 48, 1, true),
-                 { color: 0x0e3a33, opacity: 0.16, mesh: true, pos: [0, 28, 0] });
+                 { color: 0x0d3320, opacity: 0.16, mesh: true, pos: [0, 28, 0] });
 
 // ---------- animate ----------
 const ro = document.getElementById('readout');
