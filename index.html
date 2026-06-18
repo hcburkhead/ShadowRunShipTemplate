@@ -45,6 +45,17 @@
     animation:sweep 5.5s linear infinite; }
   @keyframes sweep{ 0%{transform:translateY(120%)} 100%{transform:translateY(-220%)} }
 
+  /* STS holographic badge — sits under the scanlines so they ripple over it */
+  .badge{ position:absolute; z-index:1; pointer-events:none; top:12px; left:50%;
+    transform:translateX(-50%); width:96px; height:96px; opacity:.6;
+    filter:drop-shadow(0 0 7px rgba(74,222,128,.45)); animation:badgePulse 5s ease-in-out infinite; }
+  .badge svg{ width:100%; height:100%; display:block; }
+  .badge .badge-img{ position:absolute; inset:20% 22%; object-fit:contain;
+    clip-path:polygon(50% 2%,98% 27%,98% 73%,50% 98%,2% 73%,2% 27%);
+    opacity:.85; mix-blend-mode:screen;
+    filter:grayscale(1) brightness(1.25) sepia(1) hue-rotate(70deg) saturate(380%); }
+  @keyframes badgePulse{ 0%,100%{opacity:.52} 50%{opacity:.66} }
+
   .main{ grid-area:main; }
   .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
   .oview{ flex:1; min-height:0; }
@@ -128,6 +139,14 @@
   <div class="frame main">
     <div class="vlabel">PERSPECTIVE</div><div class="tag" id="alt-tag">EDGES ONLY</div>
     <canvas id="cv-persp"></canvas>
+    <div class="badge">
+      <svg viewBox="0 0 100 100" aria-label="STS">
+        <polygon points="50,5 91,28 91,72 50,95 9,72 9,28" fill="rgba(16,48,26,0.35)" stroke="#4ade80" stroke-width="2.5"/>
+        <polygon points="50,18 79,34 79,66 50,82 21,66 21,34" fill="none" stroke="#2bbf6a" stroke-width="1.3"/>
+        <text x="50" y="58" text-anchor="middle" font-size="20" letter-spacing="1" fill="#bef9d2" font-family="monospace" font-weight="bold">STS</text>
+      </svg>
+      <img class="badge-img" src="sts-edited.png" alt="" onerror="this.remove()">
+    </div>
     <div class="scan"></div><div class="sweep"></div>
   </div>
 
@@ -311,27 +330,33 @@ function detectFans(model, box, sz) {
   return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
 }
 
-// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y).
-// Each blade is a tapered quad outline (narrow at the hub, wider at the tip) so it
-// has real definition and stays readable when stopped; plus a small hub ring.
+// spinning fan-blade overlay for a lift-fan duct (axis = Y). One engine per fan,
+// but two coaxial blade sets stacked in the duct, skewed + spun in OPPOSITE
+// directions. Each blade is a tapered quad outline (narrow hub, wide pitched tip)
+// plus a hub ring, so it has definition and stays readable when stopped.
 function buildFanBlades(x, y, z, r) {
-  const pts = [], Nb = 12, ri = r * 0.18, ro = r * 0.74, wi = 0.05, wo = 0.19;
+  const ri = r * 0.18, ro = r * 0.74, wi = 0.05, wo = 0.15, Nb = 12;
   const P = (rad, ang, yy) => [Math.cos(ang) * rad, yy, Math.sin(ang) * rad];
-  const edge = (a, b) => pts.push(...a, ...b);
-  for (let i = 0; i < Nb; i++) {
-    const a = i / Nb * Math.PI * 2;
-    const il = P(ri, a - wi, 0),   ir = P(ri, a + wi, 0);     // hub end (narrow)
-    const ot = P(ro, a + wo, 0.5), ol = P(ro, a - wo, 0.5);   // tip end (wide, pitched up)
-    edge(il, ir); edge(ir, ot); edge(ot, ol); edge(ol, il);  // blade outline
+  function bladeSet(yOff, dir) {
+    const pts = [], skew = dir * 0.22, edge = (a, b) => pts.push(...a, ...b);
+    for (let i = 0; i < Nb; i++) {
+      const a = i / Nb * Math.PI * 2;
+      const il = P(ri, a - wi, 0), ir = P(ri, a + wi, 0);                 // hub end (narrow)
+      const ot = P(ro, a + skew + wo, 0.4), ol = P(ro, a + skew - wo, 0.4); // tip (wide, skewed by dir)
+      edge(il, ir); edge(ir, ot); edge(ot, ol); edge(ol, il);
+    }
+    for (let i = 0; i < 12; i++) edge(P(ri, i/12*Math.PI*2, 0), P(ri, (i+1)/12*Math.PI*2, 0)); // hub ring
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const grp = new THREE.Group();
+    grp.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: GLINT, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })));
+    grp.position.y = yOff;
+    return grp;
   }
-  for (let i = 0; i < 12; i++) {                               // hub ring
-    edge(P(ri, i/12*Math.PI*2, 0), P(ri, (i+1)/12*Math.PI*2, 0));
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   const g = new THREE.Group();
-  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-    color: GLINT, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const upper = bladeSet(2.6, 1), lower = bladeSet(0, -1);   // counter-rotating pair
+  g.add(upper, lower); g.userData.sets = [upper, lower];
   g.position.set(x, y, z);
   return g;
 }
@@ -452,7 +477,7 @@ function updateFans(s) {
   for (let i = 0; i < 4; i++) fanSpeed[i] = (s.engines[i] || 0) / 100;
   for (const { g, idx } of fanGroups) {
     const v = s.engines[idx] || 0, col = v > 66 ? 0xbef9d2 : v > 33 ? 0xfacc15 : 0xef4444;
-    for (const c of g.children) if (c.material) c.material.color.setHex(col);
+    g.traverse(o => { if (o.material) o.material.color.setHex(col); });   // colour both blade sets
   }
 }
 function updateDrones(s) {
@@ -672,7 +697,10 @@ function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
-  for (const { g, idx } of fanGroups) g.rotation.y += dt * 4.5 * (fanSpeed[idx] || 0);   // spin per mag-lev cohesion
+  for (const { g, idx } of fanGroups) {                  // counter-rotating sets, per mag-lev cohesion
+    const sp = dt * 4.5 * (fanSpeed[idx] || 0);
+    g.userData.sets[0].rotation.y += sp; g.userData.sets[1].rotation.y -= sp;
+  }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
     if (!sw.visible) continue;
     const act = sw.userData.active;
