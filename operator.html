@@ -105,16 +105,16 @@
   .lockbadge{ display:none; color:var(--amber); font-weight:bold; }
   body.locked .lockbadge{ display:inline-block; }
   body.locked .ctl-only{ display:none !important; }
-  body.locked input[type=range], body.locked .sw,
-  body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
+  body.locked input[type=range], body.locked .sw, body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
   body.locked input[type=range]{ opacity:.8; }
   body.locked .sw{ opacity:.85; } body.locked .seg button.on{ opacity:1; }
 
   /* player-view specifics */
-  body.player-view .card:not(.card-power) { display: none; }
-  body.player-view .card-power h2 { display: none; }
-  body.player-view .card-power .row:not(.row-boost) { display: none; }
-  body.player-view .holo iframe { height: 75vh; } /* Make the hologram taller since the UI is hidden */
+  body.player-view header { display: none; }
+  body.player-view .holo iframe { height: 60vh; }
+  body.player-view .card-maglev,
+  body.player-view .card-shields,
+  body.player-view .card-damage { display: none; }
 </style>
 </head>
 <body>
@@ -144,10 +144,10 @@
       <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
       <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
       <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
-      <div class="row row-boost" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
+      <div class="row" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
     </div>
 
-    <div class="card">
+    <div class="card card-hull">
       <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
       <div class="seg" id="hull-seg">
         <button data-h="NOMINAL">NOMINAL</button>
@@ -160,7 +160,7 @@
       <div class="hint">drop altitude to lower the ship projection in the display.</div>
     </div>
 
-    <div class="card">
+    <div class="card card-subs">
       <h2>SUBSYSTEM POWER</h2>
       <div class="threecol">
         <div class="toggle"><span class="nm">WEAPONS</span><div class="sw" id="sw-weapons"><div class="k"></div></div></div>
@@ -169,12 +169,12 @@
       <div class="hint">toggle a system's power between full and offline.</div>
     </div>
 
-    <div class="card">
+    <div class="card card-maglev">
       <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
       <div id="fan-rows"></div>
     </div>
 
-    <div class="card">
+    <div class="card card-shields">
       <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
       <div class="shieldpad">
         <div class="sp sp-f" data-i="0">FORE</div>
@@ -185,7 +185,7 @@
       </div>
     </div>
 
-    <div class="card full">
+    <div class="card full card-damage">
       <h2>DAMAGE CONTROL <span class="v hint ctl-only">click an area to cycle ONLINE · DAMAGED · OFFLINE</span></h2>
       <div class="areas" id="area-grid"></div>
     </div>
