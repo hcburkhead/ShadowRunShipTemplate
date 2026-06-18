@@ -94,14 +94,14 @@
 
   /* embedded holographic status panel */
   .holo{ width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
-  .holo iframe{ width:100%; height:430px; border:0; display:block; }
+  .holo iframe{ width:100%; height:430px; border:0; display:block; transition: height 0.3s; }
 
   .hint{ font-size:8px; color:var(--dim); }
   .btn-wide{ font:inherit; font-size:10px; letter-spacing:1px; padding:8px; width:100%; cursor:pointer;
     background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
   .btn-wide:hover{ background:#0a1a0a; }
 
-  /* locked / view-only mode (?display) — players can read but not operate */
+  /* locked / view-only mode (?locked) — players can read but not operate */
   .lockbadge{ display:none; color:var(--amber); font-weight:bold; }
   body.locked .lockbadge{ display:inline-block; }
   body.locked .ctl-only{ display:none !important; }
@@ -109,6 +109,12 @@
   body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
   body.locked input[type=range]{ opacity:.8; }
   body.locked .sw{ opacity:.85; } body.locked .seg button.on{ opacity:1; }
+
+  /* player-view specifics */
+  body.player-view .card:not(.card-power) { display: none; }
+  body.player-view .card-power h2 { display: none; }
+  body.player-view .card-power .row:not(.row-boost) { display: none; }
+  body.player-view .holo iframe { height: 75vh; } /* Make the hologram taller since the UI is hidden */
 </style>
 </head>
 <body>
@@ -129,21 +135,18 @@
     </div>
   </header>
 
-  <!-- live holographic status panel (read-only mode also gets the damage dots) -->
   <div class="holo"><iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe></div>
 
   <div class="grid">
-    <!-- POWER ALLOCATION -->
-    <div class="card">
+    <div class="card card-power">
       <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
       <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
       <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
       <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
       <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
-      <div class="row" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
+      <div class="row row-boost" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
     </div>
 
-    <!-- HULL + ALTITUDE -->
     <div class="card">
       <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
       <div class="seg" id="hull-seg">
@@ -157,7 +160,6 @@
       <div class="hint">drop altitude to lower the ship projection in the display.</div>
     </div>
 
-    <!-- ENGINE STRUCTURAL INTEGRITY -->
     <div class="card">
       <h2>SUBSYSTEM POWER</h2>
       <div class="threecol">
@@ -167,13 +169,11 @@
       <div class="hint">toggle a system's power between full and offline.</div>
     </div>
 
-    <!-- MAG-LEV COHESION (lift fans) -->
     <div class="card">
       <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
       <div id="fan-rows"></div>
     </div>
 
-    <!-- SHIELD PANELS -->
     <div class="card">
       <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
       <div class="shieldpad">
@@ -185,7 +185,6 @@
       </div>
     </div>
 
-    <!-- DAMAGE CONTROL -->
     <div class="card full">
       <h2>DAMAGE CONTROL <span class="v hint ctl-only">click an area to cycle ONLINE · DAMAGED · OFFLINE</span></h2>
       <div class="areas" id="area-grid"></div>
@@ -348,11 +347,17 @@ renderAll();
 
 // ---- locked / view-only mode: players can watch live state, not operate it ----
 const Q = new URLSearchParams(location.search);
-const LOCKED = Q.has('display') || Q.has('locked');
+const IS_PLAYER_VIEW = Q.has('player-view');
+const LOCKED = IS_PLAYER_VIEW || Q.has('locked');
+
 // the read-only (player) view shows operator-triggered damage dots; the operator's does not
 document.getElementById('holo-frame').src = LOCKED ? 'index.html?dots=1' : 'index.html';
+
 if (LOCKED) {
   document.body.classList.add('locked');
+  if (IS_PLAYER_VIEW) {
+    document.body.classList.add('player-view');
+  }
   document.getElementById('con-title').textContent = 'SHIP STATUS · LIVE';
   document.querySelectorAll('input, button').forEach(el => { el.disabled = true; el.tabIndex = -1; });
 }
