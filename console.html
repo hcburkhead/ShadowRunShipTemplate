@@ -275,6 +275,44 @@ function buildCardinalArcs(frame) {
   frame.appendChild(svg);
   return { svg, arcs };
 }
+// locate the four lift-fan duct centres: cluster the outboard deck geometry into
+// four quadrants (handles the hull being off-centre from its long prow).
+function detectFans(model, box, sz) {
+  model.updateWorldMatrix(true, true);
+  const yMin = box.min.y + sz.y * 0.45, xT = sz.x * 0.22, v = new THREE.Vector3();
+  const verts = []; let zSum = 0;
+  model.traverse(o => {
+    const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      if (v.y > yMin && Math.abs(v.x) > xT) { verts.push([v.x, v.z]); zSum += v.z; }
+    }
+  });
+  if (!verts.length) return [];
+  const zc = zSum / verts.length;
+  const acc = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];     // sumX, sumZ, count per quadrant
+  for (const [x, z] of verts) { const q = (x > 0 ? 0 : 1) + (z > zc ? 0 : 2); acc[q][0]+=x; acc[q][1]+=z; acc[q][2]++; }
+  const deckY = box.min.y + sz.y * 0.62;
+  return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
+}
+
+// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+function buildFanBlades(x, y, z, r) {
+  const pts = [], Nb = 16;
+  for (let i = 0; i < Nb; i++) {
+    const a = i / Nb * Math.PI * 2;
+    pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*r, 0.4, Math.sin(a)*r);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const g = new THREE.Group();
+  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+  g.position.set(x, y, z);
+  return g;
+}
+
 // 3D shield ring: 4 arc segments on the XZ floor plane under the ship
 // (FORE +X, STARBOARD +Z, AFT -X, PORT -Z) — same panel order as the 2D arcs.
 function buildShieldRing(radius, y) {
@@ -316,6 +354,8 @@ const views = [];
 // cardinal shield arcs on the 3 orthographic frames (skip the perspective frame)
 const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
 let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
+let fanGroups = [];      // spinning lift-fan blade overlays
+const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
 const persp = makeView('cv-persp', (v) => {
   const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
@@ -417,6 +457,14 @@ loader.load(MODEL_URL, (res) => {
   box.getSize(sz);
   shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
   persp.scene.add(shieldRing);
+
+  // spinning fan blades inside the four detected lift-fan ducts (perspective + dorsal)
+  const centres = detectFans(model, box, sz), FR = sz.x * FAN_RF;
+  fanGroups = [];
+  [persp, top].forEach(v => { if (!v) return;
+    centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); v.scene.add(g); fanGroups.push(g); });
+  });
+
   configureOrthos(model);
   applyShield();
   resizeAll();
@@ -426,9 +474,12 @@ loader.load(MODEL_URL, (res) => {
   document.getElementById('err').textContent = 'Could not load ' + MODEL_URL;
 });
 
+let lastT = performance.now();
 function tick() {
   requestAnimationFrame(tick);
+  const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
+  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
   for (const v of views) {                           // keep each canvas matched to its frame
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
