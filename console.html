@@ -297,72 +297,18 @@ function detectFans(model, box, sz) {
   return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
 }
 
-// Helper to generate realistic, pitched blade wireframes
-function buildRotorGeometry(r, spinDir) {
-  const pts = [];
-  const Nb = 12; // 12 blades per rotor looks authentic for heavy lift fans
-  const r_in = r * 0.16, r_out = r * 0.9;
-  
-  // Blade width (chord) grows radially from hub to tip
-  const w_in = 0.05, w_out = 0.18; 
-  
-  // Pitch (vertical twist). Determines how steep the blade angle is.
-  const pitch_in = r * 0.02, pitch_out = r * 0.11;
-
+// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+function buildFanBlades(x, y, z, r) {
+  const pts = [], Nb = 16;
   for (let i = 0; i < Nb; i++) {
-    const a = (i / Nb) * Math.PI * 2;
-
-    // spinDir (1 or -1) reverses the blade pitch angle for contra-rotation.
-    // The leading edge is raised (+y), the trailing edge is lowered (-y) to thrust air down.
-    const a_lead_in  = a + spinDir * w_in,   a_trail_in  = a - spinDir * w_in;
-    const a_lead_out = a + spinDir * w_out,  a_trail_out = a - spinDir * w_out;
-
-    // Coordinates for the 4 corners of the blade
-    const p1 = [Math.cos(a_lead_in)*r_in,   pitch_in,  Math.sin(a_lead_in)*r_in];   // Root Lead
-    const p2 = [Math.cos(a_lead_out)*r_out, pitch_out, Math.sin(a_lead_out)*r_out]; // Tip Lead
-    const p3 = [Math.cos(a_trail_out)*r_out,-pitch_out,Math.sin(a_trail_out)*r_out];// Tip Trail
-    const p4 = [Math.cos(a_trail_in)*r_in,  -pitch_in, Math.sin(a_trail_in)*r_in];  // Root Trail
-
-    // Draw the blade outline (quad) + a diagonal line for structural "wireframe" detail
-    pts.push(
-      ...p1, ...p2,   // Leading edge
-      ...p2, ...p3,   // Outer tip edge
-      ...p3, ...p4,   // Trailing edge
-      ...p4, ...p1,   // Inner root edge
-      ...p1, ...p3    // Structural center-rib
-    );
+    const a = i / Nb * Math.PI * 2;
+    pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*0.8, 0.4, Math.sin(a)*0.8);
   }
-  
-  // Draw the central hub ring so the blades have something to anchor to
-  for(let i=0; i<32; i++){
-    const a1 = (i/32)*Math.PI*2, a2 = ((i+1)/32)*Math.PI*2;
-    pts.push(Math.cos(a1)*r_in, 0, Math.sin(a1)*r_in, Math.cos(a2)*r_in, 0, Math.sin(a2)*r_in);
-  }
-
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  return geo;
-}
-
-// spinning contra-rotating fan-blade overlays (MCU Helicarrier style)
-function buildFanBlades(x, y, z, r) {
-  const mat = new THREE.LineBasicMaterial({
-    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false 
-  });
-
   const g = new THREE.Group();
-  
-  // Upper rotor: Spins forward (+Y), pitched for forward rotation
-  const upperFan = new THREE.LineSegments(buildRotorGeometry(r, 1), mat);
-  upperFan.position.y = r * 0.08; 
-  g.add(upperFan);
-
-  // Lower rotor: Spins backward (-Y), pitched for backward rotation
-  const lowerFan = new THREE.LineSegments(buildRotorGeometry(r, -1), mat);
-  lowerFan.position.y = -r * 0.08;
-  lowerFan.rotation.y = Math.PI / 12; // Offset starting angle to prevent visual clipping
-  g.add(lowerFan);
-
+  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
   g.position.set(x, y, z);
   return g;
 }
@@ -533,13 +479,7 @@ function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
-
-  // Animating both child meshes inside the fan layout independently 
-  for (const g of fanGroups) {
-    g.children[0].rotation.y += dt * 4.5;   // Upper rotor spins clockwise
-    g.children[1].rotation.y -= dt * 4.5;   // Lower rotor spins counter-clockwise
-  }
-
+  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
   for (const v of views) {                           // keep each canvas matched to its frame
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
