@@ -345,26 +345,24 @@ function buildRotorGeometry(r, spinDir) {
 }
 
 // spinning contra-rotating fan-blade overlays (MCU Helicarrier style)
-// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
 function buildFanBlades(x, y, z, r) {
-  const pts = [], Nb = 16;
-  // REDUCED the outer radius multiplier from 0.9 to 0.75 or 0.8
-  // to ensure the blades fit cleanly within the duct walls.
-  const r_inner = r * 0.16;
-  const r_outer = r * 0.75; 
-  
-  for (let i = 0; i < Nb; i++) {
-    const a = i / Nb * Math.PI * 2;
-    pts.push(
-      Math.cos(a) * r_inner, 0, Math.sin(a) * r_inner, 
-      Math.cos(a) * r_outer, 0.4, Math.sin(a) * r_outer
-    );
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false 
+  });
+
   const g = new THREE.Group();
-  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+  
+  // Upper rotor: Spins forward (+Y), pitched for forward rotation
+  const upperFan = new THREE.LineSegments(buildRotorGeometry(r, 1), mat);
+  upperFan.position.y = r * 0.08; 
+  g.add(upperFan);
+
+  // Lower rotor: Spins backward (-Y), pitched for backward rotation
+  const lowerFan = new THREE.LineSegments(buildRotorGeometry(r, -1), mat);
+  lowerFan.position.y = -r * 0.08;
+  lowerFan.rotation.y = Math.PI / 12; // Offset starting angle to prevent visual clipping
+  g.add(lowerFan);
+
   g.position.set(x, y, z);
   return g;
 }
