@@ -73,6 +73,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { FBXLoader } from './vendor/FBXLoader.js';
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const app = document.getElementById('app');
@@ -243,7 +244,7 @@ ship.scale.setScalar(0.62);
 // green wireframe edges (no faces). If it's missing/fails, we keep the
 // procedural Helicarrier above as a fallback.
 const Q = new URLSearchParams(location.search);
-const MODEL_URL = Q.get('model') || 'vendor/helicarrier.glb';
+const MODEL_URL = Q.get('model') || 'Helicarrier.fbx';
 const WIRE_FULL = Q.get('wire') === 'full';   // every triangle edge vs. clean feature edges
 const ROT = [ +(Q.get('rx')||0), +(Q.get('ry')||0), +(Q.get('rz')||0) ].map(v => v * Math.PI/180);
 
@@ -275,11 +276,14 @@ function fitToFrame(g, target = 165) {
   return wrap;
 }
 
-new GLTFLoader().load(MODEL_URL, (gltf) => {
+const ext = MODEL_URL.split('?')[0].split('.').pop().toLowerCase();
+const loader = ext === 'fbx' ? new FBXLoader() : new GLTFLoader();
+loader.load(MODEL_URL, (res) => {
   // success → drop the procedural parts, show the real model as wireframe
+  const root = res.scene || res;          // glTF returns { scene }, FBX returns the object
   for (const c of [...ship.children]) ship.remove(c);
   fans.length = 0;
-  const model = fitToFrame(wireframeOf(gltf.scene, { full: WIRE_FULL }));
+  const model = fitToFrame(wireframeOf(root, { full: WIRE_FULL }));
   ship.add(model);
   ship.scale.setScalar(1);
   document.getElementById('hud-tl').querySelector('.t2').textContent =
