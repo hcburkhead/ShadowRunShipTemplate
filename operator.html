@@ -37,6 +37,11 @@
   .card h2{ font-size:10px; letter-spacing:2px; color:var(--g2); display:flex; justify-content:space-between; }
   .card h2 .v{ color:var(--glint); }
 
+  /* ?player-view toggles */
+  .system-status-card { display: none; }
+  body.player-view .system-status-card { display: flex; }
+  body.player-view .maglev-card { display: none; }
+
   /* sliders */
   .row{ display:flex; flex-direction:column; gap:3px; }
   .row .lbl{ display:flex; justify-content:space-between; font-size:10px; color:var(--dim); }
@@ -94,27 +99,21 @@
 
   /* embedded holographic status panel */
   .holo{ width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
-  .holo iframe{ width:100%; height:430px; border:0; display:block; transition: height 0.3s; }
+  .holo iframe{ width:100%; height:430px; border:0; display:block; }
 
   .hint{ font-size:8px; color:var(--dim); }
   .btn-wide{ font:inherit; font-size:10px; letter-spacing:1px; padding:8px; width:100%; cursor:pointer;
     background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
   .btn-wide:hover{ background:#0a1a0a; }
 
-  /* locked / view-only mode (?locked) — players can read but not operate */
+  /* locked / view-only mode */
   .lockbadge{ display:none; color:var(--amber); font-weight:bold; }
   body.locked .lockbadge{ display:inline-block; }
   body.locked .ctl-only{ display:none !important; }
-  body.locked input[type=range], body.locked .sw, body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
+  body.locked input[type=range], body.locked .sw,
+  body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
   body.locked input[type=range]{ opacity:.8; }
   body.locked .sw{ opacity:.85; } body.locked .seg button.on{ opacity:1; }
-
-  /* player-view specifics */
-  body.player-view header { display: none; }
-  body.player-view .holo iframe { height: 60vh; }
-  body.player-view .card-maglev,
-  body.player-view .card-shields,
-  body.player-view .card-damage { display: none; }
 </style>
 </head>
 <body>
@@ -138,7 +137,16 @@
   <div class="holo"><iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe></div>
 
   <div class="grid">
-    <div class="card card-power">
+    <div class="card system-status-card">
+      <h2>SYSTEM STATUS</h2>
+      <div class="row">
+        <div class="lbl"><span>HULL INTEGRITY</span><b id="st-hull-sum">NOMINAL</b></div>
+        <div class="lbl"><span>MAIN POWER</span><b id="st-pwr-sum">100%</b></div>
+        <div class="lbl"><span>SUBSYSTEMS</span><b id="st-subs-sum">ONLINE</b></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
       <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
       <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
@@ -147,7 +155,7 @@
       <div class="row" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
     </div>
 
-    <div class="card card-hull">
+    <div class="card">
       <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
       <div class="seg" id="hull-seg">
         <button data-h="NOMINAL">NOMINAL</button>
@@ -160,7 +168,7 @@
       <div class="hint">drop altitude to lower the ship projection in the display.</div>
     </div>
 
-    <div class="card card-subs">
+    <div class="card">
       <h2>SUBSYSTEM POWER</h2>
       <div class="threecol">
         <div class="toggle"><span class="nm">WEAPONS</span><div class="sw" id="sw-weapons"><div class="k"></div></div></div>
@@ -169,12 +177,12 @@
       <div class="hint">toggle a system's power between full and offline.</div>
     </div>
 
-    <div class="card card-maglev">
+    <div class="card maglev-card">
       <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
       <div id="fan-rows"></div>
     </div>
 
-    <div class="card card-shields">
+    <div class="card">
       <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
       <div class="shieldpad">
         <div class="sp sp-f" data-i="0">FORE</div>
@@ -185,7 +193,7 @@
       </div>
     </div>
 
-    <div class="card full card-damage">
+    <div class="card full">
       <h2>DAMAGE CONTROL <span class="v hint ctl-only">click an area to cycle ONLINE · DAMAGED · OFFLINE</span></h2>
       <div class="areas" id="area-grid"></div>
     </div>
@@ -194,11 +202,9 @@
 
 <script type="module">
 // ---------------------------------------------------------------------------
-//  Operator console — writes ship state to Firebase + localStorage + BroadcastChannel
+// Operator console
 // ---------------------------------------------------------------------------
 const KEYS = ['sys', 'drones', 'weapons', 'shields'];
-// damageable areas (key, label, category) — each cycles ONLINE/DAMAGED/OFFLINE
-// the 4 lift fans use sliders (mag-lev cohesion: 100 nominal / 50 suboptimal / 0 offline)
 const FANS = [['fanFP', 'LIFT FAN F·P'], ['fanFS', 'LIFT FAN F·S'], ['fanAP', 'LIFT FAN A·P'], ['fanAS', 'LIFT FAN A·S']];
 const AREAS = [
   ['boostP', 'BOOSTER PORT', 'PROPULSION'], ['boostS', 'BOOSTER STBD', 'PROPULSION'],
@@ -209,7 +215,6 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['MLC NOMINAL', 'MLC SUBOPTIMAL', 'MLC OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
-// authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
   power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, boost: 0 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
@@ -218,8 +223,15 @@ const state = {
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
 
+// ?player-view Logic
+const Q = new URLSearchParams(location.search);
+if (Q.has('player-view')) {
+  document.body.classList.add('player-view');
+}
+const LOCKED = Q.has('display') || Q.has('locked') || Q.has('player-view');
+
 let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
-let fb = null;   // { set, ref, db } once Firebase connects
+let fb = null;
 
 function pushKey(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
@@ -230,9 +242,19 @@ const savePower  = () => pushKey('shipPowerLevels', state.power);
 const saveDamage = () => pushKey('shipDamageState', state.damage);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 
-// ---- power allocation ----
+// Update Summary Card
+function updateSummary() {
+  const total = KEYS.reduce((a, k) => a + state.power[k], 0);
+  const elHull = document.getElementById('st-hull-sum');
+  if(elHull) elHull.textContent = state.damage.hull;
+  const elPwr = document.getElementById('st-pwr-sum');
+  if(elPwr) elPwr.textContent = total + '%';
+  const elSubs = document.getElementById('st-subs-sum');
+  if(elSubs) elSubs.textContent = (state.power.weapons > 0 || state.power.drones > 0) ? 'ONLINE' : 'OFFLINE';
+}
+
 function clampBudget(changed) {
-  let v = state.power[changed];                       // use the intended value (slider OR toggle)
+  let v = state.power[changed];
   const others = KEYS.filter(k => k !== changed).reduce((a, k) => a + state.power[k], 0);
   if (v + others > 100) v = Math.max(0, 100 - others);
   state.power[changed] = v;
@@ -245,16 +267,16 @@ function renderPower() {
   document.getElementById('v-boost').textContent = (state.power.boost || 0) + '%';
   const total = KEYS.reduce((a, k) => a + state.power[k], 0);
   document.getElementById('pwr-total').textContent = total + '% / 100%';
+  updateSummary();
 }
 KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
-  state.power[k] = +document.getElementById('sl-' + k).value;   // adopt the slider, then clamp
+  state.power[k] = +document.getElementById('sl-' + k).value;
   clampBudget(k); renderPower(); savePower();
 }));
 document.getElementById('sl-boost').addEventListener('input', e => {
   state.power.boost = +e.target.value; renderPower(); savePower();
 });
 
-// ---- hull ----
 function renderHull() {
   document.getElementById('hull-v').textContent = state.damage.hull;
   document.querySelectorAll('#hull-seg button').forEach(b => {
@@ -262,15 +284,14 @@ function renderHull() {
     b.classList.toggle('on', on);
     b.classList.toggle('s0', on && b.dataset.h === 'NOMINAL');
     b.classList.toggle('warn', on && b.dataset.h === 'DAMAGED');
-    b.classList.toggle('s1', false);
     b.classList.toggle('s2', on && (b.dataset.h === 'CRITICAL' || b.dataset.h === 'OFFLINE'));
   });
+  updateSummary();
 }
 document.querySelectorAll('#hull-seg button').forEach(b => b.addEventListener('click', () => {
   state.damage.hull = b.dataset.h; renderHull(); saveDamage();
 }));
 
-// ---- altitude ----
 const altEl = document.getElementById('sl-alt');
 altEl.addEventListener('input', () => {
   state.altitude = +altEl.value;
@@ -279,7 +300,6 @@ altEl.addEventListener('input', () => {
 });
 function renderAlt() { altEl.value = state.altitude; document.getElementById('alt-v').textContent = state.altitude + '%'; }
 
-// ---- damageable areas (cycle ONLINE / DAMAGED / OFFLINE) ----
 const areaGrid = document.getElementById('area-grid');
 let lastCat = '';
 AREAS.forEach(([k, label, cat]) => {
@@ -297,7 +317,6 @@ function renderAreas() {
   });
 }
 
-// ---- mag-lev cohesion: lift-fan sliders (snap 100 / 50 / 0 → area state 0 / 1 / 2) ----
 const fanGrid = document.getElementById('fan-rows');
 FANS.forEach(([k, label]) => {
   const div = document.createElement('div'); div.className = 'row';
@@ -305,7 +324,7 @@ FANS.forEach(([k, label]) => {
                 + `<input type="range" min="0" max="100" step="50" value="100" id="fs-${k}">`;
   fanGrid.appendChild(div);
   div.querySelector('input').addEventListener('input', e => {
-    state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
+    state.damage.areas[k] = (100 - +e.target.value) / 50;
     renderFans(); saveDamage();
   });
 });
@@ -318,12 +337,10 @@ function renderFans() {
   });
 }
 
-// ---- shield panels (cycle N0/N1/N2) ----
-const SP_CLASS = ['lit0', 'lit1', 'lit2'];
 function renderShields() {
   document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => {
     const st = state.damage.shieldPanels[+sp.dataset.i] | 0;
-    sp.classList.remove('lit0', 'lit1', 'lit2'); sp.classList.add(SP_CLASS[st]);
+    sp.classList.remove('lit0', 'lit1', 'lit2'); sp.classList.add(['lit0', 'lit1', 'lit2'][st]);
   });
 }
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
@@ -332,7 +349,6 @@ document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventLis
   renderShields(); saveDamage();
 }));
 
-// ---- subsystem power (weapons/drones on/off) ----
 function setSwitch(el, on) { el.classList.toggle('on', on); }
 const swW = document.getElementById('sw-weapons'), swD = document.getElementById('sw-drones');
 swW.addEventListener('click', () => { state.power.weapons = state.power.weapons > 0 ? 0 : 25; clampBudget('weapons'); renderPower(); renderSubs(); savePower(); });
@@ -340,29 +356,19 @@ swD.addEventListener('click', () => { state.power.drones  = state.power.drones  
 function renderSubs() {
   setSwitch(swW, state.power.weapons > 0);
   setSwitch(swD, state.power.drones > 0);
+  updateSummary();
 }
 
-function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderFans(); renderShields(); renderSubs(); }
+function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderFans(); renderShields(); renderSubs(); updateSummary(); }
 renderAll();
 
-// ---- locked / view-only mode: players can watch live state, not operate it ----
-const Q = new URLSearchParams(location.search);
-const IS_PLAYER_VIEW = Q.has('player-view');
-const LOCKED = IS_PLAYER_VIEW || Q.has('locked');
-
-// the read-only (player) view shows operator-triggered damage dots; the operator's does not
 document.getElementById('holo-frame').src = LOCKED ? 'index.html?dots=1' : 'index.html';
-
 if (LOCKED) {
   document.body.classList.add('locked');
-  if (IS_PLAYER_VIEW) {
-    document.body.classList.add('player-view');
-  }
   document.getElementById('con-title').textContent = 'SHIP STATUS · LIVE';
   document.querySelectorAll('input, button').forEach(el => { el.disabled = true; el.tabIndex = -1; });
 }
 
-// keep in sync if another local tab changes things
 addEventListener('storage', () => {
   state.power = load('shipPowerLevels', state.power);
   state.damage = load('shipDamageState', state.damage);
@@ -371,7 +377,6 @@ addEventListener('storage', () => {
   renderAll();
 });
 
-// ---- Firebase (dynamic import; operator both writes and reads) ----
 const firebaseConfig = {
   apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
   authDomain: "shadowrun-ship-db.firebaseapp.com",
@@ -389,13 +394,10 @@ const firebaseConfig = {
     fb = { set, ref, db };
     document.getElementById('netdot').style.color = '#4ade80';
     document.getElementById('netlbl').textContent = 'CLOUD';
-    // adopt cloud state on connect (so a fresh operator matches what's live)
     onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderSubs(); } });
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
-  } catch (e) {
-    console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
-  }
+  } catch (e) { console.warn('[operator] Firebase unavailable.', e); }
 })();
 </script>
 </body>
