@@ -47,14 +47,13 @@
 
   /* STS holographic badge — sits under the scanlines so they ripple over it */
   .badge{ position:absolute; z-index:1; pointer-events:none; top:12px; left:50%;
-    transform:translateX(-50%); width:96px; height:96px; opacity:.6;
-    filter:drop-shadow(0 0 7px rgba(74,222,128,.45)); animation:badgePulse 5s ease-in-out infinite; }
-  .badge svg{ width:100%; height:100%; display:block; }
-  .badge .badge-img{ position:absolute; inset:20% 22%; object-fit:contain;
-    clip-path:polygon(50% 2%,98% 27%,98% 73%,50% 98%,2% 73%,2% 27%);
-    opacity:.85; mix-blend-mode:screen;
-    filter:grayscale(1) brightness(1.25) sepia(1) hue-rotate(70deg) saturate(380%); }
-  @keyframes badgePulse{ 0%,100%{opacity:.52} 50%{opacity:.66} }
+    transform:translateX(-50%); width:98px; height:98px; opacity:.5;
+    filter:drop-shadow(0 0 6px rgba(74,222,128,.3)); animation:badgePulse 5s ease-in-out infinite; }
+  .badge svg{ position:absolute; inset:0; width:100%; height:100%; display:block; opacity:.7; }
+  .badge .badge-img{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:60%; height:auto; mix-blend-mode:screen;     /* black recedes into the scene, green carries */
+    filter:drop-shadow(0 0 4px rgba(74,222,128,.55)) saturate(1.15); }
+  @keyframes badgePulse{ 0%,100%{opacity:.42} 50%{opacity:.56} }
 
   .main{ grid-area:main; }
   .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
@@ -141,11 +140,10 @@
     <canvas id="cv-persp"></canvas>
     <div class="badge">
       <svg viewBox="0 0 100 100" aria-label="STS">
-        <polygon points="50,5 91,28 91,72 50,95 9,72 9,28" fill="rgba(16,48,26,0.35)" stroke="#4ade80" stroke-width="2.5"/>
-        <polygon points="50,18 79,34 79,66 50,82 21,66 21,34" fill="none" stroke="#2bbf6a" stroke-width="1.3"/>
-        <text x="50" y="58" text-anchor="middle" font-size="20" letter-spacing="1" fill="#bef9d2" font-family="monospace" font-weight="bold">STS</text>
+        <polygon points="50,5 91,28 91,72 50,95 9,72 9,28" fill="rgba(14,42,24,0.4)" stroke="#4ade80" stroke-width="2.5"/>
+        <polygon points="50,18 79,34 79,66 50,82 21,66 21,34" fill="none" stroke="#2bbf6a" stroke-width="1.2"/>
       </svg>
-      <img class="badge-img" src="sts-edited.png" alt="" onerror="this.remove()">
+      <img class="badge-img" src="sts.png" alt="STS">
     </div>
     <div class="scan"></div><div class="sweep"></div>
   </div>
