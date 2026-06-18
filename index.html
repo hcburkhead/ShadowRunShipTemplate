@@ -10,15 +10,6 @@
 
     .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
 
-    /* --- HOLOGRAPHIC CONSOLE BAND (3D wireframe + LCARS profile views) --- */
-    .holo-band { width: 100%; background: #040d04; border-bottom: 1.5px solid #1e4d1e; }
-    .holo-band .holo-hdr { display: flex; justify-content: space-between; align-items: center;
-        padding: 6px 12px; font-size: 9px; letter-spacing: 2px; color: #2d6a2d; }
-    .holo-band .holo-hdr a { color: #4ade80; text-decoration: none; border: 1px solid #2c6a2c;
-        border-radius: 3px; padding: 2px 8px; }
-    .holo-band .holo-hdr a:hover { background: #0a1a0a; }
-    .holo-frame { width: 100%; height: 470px; border: 0; display: block; }
-
     /* --- SCHEMATIC ROW --- */
     .schematic-row { display: flex; width: 100%; align-items: stretch; }
     .ship-wrap { flex: 1; position: relative; }
@@ -95,14 +86,6 @@
 <a class="view-link" href="?display" target="_blank" rel="noopener" title="Open a locked, live, read-only view for participants">⤢ Participant view</a>
 <div class="display-badge"><span class="dot"></span>PARTICIPANT VIEW · LIVE</div>
 <div class="outer">
-
-  <div class="holo-band">
-    <div class="holo-hdr">
-      <span>▸ holographic projection · STS helicarrier</span>
-      <a href="console.html" target="_blank" rel="noopener" title="Open the console full-screen">⤢ expand</a>
-    </div>
-    <iframe class="holo-frame" src="console.html" title="Holographic ship console" loading="lazy"></iframe>
-  </div>
 
   <div class="schematic-row">
     <div class="ship-wrap">

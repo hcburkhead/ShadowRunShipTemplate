@@ -201,6 +201,38 @@ function fitToFrame(g, target = 160) {
   return wrap;
 }
 
+// ---- shield shell: an ellipsoid of wireframe arcs split into curved panels ----
+// 8 sectors around the vertical axis (fore / quarters / port / starboard / aft);
+// each panel is recoloured by its damage state — N0 green, N1 yellow, N2 red.
+function buildShield(rx, ry, rz, sectors = 8, lat = 4, seg = 16) {
+  const group = new THREE.Group();
+  const P = (t, p) => [rx*Math.cos(p)*Math.cos(t), ry*Math.sin(p), rz*Math.cos(p)*Math.sin(t)];
+  const sectorObjs = [];
+  for (let s = 0; s < sectors; s++) {
+    const a0 = (s / sectors) * Math.PI * 2, a1 = ((s + 1) / sectors) * Math.PI * 2;
+    const pts = [];
+    for (let i = 0; i < seg; i++) {                       // sector-boundary meridian
+      const p0 = -Math.PI/2 + Math.PI*i/seg, p1 = -Math.PI/2 + Math.PI*(i+1)/seg;
+      pts.push(P(a0, p0), P(a0, p1));
+    }
+    for (let b = 1; b < lat; b++) {                       // latitude arcs across the panel
+      const phi = -Math.PI/2 + Math.PI*b/lat;
+      for (let i = 0; i < seg; i++) {
+        const t0 = a0 + (a1-a0)*i/seg, t1 = a0 + (a1-a0)*(i+1)/seg;
+        pts.push(P(t0, phi), P(t1, phi));
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x4ade80, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ls.userData.baseOp = 0.34;
+    group.add(ls); sectorObjs.push(ls);
+  }
+  group.userData.sectors = sectorObjs;
+  return group;
+}
+
 // ---- four independent views (shared scene-graph via cloned line geometry) ----
 const HALF = 96;   // ortho world half-height to frame the fitted model
 function makeView(id, build) {
@@ -215,6 +247,7 @@ function makeView(id, build) {
   return v;
 }
 const views = [];
+const shieldGroups = [];     // one shield shell per view
 
 const persp = makeView('cv-persp', (v) => {
   const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
@@ -256,6 +289,11 @@ const loader = new FBXLoader();
 loader.load(MODEL_URL, (res) => {
   const model = fitToFrame(wireframeOf(res.scene || res));
   views.forEach(v => v.scene.add(v === persp ? model : model.clone()));
+  // a shield shell sized to enclose the fitted ship, one per view
+  const sz = new THREE.Vector3(); new THREE.Box3().setFromObject(model).getSize(sz);
+  const rx = sz.x * 0.62, ry = Math.max(sz.y * 0.95, 24), rz = sz.z * 0.6;
+  views.forEach(v => { const sh = buildShield(rx, ry, rz); v.scene.add(sh); shieldGroups.push(sh); });
+  applyShield();
   resizeAll();
 }, undefined, (err) => {
   console.warn('[console] model load failed:', err);
@@ -263,10 +301,12 @@ loader.load(MODEL_URL, (res) => {
   document.getElementById('err').textContent = 'Could not load ' + MODEL_URL;
 });
 
-let last = 0;
-function tick(t) {
+function tick() {
   requestAnimationFrame(tick);
   if (persp && persp.controls) persp.controls.update();
+  const pulse = 0.72 + 0.28 * Math.sin(performance.now() / 620);   // shield breathing
+  for (const g of shieldGroups)
+    for (const ls of g.userData.sectors) ls.material.opacity = (ls.userData.baseOp || 0.3) * pulse;
   views.forEach(v => v.renderer.render(v.scene, v.cam));
 }
 requestAnimationFrame(tick);
@@ -317,6 +357,25 @@ function readState() {
 function setDot(id, c, flash) {
   const d = document.getElementById(id);
   d.style.color = c; d.classList.toggle('flash', !!flash);
+}
+
+// recolour every shield panel from its damage state (N0/N1/N2); the whole
+// shell brightens with shield power and collapses to a faint red when offline.
+const SHIELD_COL = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
+function applyShield() {
+  if (!shieldGroups.length) return;
+  let pw = {}, dmg = {};
+  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  const shields = Number.isFinite(+pw.shields) ? +pw.shields : 25;
+  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : new Array(8).fill(0);
+  const offline = shields === 0;
+  const bandOp  = shields <= 4 ? 0.14 : shields <= 10 ? 0.20 : shields <= 20 ? 0.28 : 0.36;
+  shieldGroups.forEach(g => g.userData.sectors.forEach((ls, i) => {
+    const st = Math.max(0, Math.min(2, panels[i] | 0));
+    ls.material.color.setHex(offline ? 0xef4444 : SHIELD_COL[st]);
+    ls.userData.baseOp = offline ? 0.07 : bandOp;
+  }));
 }
 function render() {
   const s = readState();
@@ -372,6 +431,8 @@ function render() {
   document.getElementById('of-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
   document.getElementById('of-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
   document.getElementById('of-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+
+  applyShield();
 }
 render();
 addEventListener('storage', render);
