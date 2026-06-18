@@ -1,395 +1,703 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ship Power Dashboard</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #040d04; font-family: monospace; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helicarrier — Holographic Console</title>
+<style>
+  :root{
+    --bg:#040d04; --panel:#07140a; --edge:#1e4d1e;
+    --g1:#4ade80; --g2:#2bbf6a; --g3:#137a3c; --dim:#2d6a2d;
+    --amber:#f6a23c; --red:#ef4444; --lav:#b99cff; --glint:#bef9d2;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; background:var(--bg); font-family:'Courier New',monospace; color:var(--g1);
+             overflow:hidden; letter-spacing:1px; }
 
-    .outer { background: #061006; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; width: 100%; max-width: 1000px; border: 1px solid #1e4d1e; }
+  /* ---- LCARS grid ---- */
+  #console{ position:absolute; inset:0; display:grid; gap:6px; padding:6px;
+    grid-template-columns:74px 1fr 238px; grid-template-rows:1fr 132px;
+    grid-template-areas:"rail main orthos" "rail readouts orthos"; }
 
-    /* --- SCHEMATIC ROW --- */
-    .schematic-row { display: flex; width: 100%; align-items: stretch; }
-    .ship-wrap { flex: 1; position: relative; }
-    .ship-wrap img { width: 100%; height: auto; display: block; filter: brightness(0.9); }
-    .ship-wrap svg.ov { width: 100%; height: auto; display: block; }
+  /* left LCARS rail */
+  .rail{ grid-area:rail; display:flex; flex-direction:column; gap:6px; }
+  .rail .elbow{ height:64px; background:var(--g3); border-radius:34px 34px 6px 6px;
+    position:relative; }
+  .rail .elbow::after{ content:""; position:absolute; right:-6px; bottom:0; width:30px; height:18px;
+    background:var(--g3); }
+  .pill{ border-radius:6px; padding:7px 6px; font-size:8px; font-weight:bold; color:#02160a;
+    text-align:right; line-height:1.2; word-break:break-word; }
+  .pill.a{ background:var(--amber); } .pill.g{ background:var(--g2); }
+  .pill.d{ background:var(--g3); } .pill.l{ background:var(--lav); }
+  .pill.grow{ flex:1; display:flex; align-items:flex-end; justify-content:flex-end; border-radius:6px 6px 34px 34px; }
 
-    /* --- LIVE SYSTEM OVERLAYS (tint + bloom that recolor each ship system) --- */
-    .ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .tint { mix-blend-mode: color; }
-    .bloom { mix-blend-mode: screen; filter: blur(0.7px); opacity: .38; }
-    .zone { transition: color .3s ease; }
-    .tint-svg .zone * { fill: currentColor; stroke: none; }
-    .bloom-svg .zone * { fill: none; stroke: currentColor; stroke-width: 1.6; }
-    @keyframes pz { 0%,100%{opacity:1} 50%{opacity:.15} }
-    .zone.pulse, .ibar-fill.pulse { animation: pz 0.8s ease-in-out infinite; }
+  .frame{ position:relative; background:#020a05; border-radius:8px; overflow:hidden;
+    border:1px solid var(--edge); }
+  .frame .vlabel{ position:absolute; top:7px; left:10px; font-size:9px; color:var(--g2); z-index:3;
+    text-shadow:0 0 6px rgba(74,222,128,.5); }
+  .frame .tag{ position:absolute; top:7px; right:10px; font-size:8px; color:var(--dim); z-index:3; }
+  canvas{ display:block; width:100%; height:100%; }
+  /* hologram scanlines + sweep */
+  .scan{ position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,30,16,0) 0 2px, rgba(0,40,22,.22) 2px 3px); }
+  .sweep{ position:absolute; left:0; right:0; height:34%; z-index:2; pointer-events:none;
+    background:linear-gradient(0deg, transparent, rgba(74,222,128,.10) 60%, transparent);
+    animation:sweep 5.5s linear infinite; }
+  @keyframes sweep{ 0%{transform:translateY(120%)} 100%{transform:translateY(-220%)} }
 
-    /* --- INSET PROGRESS BARS (overlaid on the schematic's power panel) --- */
-    .bar-overlay { position: absolute; inset: 0; pointer-events: none; }
-    .ibar { position: absolute; border-radius: 2px; overflow: hidden; background: rgba(8, 22, 8, 0.35); }
-    .ibar-fill { height: 100%; width: 25%; border-radius: 2px; background: #4ade80;
-                 box-shadow: 0 0 7px rgba(74, 222, 128, 0.75), inset 0 0 4px rgba(190, 255, 210, 0.5);
-                 transition: width 0.25s ease, opacity 0.25s; }
+  .main{ grid-area:main; }
+  .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
+  .oview{ flex:1; min-height:0; }
+  /* per-view readouts moved to top-left so the bottom shield arc stays clear */
+  .oview .oinfo{ position:absolute; left:10px; top:21px; z-index:3;
+    font-size:8px; color:var(--g2); display:flex; flex-direction:column; gap:1px; line-height:1.3; }
+  .oview .oinfo b{ color:var(--glint); font-weight:normal; }
 
-    /* --- MAIN POWER PANEL (second panel) --- */
-    .power-panel { width: 220px; background: #061006; border-left: 1.5px solid #1e4d1e; display: flex; flex-direction: column; }
-    .pp-title { background: #0a1e0a; border-bottom: 1.5px solid #1e4d1e; text-align: center; font-size: 10px; letter-spacing: 2px; color: #4ade80; padding: 8px 4px; font-weight: 500; }
-    .pp-main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 14px 16px; text-align: center; }
-    .mp-label { font-size: 10px; letter-spacing: 2px; color: #2d6a2d; }
-    .engine-status { font-size: 18px; font-weight: 600; letter-spacing: 3px; color: #4ade80; transition: color 0.2s; }
-    .pp-top-bar-wrap { width: 100%; height: 22px; background: #0a1a0a; border: 1px solid #1e4d1e; border-radius: 2px; overflow: hidden; display: flex; }
-    .seg { height: 100%; transition: width 0.25s; }
-    .total-row { display: flex; flex-direction: column; gap: 2px; font-size: 9px; color: #2d6a2d; letter-spacing: 1px; }
-    .total-val { font-size: 22px; font-weight: 600; color: #4ade80; letter-spacing: 1px; }
-    .total-val.over { color: #ef4444; }
+  /* ---- readout strip (flex-wraps so it fits narrow screens) ---- */
+  .readouts{ grid-area:readouts; display:flex; flex-wrap:wrap; align-content:center; gap:6px; }
+  .card{ flex:1 1 150px; min-width:120px; background:var(--panel); border:1px solid var(--edge);
+    border-radius:6px; padding:7px 9px; display:flex; flex-direction:column; gap:4px; }
+  .card .h{ font-size:8px; color:var(--dim); letter-spacing:2px; }
 
-    /* --- SLIDERS --- */
-    .sliders-row { background: #061006; border-top: 1.5px solid #1e4d1e; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-    .sl-block { display: flex; flex-direction: column; gap: 3px; }
-    .sl-header { display: flex; justify-content: space-between; align-items: center; }
-    .sl-name { font-size: 9px; letter-spacing: 2px; color: #2d6a2d; }
-    .sl-pct { font-size: 13px; font-weight: 500; color: #4ade80; transition: color 0.2s; }
-    .sl-pct.low { color: #ef4444; }
-    .sl-pct.warn { color: #f59e0b; }
-    input[type=range] { width: 100%; accent-color: #4ade80; cursor: pointer; }
+  .hull-state{ font-size:21px; font-weight:bold; letter-spacing:2px; line-height:1; }
+  .hull-sub{ font-size:8px; color:var(--dim); }
 
-    /* --- LOG --- */
-    .log-area { background: #040d04; border-top: 1.5px solid #1e4d1e; padding: 8px 12px; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; }
-    .log-hdr { font-size: 9px; letter-spacing: 2px; color: #1e4d1e; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #040d04; padding: 2px 0; }
-    .log-clear { font: inherit; font-size: 9px; letter-spacing: 1px; color: #2d6a2d; background: transparent; border: 1px solid #1e4d1e; border-radius: 3px; padding: 2px 8px; cursor: pointer; }
-    .log-clear:hover { color: #4ade80; border-color: #2c6a2c; background: #0a1a0a; }
-    .log-entry { font-size: 10px; line-height: 1.7; display: flex; gap: 8px; border-bottom: 0.5px solid #0a1e0a; }
-    .log-t { color: #1e6b1e; min-width: 52px; }
-    .log-m { color: #4ade80; }
-    .log-m.drop { color: #ef4444; }
-    .log-m.gain { color: #4ade80; }
-    .log-m.warn { color: #f59e0b; }
+  .pwr-val{ font-size:18px; font-weight:bold; }
+  .pwr-bar{ display:flex; height:13px; border:1px solid var(--edge); border-radius:3px; overflow:hidden; }
+  .pwr-bar .s{ height:100%; }
+  .pwr-leg{ display:flex; gap:8px; font-size:7.5px; color:var(--dim); }
+  .pwr-leg i{ font-style:normal; }
+  .pwr-leg b{ display:inline-block; width:7px; height:7px; border-radius:2px; vertical-align:middle; margin-right:3px; }
 
-    /* --- participant / display view (read-only, live) --- */
-    .view-link, .display-badge { position: fixed; top: 10px; right: 10px; z-index: 30;
-        font: 10px/1 monospace; letter-spacing: 1px; padding: 6px 10px; border-radius: 4px;
-        border: 1px solid #2c6a2c; background: #0e160e; color: #4ade80; text-decoration: none; }
-    .view-link:hover { background: #173a17; }
-    .display-badge { display: none; }
-    .display-badge .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-        background: #4ade80; margin-right: 6px; animation: pz 1.4s ease-in-out infinite; }
-    body.display .view-link { display: none; }
-    body.display .display-badge { display: block; }
-    body.display .sliders-row { display: none; }
-    body.display .log-clear { display: none; }
-    body.display input[type=range] { pointer-events: none; }
-  </style>
+  .eng-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:5px 8px; }
+  .eng{ display:flex; flex-direction:column; gap:2px; }
+  .eng .lbl{ display:flex; justify-content:space-between; font-size:7.5px; color:var(--dim); }
+  .eng .lbl b{ color:var(--glint); font-weight:normal; }
+  .eng .track{ height:6px; background:#0c1f10; border-radius:3px; overflow:hidden; }
+  .eng .fill{ height:100%; width:100%; border-radius:3px; transition:width .3s,background .3s; }
+
+  .sys-grid{ display:grid; grid-template-columns:1fr 1fr; gap:5px 8px; }
+  .sysind{ display:flex; align-items:center; gap:6px; font-size:9px; }
+  .sysind .dot{ width:10px; height:10px; border-radius:50%; flex:none;
+    box-shadow:0 0 7px currentColor; background:currentColor; }
+  .sysind .nm{ color:var(--dim); font-size:7.5px; letter-spacing:1px; }
+  .sysind .st{ font-size:9px; font-weight:bold; }
+
+  .flash{ animation:fl .8s steps(1) infinite; }
+  @keyframes fl{ 50%{ opacity:.18; } }
+
+  /* shield arc-ring overlay (sits over each view, under the labels) */
+  .shield{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none;
+    transition:opacity .4s; animation:shbreathe 3.4s ease-in-out infinite; }
+  .shield path{ transition:stroke .3s; filter:drop-shadow(0 0 2px currentColor); }
+  .shield.offline{ animation:shflash .7s steps(1) infinite; }
+  @keyframes shbreathe{ 0%,100%{opacity:var(--o,.9)} 50%{opacity:calc(var(--o,.9)*.7)} }
+  @keyframes shflash{ 50%{opacity:.12} }
+
+  /* ---- responsive: keep it viewable on most screens ---- */
+  @media (max-width: 900px) {
+    #console{ grid-template-columns:56px 1fr;
+      grid-template-rows:minmax(200px,1.3fr) minmax(150px,1fr) auto;
+      grid-template-areas:"rail main" "rail orthos" "rail readouts"; }
+    .orthos{ flex-direction:row; }            /* profiles sit in a row under the main view */
+    .pill{ font-size:7px; padding:5px 4px; }
+  }
+  @media (max-width: 560px) {
+    #console{ grid-template-columns:1fr; padding:4px;
+      grid-template-rows:minmax(180px,1.3fr) minmax(120px,1fr) auto;
+      grid-template-areas:"main" "orthos" "readouts"; }
+    .rail{ display:none; }
+  }
+
+  #err{ position:absolute; inset:0; display:none; place-items:center; text-align:center;
+    color:var(--amber); font-size:12px; padding:30px; z-index:50; }
+</style>
 </head>
 <body>
-<a class="view-link" href="?display" target="_blank" rel="noopener" title="Open a locked, live, read-only view for participants">⤢ Participant view</a>
-<div class="display-badge"><span class="dot"></span>PARTICIPANT VIEW · LIVE</div>
-<div class="outer">
+<div id="console">
 
-  <div class="schematic-row">
-    <div class="ship-wrap">
-      <img src="ShipTemplate.png" alt="Ship schematic blueprint">
+  <div class="rail">
+    <div class="elbow"></div>
+    <div class="pill a">STS&nbsp;OPS</div>
+    <div class="pill g">HOLO<br>PROJ</div>
+    <div class="pill d">SENTRIS<br>TECH</div>
+    <div class="pill l">AERO<br>DIV</div>
+    <div class="pill grow d">02&middot;47</div>
+  </div>
 
-      <svg class="ov bloom bloom-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <g id="b-eng" class="zone" style="color:#4ade80">
-          <polygon points="388.1,115 387.4,107.5 356.8,98.2 357.1,58.8 363.9,54.6 401.6,44.3 484.2,45.6 510.6,54 514.8,64.6 515.8,84 511.9,99.8 497.1,106.6 474.5,110.1 452.9,110.1 452.3,116.6"/>
-          <polygon points="388.4,250.1 388.4,254.6 356.8,264.6 355.2,300.1 357.4,306.9 405.5,319.8 475.2,318.8 510.6,308.2 513.9,303.7 512.9,264 492.6,254.6 473.9,252.1 452.6,251.7 451.6,247.2"/>
-          <polygon points="617.2,114 615.3,108.2 584.3,98.8 585.9,58.5 599.5,51.1 629.2,44.6 708.5,45.9 734.3,52.1 742.1,58.8 741.7,85 739.2,100.1 720.1,108.2 681.4,112.7 680.8,105.6 672.7,100.1 655.3,98.5 639.5,102.1 633.7,106.3 633.4,115"/>
-          <polygon points="617.9,247.9 617.9,256.3 598.2,258.8 584.6,265.9 584.3,302.7 587.2,307.2 619.8,316.3 638.8,318.5 697.5,318.8 728.2,312.4 740.5,306.6 743,296.3 741.1,266.6 734,259.5 709.8,253 682.1,253.4 682.1,249.8 680.1,261.4 670.5,265.6 652.1,263.4 634.3,257.9 633.4,247.2"/>
-          <polygon points="453,543.9 487.9,543.5 516.9,532.6 520.5,518.4 519.8,490.3 511.7,483.5 489.5,477.4 438.5,475.2 401.1,475.8 386.6,478.4 365.3,483.2 356.6,489.4 355,517.4 358.2,531.9 378.8,537.7 410.1,544.5"/>
-          <circle cx="890.8" cy="506.5" r="31.5"/>
-          <circle cx="1047" cy="506.5" r="31.6"/>
-        </g>
-        <g id="b-drn" class="zone" style="color:#4ade80">
-          <polygon points="370,128 509,128 512,129 513,167 506,169 508,189 512,196 515,237 498,239 369,239 365,230 365,191 372,190 370,173 365,169 365,139"/>
-        </g>
-        <g id="b-wpn" class="zone" style="color:#4ade80">
-          <rect x="546.9" y="460" width="79.4" height="22.3" rx="6"/>
-          <polygon points="629.5,567.1 617.5,566.5 602.7,561.6 622.4,552.6 668.2,543.5 724,542.3 726.9,537.4 671.4,538.4 640.5,540.3 612.1,544.5 579.5,553.2 559.2,560.6 543,569.7 559.5,585.8 580.1,604.2 584,611.6 600.5,604.2 592.7,589.4 589.8,577.1 597.5,565.8 610.8,564.8"/>
-          <polygon points="630.5,582.9 645.3,583.9 647.9,581.6 675.3,581.6 675.9,577.1 652.1,576.1 647.5,576.1 645.3,573.2 639.2,572.9 639.8,566.8 630.1,566.5 629.5,573.5 620.5,573.5 620.5,581"/>
-        </g>
-        <g id="b-shd" class="zone" style="color:#4ade80">
-          <polygon points="965,488.7 973.4,488.1 997.3,503.9 999.9,515.8 998.6,535.2 979.2,548.7 970.8,553.2 954.7,543.9 940.5,532.3 940.5,507.4 953.1,496.5"/>
-        </g>
-      </svg>
+  <div class="frame main">
+    <div class="vlabel">PERSPECTIVE</div><div class="tag">EDGES ONLY</div>
+    <canvas id="cv-persp"></canvas>
+    <div class="scan"></div><div class="sweep"></div>
+  </div>
 
-      <svg class="ov tint tint-svg" viewBox="0 0 1538 688" width="1538" height="688" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <g id="t-eng" class="zone" style="color:#4ade80">
-          <polygon points="388.1,115 387.4,107.5 356.8,98.2 357.1,58.8 363.9,54.6 401.6,44.3 484.2,45.6 510.6,54 514.8,64.6 515.8,84 511.9,99.8 497.1,106.6 474.5,110.1 452.9,110.1 452.3,116.6"/>
-          <polygon points="388.4,250.1 388.4,254.6 356.8,264.6 355.2,300.1 357.4,306.9 405.5,319.8 475.2,318.8 510.6,308.2 513.9,303.7 512.9,264 492.6,254.6 473.9,252.1 452.6,251.7 451.6,247.2"/>
-          <polygon points="617.2,114 615.3,108.2 584.3,98.8 585.9,58.5 599.5,51.1 629.2,44.6 708.5,45.9 734.3,52.1 742.1,58.8 741.7,85 739.2,100.1 720.1,108.2 681.4,112.7 680.8,105.6 672.7,100.1 655.3,98.5 639.5,102.1 633.7,106.3 633.4,115"/>
-          <polygon points="617.9,247.9 617.9,256.3 598.2,258.8 584.6,265.9 584.3,302.7 587.2,307.2 619.8,316.3 638.8,318.5 697.5,318.8 728.2,312.4 740.5,306.6 743,296.3 741.1,266.6 734,259.5 709.8,253 682.1,253.4 682.1,249.8 680.1,261.4 670.5,265.6 652.1,263.4 634.3,257.9 633.4,247.2"/>
-          <polygon points="453,543.9 487.9,543.5 516.9,532.6 520.5,518.4 519.8,490.3 511.7,483.5 489.5,477.4 438.5,475.2 401.1,475.8 386.6,478.4 365.3,483.2 356.6,489.4 355,517.4 358.2,531.9 378.8,537.7 410.1,544.5"/>
-          <circle cx="890.8" cy="506.5" r="31.5"/>
-          <circle cx="1047" cy="506.5" r="31.6"/>
-        </g>
-        <g id="t-drn" class="zone" style="color:#4ade80">
-          <polygon points="370,128 509,128 512,129 513,167 506,169 508,189 512,196 515,237 498,239 369,239 365,230 365,191 372,190 370,173 365,169 365,139"/>
-        </g>
-        <g id="t-wpn" class="zone" style="color:#4ade80">
-          <rect x="546.9" y="460" width="79.4" height="22.3" rx="6"/>
-          <polygon points="629.5,567.1 617.5,566.5 602.7,561.6 622.4,552.6 668.2,543.5 724,542.3 726.9,537.4 671.4,538.4 640.5,540.3 612.1,544.5 579.5,553.2 559.2,560.6 543,569.7 559.5,585.8 580.1,604.2 584,611.6 600.5,604.2 592.7,589.4 589.8,577.1 597.5,565.8 610.8,564.8"/>
-          <polygon points="630.5,582.9 645.3,583.9 647.9,581.6 675.3,581.6 675.9,577.1 652.1,576.1 647.5,576.1 645.3,573.2 639.2,572.9 639.8,566.8 630.1,566.5 629.5,573.5 620.5,573.5 620.5,581"/>
-        </g>
-        <g id="t-shd" class="zone" style="color:#4ade80">
-          <polygon points="965,488.7 973.4,488.1 997.3,503.9 999.9,515.8 998.6,535.2 979.2,548.7 970.8,553.2 954.7,543.9 940.5,532.3 940.5,507.4 953.1,496.5"/>
-        </g>
-      </svg>
-
-      <div class="bar-overlay">
-        <div class="ibar" style="left:74.8%; top:24.4%; width:21.6%; height:6.6%">
-          <div class="ibar-fill" id="ifill-sys"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:44.2%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-drones"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:62.5%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-weapons"></div>
-        </div>
-        <div class="ibar" style="left:74.8%; top:80.6%; width:21.6%; height:5.8%">
-          <div class="ibar-fill" id="ifill-shields"></div>
-        </div>
-      </div>
+  <div class="orthos">
+    <div class="frame oview">
+      <div class="vlabel">DORSAL</div><div class="tag">TOP</div>
+      <canvas id="cv-top"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>BEAM</span><span>ENG <b id="ot-eng">NOMINAL</b></span></div>
     </div>
-
-    <div class="power-panel">
-      <div class="pp-title">main power</div>
-      <div class="pp-main">
-        <span class="mp-label">reactor status</span>
-        <span class="engine-status" id="engine-status">NOMINAL</span>
-        <div class="pp-top-bar-wrap">
-          <div class="seg" id="seg-sys"     style="width:25%;background:#4ade80"></div>
-          <div class="seg" id="seg-drones"  style="width:25%;background:#2bbf6a"></div>
-          <div class="seg" id="seg-weapons" style="width:25%;background:#1c9c52"></div>
-          <div class="seg" id="seg-shields" style="width:25%;background:#137a3c"></div>
-          <div class="seg" id="seg-empty"   style="width:0%;background:#0a1a0a"></div>
-        </div>
-        <div class="total-row">
-          <span class="total-val" id="total-val-disp">100%</span>
-          <span>total allocated</span>
-        </div>
-      </div>
+    <div class="frame oview">
+      <div class="vlabel">PORT</div><div class="tag">SIDE</div>
+      <canvas id="cv-port"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>SHLD <b id="op-shd">—</b></span><span>HULL <b id="op-hull">NOMINAL</b></span></div>
+    </div>
+    <div class="frame oview">
+      <div class="vlabel">FORE</div><div class="tag">FRONT</div>
+      <canvas id="cv-fore"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>WPN <b id="of-wpn">—</b></span><span>AI <b id="of-ai">ONLINE</b></span></div>
+    </div>
+    <div class="frame oview">
+      <div class="vlabel">AFT</div><div class="tag">REAR</div>
+      <canvas id="cv-aft"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>DRN <b id="oa-drn">—</b></span><span>HULL <b id="oa-hull">NOMINAL</b></span></div>
     </div>
   </div>
 
-  <div class="sliders-row">
-    <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ ENGINES</span>
-        <span class="sl-pct" id="pct-sys">25%</span>
-      </div>
-      <input type="range" min="0" max="25" step="1" value="25" id="sl-sys" oninput="onSlide('sys',this.value)">
+  <div class="readouts">
+    <div class="card">
+      <span class="h">HULL INTEGRITY</span>
+      <span class="hull-state" id="hull-state">NOMINAL</span>
+      <span class="hull-sub" id="hull-sub">all sections green</span>
     </div>
-    <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ DRONES</span>
-        <span class="sl-pct" id="pct-drones">25%</span>
+
+    <div class="card">
+      <span class="h">MAIN POWER</span>
+      <span class="pwr-val" id="pwr-val">125%</span>
+      <div class="pwr-bar">
+        <div class="s" id="pseg-core" style="background:var(--g1)"></div>
+        <div class="s" id="pseg-aux"  style="background:var(--g2)"></div>
+        <div class="s" id="pseg-batt" style="background:var(--amber)"></div>
       </div>
-      <input type="range" min="0" max="25" step="1" value="25" id="sl-drones" oninput="onSlide('drones',this.value)">
+      <div class="pwr-leg">
+        <i><b style="background:var(--g1)"></b>CORE</i>
+        <i><b style="background:var(--g2)"></b>AUX</i>
+        <i><b style="background:var(--amber)"></b>BATT</i>
+      </div>
     </div>
-    <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ WEAPONS</span>
-        <span class="sl-pct" id="pct-weapons">25%</span>
-      </div>
-      <input type="range" min="0" max="25" step="1" value="25" id="sl-weapons" oninput="onSlide('weapons',this.value)">
+
+    <div class="card">
+      <span class="h">ENGINE STRUCTURAL INTEGRITY</span>
+      <div class="eng-grid" id="eng-grid"></div>
     </div>
-    <div class="sl-block">
-      <div class="sl-header">
-        <span class="sl-name">⬡ SHIELDS</span>
-        <span class="sl-pct" id="pct-shields">25%</span>
+
+    <div class="card">
+      <span class="h">SUBSYSTEMS</span>
+      <div class="sys-grid">
+        <div class="sysind"><span class="dot" id="d-shd"></span><span><span class="nm">SHIELDS</span><br><span class="st" id="s-shd">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-wpn"></span><span><span class="nm">WEAPONS</span><br><span class="st" id="s-wpn">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-drn"></span><span><span class="nm">DRONES</span><br><span class="st" id="s-drn">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-ai"></span><span><span class="nm">AI CORE</span><br><span class="st" id="s-ai">—</span></span></div>
       </div>
-      <input type="range" min="0" max="25" step="1" value="25" id="sl-shields" oninput="onSlide('shields',this.value)">
     </div>
   </div>
-
-  <div class="log-area">
-    <div class="log-hdr"><span>▸ system status log</span><button class="log-clear" onclick="clearLog()">clear</button></div>
-    <div id="log-entries"></div>
-  </div>
-
 </div>
+<div id="err">WebGL unavailable — the holographic console needs a WebGL-capable browser.</div>
 
-<script>
-  const LABELS = { sys:'Engines', drones:'Drones', weapons:'Weapons', shields:'Shields' };
-  const ZONE   = { sys:'eng', drones:'drn', weapons:'wpn', shields:'shd' };
-  const prev   = { sys:25, drones:25, weapons:25, shields:25 };
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import { FBXLoader } from './vendor/FBXLoader.js';
 
-  // Map a 0-25 power level to an overlay colour + flash state.
-  //   0-4   flashing red      5-10  flashing orange
-  //   11-15 solid orange      16-20 solid yellow      21-25 solid green
-  function zoneColor(v) {
-    if (v <= 4)  return { c:'#ef4444', pulse:true  };
-    if (v <= 10) return { c:'#f97316', pulse:true  };
-    if (v <= 15) return { c:'#f97316', pulse:false };
-    if (v <= 20) return { c:'#facc15', pulse:false };
-    return         { c:'#4ade80', pulse:false };
-  }
+const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
+const MODEL_URL = new URLSearchParams(location.search).get('model') || 'Helicarrier.fbx';
 
-  // Map a 0-25 power level to a status label + log colour class.
-  function statusOf(v) {
-    if (v === 0) return { label:'OFFLINE',  type:'drop' };
-    if (v <= 4)  return { label:'CRITICAL', type:'drop' };
-    if (v <= 10) return { label:'LOW',      type:'warn' };
-    if (v <= 15) return { label:'REDUCED',  type:'warn' };
-    if (v <= 20) return { label:'PARTIAL',  type:'warn' };
-    return         { label:'NOMINAL',  type:'gain' };
-  }
-  const t0 = Date.now();
-
-  function ts() {
-    const s = Math.floor((Date.now()-t0)/1000);
-    return [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
-      .map(n=>String(n).padStart(2,'0')).join(':');
-  }
-
-  function log(msg, type) {
-    const el = document.getElementById('log-entries');
-    const r  = document.createElement('div');
-    r.className = 'log-entry';
-    r.innerHTML = `<span class="log-t">${ts()}</span><span class="log-m ${type||''}">${msg}</span>`;
-    el.prepend(r);
-    if (el.children.length > 60) el.lastChild.remove();
-  }
-
-  function clearLog() {
-    document.getElementById('log-entries').innerHTML = '';
-    log('— log cleared.');
-  }
-
-  // Report the live status of every system (newest entries end up on top, so emit bottom-up).
-  function statusReport(header) {
-    const rows = [];
-    ['shields','weapons','drones','sys'].forEach(k => {
-      const v = val(k), s = statusOf(v);
-      rows.push([`${LABELS[k]}: ${s.label} — ${v}%`, s.type]);
-    });
-    rows.forEach(([m,t]) => log(m, t));
-    if (header) log(header);
-  }
-
-  function val(k) { return parseInt(document.getElementById('sl-'+k).value); }
-
-  // --- persistent power levels (survive across sessions / page reloads) ---
-  const STORE_KEY = 'shipPowerLevels';
-  const DISPLAY = new URLSearchParams(location.search).has('display');  // ?display = locked participant view
-  let __bc = null; try { __bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
-  function clamp25(n){ n = parseInt(n); return Number.isFinite(n) ? Math.max(0, Math.min(25, n)) : null; }
-  function saveState() {
-    try {
-      const data = {};
-      ['sys','drones','weapons','shields'].forEach(k => data[k] = val(k));
-      localStorage.setItem(STORE_KEY, JSON.stringify(data));
-    } catch (e) { /* storage unavailable (private mode / file restrictions) */ }
-    if (__bc) { try { __bc.postMessage(Date.now()); } catch (e) {} }  // ping participant views
-  }
-  // Participant view: pull the operator's latest state and reflect it live.
-  function syncFromStore() {
-    let data; try { data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { return; }
-    if (!data) return;
-    let changed = false;
-    ['sys','drones','weapons','shields'].forEach(k => {
-      const n = clamp25(data[k]); if (n === null) return;
-      const el = document.getElementById('sl-'+k), old = parseInt(el.value);
-      if (n !== old) {
-        el.value = n; changed = true;
-        const s = statusOf(n), arrow = n < old ? '↓' : '↑';
-        log(`${arrow} ${LABELS[k]} ${s.label} — ${old}% → ${n}%.`, s.type);
-        prev[k] = n;
-      }
-    });
-    if (changed) updateAll();
-  }
-  function loadState() {
-    try {
-      const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      if (!data) return false;
-      ['sys','drones','weapons','shields'].forEach(k => {
-        const n = clamp25(data[k]);
-        if (n !== null) { document.getElementById('sl-'+k).value = n; prev[k] = n; }
-      });
-      return true;
-    } catch (e) { return false; }
-  }
-
-  function onSlide(key, rawVal) {
-    let v = parseInt(rawVal);
-    const others = ['sys','drones','weapons','shields'].filter(k=>k!==key);
-    const otherSum = others.reduce((a,k)=>a+val(k), 0);
-    if (v + otherSum > 100) { v = Math.max(0, 100 - otherSum); }
-    document.getElementById('sl-'+key).value = v;
-
-    updateAll();
-
-    const p = prev[key], lbl = LABELS[key];
-    if (v !== p) {
-      const s = statusOf(v), arrow = v < p ? '↓' : '↑';
-      const tag = v === 0 ? ' — power cut. system down' : '';
-      log(`${arrow} ${lbl} ${s.label} — ${p}% → ${v}%${tag}.`, s.type);
+// ---- wireframe + fit helpers (shared approach with holo.html) ----
+function wireframeOf(root, threshold = 24) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (o.isMesh && o.geometry) {
+      const eg = new THREE.EdgesGeometry(o.geometry, threshold);
+      const ls = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({
+        color: GREEN, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      o.updateWorldMatrix(true, false);
+      ls.applyMatrix4(o.matrixWorld);
+      out.add(ls);
     }
-    prev[key] = v;
-    saveState();
+  });
+  return out;
+}
+// denser wireframe for the main hologram: bright feature edges + a faint full
+// triangle mesh, so the hull's structure reads clearly for damage indicators.
+function buildDetailed(root) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    o.updateWorldMatrix(true, false);
+    const mesh = new THREE.LineSegments(new THREE.WireframeGeometry(o.geometry),
+      new THREE.LineBasicMaterial({ color: DIM, transparent: true, opacity: 0.13,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    mesh.applyMatrix4(o.matrixWorld); out.add(mesh);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 18),
+      new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.92,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    edges.applyMatrix4(o.matrixWorld); out.add(edges);
+  });
+  return out;
+}
+function fitToFrame(g, target = 160) {
+  const box = new THREE.Box3().setFromObject(g);
+  const size = new THREE.Vector3(), center = new THREE.Vector3();
+  box.getSize(size); box.getCenter(center);
+  g.position.sub(center);
+  const wrap = new THREE.Group(); wrap.add(g);
+  wrap.scale.setScalar(target / Math.max(size.x, size.y, size.z));
+  return wrap;
+}
+
+// ---- shields ----
+// 4 directional panels: [0]=FORE/top, [1]=STARBOARD/right, [2]=AFT/bottom,
+// [3]=PORT/left. Each recolours by damage state — N0 green, N1 yellow, N2 red.
+// 2D views get four cardinal arcs framing the centred ship; the 3D view gets a
+// segmented ring on the floor under the ship so you can read which side is hit.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const CARDINALS = [270, 0, 90, 180];   // deg (SVG y-down): top, right, bottom, left
+function buildCardinalArcs(frame) {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('class', 'shield');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const cx = 50, cy = 50, rx = 44, ry = 40, span = 35 * Math.PI/180;
+  const arcs = CARDINALS.map(deg => {
+    const c = deg * Math.PI/180, a0 = c - span, a1 = c + span;
+    const p = document.createElementNS(SVGNS, 'path');
+    p.setAttribute('d', `M ${(cx+rx*Math.cos(a0)).toFixed(2)} ${(cy+ry*Math.sin(a0)).toFixed(2)} `
+                      + `A ${rx} ${ry} 0 0 1 ${(cx+rx*Math.cos(a1)).toFixed(2)} ${(cy+ry*Math.sin(a1)).toFixed(2)}`);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke-width', '3');
+    p.setAttribute('stroke-linecap', 'round');
+    p.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(p); return p;
+  });
+  frame.appendChild(svg);
+  return { svg, arcs };
+}
+// locate the four lift-fan duct centres: cluster the outboard deck geometry into
+// four quadrants (handles the hull being off-centre from its long prow).
+function detectFans(model, box, sz) {
+  model.updateWorldMatrix(true, true);
+  const yMin = box.min.y + sz.y * 0.45, xT = sz.x * 0.22, v = new THREE.Vector3();
+  const verts = []; let zSum = 0;
+  model.traverse(o => {
+    const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      if (v.y > yMin && Math.abs(v.x) > xT) { verts.push([v.x, v.z]); zSum += v.z; }
+    }
+  });
+  if (!verts.length) return [];
+  const zc = zSum / verts.length;
+  const acc = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];     // sumX, sumZ, count per quadrant
+  for (const [x, z] of verts) { const q = (x > 0 ? 0 : 1) + (z > zc ? 0 : 2); acc[q][0]+=x; acc[q][1]+=z; acc[q][2]++; }
+  const deckY = box.min.y + sz.y * 0.62;
+  return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
+}
+
+// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+function buildFanBlades(x, y, z, r) {
+  const pts = [], Nb = 16, ri = r * 0.16, ro = r * 0.72;   // shorter blades
+  for (let i = 0; i < Nb; i++) {
+    const a = i / Nb * Math.PI * 2;
+    pts.push(Math.cos(a)*ri, 0, Math.sin(a)*ri, Math.cos(a)*ro, 0.4, Math.sin(a)*ro);
   }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const g = new THREE.Group();
+  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+  g.position.set(x, y, z);
+  return g;
+}
 
-  function updateAll() {
-    const vals = { sys:val('sys'), drones:val('drones'), weapons:val('weapons'), shields:val('shields') };
-    const total     = vals.sys + vals.drones + vals.weapons + vals.shields;
-    const remaining = Math.max(0, 100 - total);
+// is this line segment a static fan spoke? (radial line inside a duct, at deck level)
+function isSpoke(aw, bw, fans) {
+  const mx = (aw.x+bw.x)/2, my = (aw.y+bw.y)/2, mz = (aw.z+bw.z)/2;
+  let dx = bw.x-aw.x, dz = bw.z-aw.z; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+  for (const f of fans) {
+    if (my < f.yMin) continue;
+    const rx = mx-f.cx, rz = mz-f.cz, rr = Math.hypot(rx, rz);
+    if (rr > f.r) continue;
+    if (rr < f.r * 0.1) return true;                    // hub
+    if (Math.abs(dx * rx/rr + dz * rz/rr) > 0.5) return true;   // radial → spoke
+  }
+  return false;
+}
+// strip the model's own fan-spoke segments so only the animated blades show
+function filterModelSpokes(group, fans) {
+  group.updateWorldMatrix(true, true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  group.traverse(o => {
+    if (!o.isLineSegments || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, m = o.matrixWorld, keep = [];
+    for (let i = 0; i < pos.count; i += 2) {
+      a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1);
+      if (isSpoke(a.clone().applyMatrix4(m), b.clone().applyMatrix4(m), fans)) continue;
+      keep.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    }
+    o.geometry.dispose();
+    o.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(keep, 3));
+  });
+}
 
-    ['sys','drones','weapons','shields'].forEach(k => {
-      const v = vals[k];
+// 3D shield ring: 4 arc segments on the XZ floor plane under the ship
+// (FORE +X, STARBOARD +Z, AFT -X, PORT -Z) — same panel order as the 2D arcs.
+function buildShieldRing(radius, y) {
+  const group = new THREE.Group();
+  const centers = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+  const span = 36 * Math.PI/180, seg = 16;
+  const arcs = centers.map(c => {
+    const pts = [];
+    for (let i = 0; i < seg; i++) {
+      const t0 = c - span + (2*span)*i/seg, t1 = c - span + (2*span)*(i+1)/seg;
+      pts.push([radius*Math.cos(t0), 0, radius*Math.sin(t0)], [radius*Math.cos(t1), 0, radius*Math.sin(t1)]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x4ade80, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ls.userData.baseOp = 0.6;
+    group.add(ls); return ls;
+  });
+  group.position.y = y;
+  group.userData.arcs = arcs;
+  return group;
+}
 
-      // Slider pct label
-      const pctEl = document.getElementById('pct-'+k);
-      pctEl.textContent = v+'%';
-      pctEl.className = 'sl-pct' + (v===0?' low': v<=8?' warn':'');
+// ---- four independent views (shared scene-graph via cloned line geometry) ----
+const HALF = 96;   // ortho world half-height to frame the fitted model
+function makeView(id, build) {
+  const canvas = document.getElementById(id);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true }); }
+  catch (e) { document.getElementById('err').style.display = 'grid'; return null; }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  const v = { canvas, renderer, scene, controls: null };
+  v.cam = build(v);
+  return v;
+}
+const views = [];
+// cardinal shield arcs on the 3 orthographic frames (skip the perspective frame)
+const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
+let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
+let fanGroups = [];      // spinning lift-fan blade overlays
+const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
-      // Power-band colour + flash state (shared by the bar and the ship overlay)
-      const { c, pulse } = zoneColor(v);
+const persp = makeView('cv-persp', (v) => {
+  const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
+  c.position.set(150, 92, 168);
+  v.controls = new OrbitControls(c, v.renderer.domElement);
+  v.controls.enableDamping = true; v.controls.enablePan = false;
+  v.controls.autoRotate = true; v.controls.autoRotateSpeed = 0.7;
+  v.controls.minDistance = 110; v.controls.maxDistance = 520;
+  v.controls.target.set(0, 0, 0);
+  return c;
+});
+function orthoView(id, role) {
+  const v = makeView(id, () => new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -3000, 5000));
+  if (v) v.role = role;
+  return v;
+}
+const top  = orthoView('cv-top',  'top');    // dorsal
+const port = orthoView('cv-port', 'side');   // side profile
+const fore = orthoView('cv-fore', 'fore');   // bow end-on
+const aft  = orthoView('cv-aft',  'aft');    // stern end-on
+[persp, top, port, fore, aft].forEach(v => v && views.push(v));
 
-      // Inset progress bar (over the schematic's power panel)
-      const fill = document.getElementById('ifill-'+k);
-      fill.style.width      = ((v/25)*100)+'%';
-      fill.style.background = c;
-      fill.style.boxShadow  = v===0 ? 'none'
-                            : `0 0 7px ${c}bf, inset 0 0 4px rgba(235,255,240,0.45)`;
-      fill.style.opacity    = v===0 ? '0' : '';
-      fill.classList.toggle('pulse', pulse && v>0);
+// orient + frame each ortho view from the model's ACTUAL proportions: detect the
+// hull's long axis AND which end is the (tapered) bow, so the side view is the
+// only profile and FORE/AFT are true front/rear. Dorsal is rotated so the long
+// hull lies horizontally and fills the wide frame.
+function configureOrthos(model) {
+  model.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(model);
+  const sz = new THREE.Vector3(); box.getSize(sz);
+  const lenIsX = sz.x >= sz.z;
+  const L = lenIsX ? sz.x : sz.z, B = lenIsX ? sz.z : sz.x, H = sz.y;
 
-      // Live system overlay (tint + bloom recolour the ship system)
-      ['t-','b-'].forEach(pre => {
-        const g = document.getElementById(pre+ZONE[k]);
-        g.style.color = c;
-        g.classList.toggle('pulse', pulse);
-      });
+  // tell front from rear by the under-hull pods: the FRONT has a single central
+  // intake that hangs deep on the centreline, the REAR has two side booster pods
+  // with a gap at the centreline. Whichever end's centreline geometry reaches
+  // lowest is the front.
+  const lo = lenIsX ? box.min.x : box.min.z, hi = lenIsX ? box.max.x : box.max.z;
+  const span = (hi - lo) || 1, v = new THREE.Vector3();
+  const beamT = B * 0.10, endZone = span * 0.34;
+  let loMinY = Infinity, hiMinY = Infinity;
+  model.traverse(o => {
+    const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      const la = lenIsX ? v.x : v.z, ba = lenIsX ? Math.abs(v.z) : Math.abs(v.x);
+      if (ba > beamT) continue;                        // centreline column only
+      if (la > hi - endZone) { if (v.y < hiMinY) hiMinY = v.y; }
+      else if (la < lo + endZone) { if (v.y < loMinY) loMinY = v.y; }
+    }
+  });
+  const bowSign = hiMinY <= loMinY ? 1 : -1;          // front = deepest central intake
 
-      // Allocation segment (main power indicator)
-      document.getElementById('seg-'+k).style.width = v+'%';
+  const D = 1400, M = 1.32;
+  const set = (view, pos, up, w, h) => { if (!view) return;
+    view.cam.position.set(...pos); view.cam.up.set(...up); view.cam.lookAt(0, 0, 0);
+    view.fit = { w: w * M, h: h * M }; };
+  const beamUp = lenIsX ? [0, 0, 1] : [1, 0, 0];     // beam as screen-up → length horizontal
+  // FRONT/REAR are slightly elevated (as in the references) so the under-hull pods
+  // read clearly: one central intake forward, two booster pods aft.
+  const e = 6 * Math.PI / 180, se = Math.sin(e), ce = Math.cos(e), vExt = H * ce + L * se;
+  const fEye = lenIsX ? [bowSign * D * ce, D * se, 0] : [0, D * se, bowSign * D * ce];
+  const aEye = lenIsX ? [-bowSign * D * ce, D * se, 0] : [0, D * se, -bowSign * D * ce];
+  set(top,  [0, D, 0.0001],              beamUp,  L, B);     // dorsal (length horizontal)
+  set(port, lenIsX ? [0,0,D] : [D,0,0],  [0,1,0], L, H);     // side profile
+  set(fore, fEye, [0,1,0],                        B, vExt);  // FRONT — single intake
+  set(aft,  aEye, [0,1,0],                        B, vExt);  // REAR — two booster pods
+  resizeAll();
+}
+
+function resize(v) {
+  const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
+  if (!w || !h) return;
+  v.renderer.setSize(w, h, false);
+  const a = w / h;
+  if (v.cam.isPerspectiveCamera) {
+    v.cam.aspect = a;
+  } else {                                   // fit the view's content to the frame
+    const f = v.fit || { w: HALF * 2, h: HALF * 2 };
+    const halfV = Math.max(f.h / 2, (f.w / 2) / a);
+    v.cam.top = halfV; v.cam.bottom = -halfV; v.cam.left = -halfV * a; v.cam.right = halfV * a;
+  }
+  v.cam.updateProjectionMatrix();
+}
+function resizeAll() { views.forEach(resize); }
+addEventListener('resize', resizeAll);
+new ResizeObserver(resizeAll).observe(document.getElementById('console'));
+
+// ---- load the model once, drop a cloned wireframe into each view ----
+const loader = new FBXLoader();
+loader.load(MODEL_URL, (res) => {
+  const root = res.scene || res;
+  const model = fitToFrame(wireframeOf(root));                 // clean feature edges (ortho views)
+  const detailed = fitToFrame(buildDetailed(root));            // denser wireframe (perspective)
+  const box = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3();
+  box.getSize(sz);
+
+  // find the lift-fan ducts, hide the model's own static spokes inside them
+  const centres = detectFans(model, box, sz), FR = sz.x * FAN_RF;
+  const fans = centres.map(c => ({ cx: c[0], cz: c[2], r: FR * 1.15, yMin: box.min.y + sz.y * 0.42 }));
+  filterModelSpokes(model, fans);
+  filterModelSpokes(detailed, fans);
+
+  [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
+  persp.scene.add(detailed);
+  shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
+  persp.scene.add(shieldRing);
+
+  // spinning fan blades inside the four ducts (perspective + dorsal)
+  fanGroups = [];
+  [persp, top].forEach(v => { if (!v) return;
+    centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); v.scene.add(g); fanGroups.push(g); });
+  });
+
+  configureOrthos(model);
+  applyShield();
+  resizeAll();
+}, undefined, (err) => {
+  console.warn('[console] model load failed:', err);
+  document.getElementById('err').style.display = 'grid';
+  document.getElementById('err').textContent = 'Could not load ' + MODEL_URL;
+});
+
+let lastT = performance.now();
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
+  if (persp && persp.controls) persp.controls.update();
+  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
+  for (const v of views) {                           // keep each canvas matched to its frame
+    const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
+    if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
+  }
+  if (shieldRing) {                                  // gentle breathing on the floor ring
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 700);
+    for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
+  }
+  views.forEach(v => v.renderer.render(v.scene, v.cam));
+}
+requestAnimationFrame(tick);
+
+// ===================================================================
+//  LIVE READOUTS — driven by the dashboard's localStorage state
+// ===================================================================
+function band(v) {                       // 0-25 power → status + colour
+  if (v === 0) return { label: 'OFFLINE',  c: '#ef4444' };
+  if (v <= 4)  return { label: 'CRITICAL', c: '#ef4444' };
+  if (v <= 10) return { label: 'LOW',      c: '#f97316' };
+  if (v <= 15) return { label: 'REDUCED',  c: '#f97316' };
+  if (v <= 20) return { label: 'PARTIAL',  c: '#facc15' };
+  return         { label: 'NOMINAL',  c: '#4ade80' };
+}
+const HULL = {
+  NOMINAL:  { c: '#4ade80', sub: 'all sections green' },
+  DAMAGED:  { c: '#facc15', sub: 'structural stress detected' },
+  CRITICAL: { c: '#f97316', sub: 'hull breach — bracing failing' },
+  OFFLINE:  { c: '#ef4444', sub: 'integrity field collapsed' },
+};
+function intColor(p) { return p > 66 ? '#4ade80' : p > 33 ? '#facc15' : '#ef4444'; }
+
+// build the 6 engine integrity bars once
+const ENG_IDS = ['E1','E2','E3','E4','B1','B2'];
+const engGrid = document.getElementById('eng-grid');
+ENG_IDS.forEach(id => {
+  const el = document.createElement('div'); el.className = 'eng';
+  el.innerHTML = `<div class="lbl"><span>${id}</span><b id="engv-${id}">100</b></div>`
+               + `<div class="track"><div class="fill" id="engf-${id}"></div></div>`;
+  engGrid.appendChild(el);
+});
+
+function readState() {
+  let pw = {}, dmg = {};
+  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  const num = (v, d) => Number.isFinite(+v) ? +v : d;
+  return {
+    sys: num(pw.sys, 25), drones: num(pw.drones, 25),
+    weapons: num(pw.weapons, 25), shields: num(pw.shields, 25),
+    hull: dmg.hull || 'NOMINAL',
+    engines:  Array.isArray(dmg.engines)  ? dmg.engines  : [100, 100, 100, 100],
+    boosters: Array.isArray(dmg.boosters) ? dmg.boosters : [100, 100],
+    aiCore: !!dmg.aiCore,
+  };
+}
+function setDot(id, c, flash) {
+  const d = document.getElementById(id);
+  d.style.color = c; d.classList.toggle('flash', !!flash);
+}
+
+// recolour the 4 shield panels (2D arcs + 3D floor ring) from their damage
+// state (N0 green/N1 yellow/N2 red); brighten with shield power, flash faint
+// red when offline.
+const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
+const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
+function applyShield() {
+  let pw = {}, dmg = {};
+  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  const sp = Number.isFinite(+pw.shields) ? +pw.shields : 25;
+  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
+  const offline = sp === 0;
+  const op = offline ? 0.5 : sp <= 4 ? 0.45 : sp <= 10 ? 0.6 : sp <= 20 ? 0.78 : 0.95;
+  const st = i => Math.max(0, Math.min(2, panels[i] | 0));
+
+  shields.forEach(({ svg, arcs }) => {
+    svg.style.setProperty('--o', op);
+    svg.classList.toggle('offline', offline);
+    arcs.forEach((p, i) => {
+      const c = offline ? '#ef4444' : SHIELD_COL[st(i)];
+      p.style.stroke = c; p.style.color = c;
     });
+  });
+  if (shieldRing) shieldRing.userData.arcs.forEach((ls, i) => {
+    ls.material.color.setHex(offline ? 0xef4444 : SHIELD_HEX[st(i)]);
+    ls.userData.baseOp = offline ? 0.2 : 0.35 + 0.55 * op;
+  });
+}
+function render() {
+  const s = readState();
 
-    document.getElementById('seg-empty').style.width = remaining+'%';
+  // hull
+  const h = HULL[s.hull] || HULL.NOMINAL;
+  const hs = document.getElementById('hull-state');
+  hs.textContent = s.hull; hs.style.color = h.c;
+  hs.classList.toggle('flash', s.hull === 'CRITICAL' || s.hull === 'OFFLINE');
+  document.getElementById('hull-sub').textContent = h.sub;
+  document.getElementById('op-hull').textContent = s.hull;
+  document.getElementById('op-hull').style.color = h.c;
 
-    const tv = document.getElementById('total-val-disp');
-    tv.textContent = total+'%';
-    tv.className = 'total-val' + (total > 100 ? ' over' : '');
+  // main power 125% = core (base) + aux 25 + battery 25
+  document.getElementById('pseg-core').style.width = (100/125*100) + '%';
+  document.getElementById('pseg-aux').style.width  = (12.5/125*100) + '%';
+  document.getElementById('pseg-batt').style.width = (12.5/125*100) + '%';
 
-    // Reactor status text (driven by engine power, same bands as the overlays)
-    const es = document.getElementById('engine-status');
-    es.textContent  = statusOf(vals.sys).label;
-    es.style.color  = zoneColor(vals.sys).c;
+  // engine structural integrity (4 props + 2 boosters)
+  const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
+  ENG_IDS.forEach((id, i) => {
+    const p = Math.max(0, Math.min(100, Number.isFinite(+vals[i]) ? +vals[i] : 100));
+    document.getElementById('engv-' + id).textContent = p;
+    const f = document.getElementById('engf-' + id);
+    f.style.width = p + '%'; f.style.background = intColor(p);
+  });
+
+  // subsystems
+  const shd = band(s.shields), drn = band(s.drones), eng = band(s.sys);
+  const wpnOn = s.weapons > 0, wpn = band(s.weapons);
+  setDot('d-shd', shd.c, s.shields <= 4);
+  document.getElementById('s-shd').textContent = shd.label;
+  document.getElementById('s-shd').style.color = shd.c;
+
+  setDot('d-wpn', wpnOn ? wpn.c : '#ef4444', false);
+  document.getElementById('s-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
+  document.getElementById('s-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
+
+  setDot('d-drn', drn.c, s.drones <= 4);
+  document.getElementById('s-drn').textContent = drn.label;
+  document.getElementById('s-drn').style.color = drn.c;
+
+  setDot('d-ai', s.aiCore ? '#facc15' : '#4ade80', s.aiCore);
+  document.getElementById('s-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
+  document.getElementById('s-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+
+  // ortho overlay readouts
+  document.getElementById('ot-eng').textContent = eng.label;
+  document.getElementById('ot-eng').style.color = eng.c;
+  document.getElementById('op-shd').textContent = shd.label;
+  document.getElementById('op-shd').style.color = shd.c;
+  document.getElementById('of-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
+  document.getElementById('of-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
+  document.getElementById('of-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
+  document.getElementById('of-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+  document.getElementById('oa-drn').textContent = drn.label;
+  document.getElementById('oa-drn').style.color = drn.c;
+  document.getElementById('oa-hull').textContent = s.hull;
+  document.getElementById('oa-hull').style.color = h.c;
+
+  applyShield();
+}
+render();
+addEventListener('storage', render);
+let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); bc.onmessage = render; } catch (e) {}
+setInterval(render, 1500);   // catch same-tab updates / damage-state edits
+
+// ---- Firebase real-time sync ----
+// Mirrors the operator's cloud state into local storage so the display reflects
+// it live across devices. Loaded dynamically so the console still works offline.
+const firebaseConfig = {
+  apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
+  authDomain: "shadowrun-ship-db.firebaseapp.com",
+  databaseURL: "https://shadowrun-ship-db-default-rtdb.firebaseio.com",
+  projectId: "shadowrun-ship-db",
+  storageBucket: "shadowrun-ship-db.firebasestorage.app",
+  messagingSenderId: "584465229092",
+  appId: "1:584465229092:web:d17e05b242a6c99c8c3fb1"
+};
+(async () => {
+  try {
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js");
+    const { getDatabase, ref, onValue } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js");
+    const db = getDatabase(initializeApp(firebaseConfig));
+    const mirror = (path) => onValue(ref(db, path), snap => {
+      const d = snap.val(); if (!d) return;
+      try { localStorage.setItem(path, JSON.stringify(d)); } catch (e) {}
+      render();
+    });
+    mirror('shipPowerLevels');     // power allocation, written by the operator
+    mirror('shipDamageState');     // hull / engine / shield / subsystem damage
+  } catch (e) {
+    console.warn('[console] Firebase unavailable — using local state.', e);
   }
-
-  if (DISPLAY) document.body.classList.add('display');
-  const __restored = loadState();
-  updateAll();
-  statusReport(DISPLAY ? '▸ participant view online — live system status:'
-             : __restored ? '▸ power grid online — configuration restored from last session:'
-             : '▸ power grid online — system status:');
-  if (DISPLAY) {
-    window.addEventListener('storage', e => { if (e.key === STORE_KEY) syncFromStore(); });
-    if (__bc) __bc.onmessage = syncFromStore;
-  }
+})();
 </script>
 </body>
 </html>
