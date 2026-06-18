@@ -167,6 +167,12 @@
       <div class="hint">toggle a system's power between full and offline.</div>
     </div>
 
+    <!-- MAG-LEV COHESION (lift fans) -->
+    <div class="card">
+      <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
+      <div id="fan-rows"></div>
+    </div>
+
     <!-- SHIELD PANELS -->
     <div class="card">
       <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
@@ -193,15 +199,16 @@
 // ---------------------------------------------------------------------------
 const KEYS = ['sys', 'drones', 'weapons', 'shields'];
 // damageable areas (key, label, category) — each cycles ONLINE/DAMAGED/OFFLINE
+// the 4 lift fans use sliders (mag-lev cohesion: 100 nominal / 50 suboptimal / 0 offline)
+const FANS = [['fanFP', 'LIFT FAN F·P'], ['fanFS', 'LIFT FAN F·S'], ['fanAP', 'LIFT FAN A·P'], ['fanAS', 'LIFT FAN A·S']];
 const AREAS = [
-  ['fanFP', 'LIFT FAN F·P', 'PROPULSION'], ['fanFS', 'LIFT FAN F·S', 'PROPULSION'],
-  ['fanAP', 'LIFT FAN A·P', 'PROPULSION'], ['fanAS', 'LIFT FAN A·S', 'PROPULSION'],
   ['boostP', 'BOOSTER PORT', 'PROPULSION'], ['boostS', 'BOOSTER STBD', 'PROPULSION'],
   ['bridge', 'BRIDGE', 'COMMAND'], ['aiCore', 'AI CORE', 'COMMAND'], ['reactor', 'REACTOR', 'POWER'],
   ['droneBay', 'DRONE BAY', 'INTERNAL'], ['wpnFwd', 'FWD BATTERY', 'WEAPONS'], ['wpnAft', 'AFT BATTERY', 'WEAPONS'],
 ];
 const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
-function defaultAreas() { const o = {}; AREAS.forEach(([k]) => o[k] = 0); return o; }
+const MLC = ['MLC NOMINAL', 'MLC SUBOPTIMAL', 'MLC OFFLINE'];
+function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
@@ -291,6 +298,27 @@ function renderAreas() {
   });
 }
 
+// ---- mag-lev cohesion: lift-fan sliders (snap 100 / 50 / 0 → area state 0 / 1 / 2) ----
+const fanGrid = document.getElementById('fan-rows');
+FANS.forEach(([k, label]) => {
+  const div = document.createElement('div'); div.className = 'row';
+  div.innerHTML = `<div class="lbl"><span>${label}</span><b id="fv-${k}">MLC NOMINAL</b></div>`
+                + `<input type="range" min="0" max="100" step="50" value="100" id="fs-${k}">`;
+  fanGrid.appendChild(div);
+  div.querySelector('input').addEventListener('input', e => {
+    state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
+    renderFans(); saveDamage();
+  });
+});
+function renderFans() {
+  FANS.forEach(([k]) => {
+    const st = Math.max(0, Math.min(2, state.damage.areas[k] | 0));
+    const el = document.getElementById('fs-' + k); if (document.activeElement !== el) el.value = 100 - st * 50;
+    const b = document.getElementById('fv-' + k);
+    b.textContent = MLC[st]; b.style.color = st === 0 ? 'var(--g1)' : st === 1 ? 'var(--yellow)' : 'var(--red)';
+  });
+}
+
 // ---- shield panels (cycle N0/N1/N2) ----
 const SP_CLASS = ['lit0', 'lit1', 'lit2'];
 function renderShields() {
@@ -315,7 +343,7 @@ function renderSubs() {
   setSwitch(swD, state.power.drones > 0);
 }
 
-function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderShields(); renderSubs(); }
+function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderFans(); renderShields(); renderSubs(); }
 renderAll();
 
 // ---- locked / view-only mode: players can watch live state, not operate it ----
@@ -358,7 +386,7 @@ const firebaseConfig = {
     document.getElementById('netlbl').textContent = 'CLOUD';
     // adopt cloud state on connect (so a fresh operator matches what's live)
     onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderSubs(); } });
-    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderShields(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);

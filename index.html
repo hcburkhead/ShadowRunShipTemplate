@@ -261,11 +261,21 @@ function buildViewShield(frame, camera, facings) {
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
   const cx = 50, cy = 50, rx = 44, ry = 40, span = 33 * Math.PI/180;
+  const CARD = [-Math.PI/2, 0, Math.PI/2, Math.PI];   // four slots: top, right, bottom, left
   const inv = camera.matrixWorldInverse, v = new THREE.Vector3();
-  const arcs = facings.map((f, idx) => {
-    v.copy(f).transformDirection(inv);          // facing direction in camera space
-    const mag = Math.hypot(v.x, v.y);           // in-plane amount (0 = edge-on … 1 = perpendicular)
-    const a = Math.atan2(-v.y, v.x), a0 = a - span, a1 = a + span;  // SVG ellipse angle (y-down)
+  // project each facing to a screen angle + strength, then assign each to the
+  // nearest free cardinal slot (strongest projection first) so all four show
+  const proj = facings.map((f, idx) => { v.copy(f).transformDirection(inv);
+    return { idx, ang: Math.atan2(-v.y, v.x), mag: Math.hypot(v.x, v.y) }; });
+  const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI; return Math.abs(d); };
+  const used = [false, false, false, false], slot = [-1, -1, -1, -1];
+  [...proj].sort((a, b) => b.mag - a.mag).forEach(p => {
+    let best = -1, bd = 9;
+    for (let s = 0; s < 4; s++) { if (used[s]) continue; const d = angDiff(p.ang, CARD[s]); if (d < bd) { bd = d; best = s; } }
+    used[best] = true; slot[best] = p.idx;
+  });
+  const arcs = CARD.map((a, s) => {
+    const a0 = a - span, a1 = a + span;
     const p = document.createElementNS(SVGNS, 'path');
     p.setAttribute('d', `M ${(cx+rx*Math.cos(a0)).toFixed(2)} ${(cy+ry*Math.sin(a0)).toFixed(2)} `
                       + `A ${rx} ${ry} 0 0 1 ${(cx+rx*Math.cos(a1)).toFixed(2)} ${(cy+ry*Math.sin(a1)).toFixed(2)}`);
@@ -274,7 +284,7 @@ function buildViewShield(frame, camera, facings) {
     p.setAttribute('stroke-linecap', 'round');
     p.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.appendChild(p);
-    return { el: p, facing: idx, mag };
+    return { el: p, facing: slot[s] };
   });
   frame.appendChild(svg);
   return { svg, arcs };
@@ -387,7 +397,8 @@ function makeView(id, build) {
 const views = [];
 let shields = [];        // per-view 2D shield arcs, built once cameras are oriented
 let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
-let fanGroups = [];      // spinning lift-fan blade overlays
+let fanGroups = [];      // spinning lift-fan blade overlays ({ g, idx })
+let fanSpeed = [1, 1, 1, 1];   // per-fan spin factor (mag-lev cohesion: 1 full / .5 slow / 0 stopped)
 let perspLift = null;    // group the perspective ship rides in, offset by altitude
 // raise/lower the perspective ship from the operator's altitude value (0-100)
 function applyAltitude() {
@@ -425,6 +436,15 @@ function buildDroneSwarm(cx, cy, cz, spread) {
   }
   swarm.userData = { drones, active: true };
   return swarm;
+}
+// mag-lev cohesion: fan spin speed + blade colour track each fan's integrity
+// (100 nominal → full speed/cyan, 50 suboptimal → half/amber, 0 offline → stopped/red)
+function updateFans(s) {
+  for (let i = 0; i < 4; i++) fanSpeed[i] = (s.engines[i] || 0) / 100;
+  for (const { g, idx } of fanGroups) {
+    const v = s.engines[idx] || 0, col = v > 66 ? 0xbef9d2 : v > 33 ? 0xfacc15 : 0xef4444;
+    for (const c of g.children) if (c.material) c.material.color.setHex(col);
+  }
 }
 function updateDrones(s) {
   if (!droneSwarms.length) return;
@@ -572,8 +592,8 @@ loader.load(MODEL_URL, (res) => {
 
   // spinning fan blades inside the four ducts (perspective rides the lift; dorsal static)
   fanGroups = [];
-  centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); perspLift.add(g); fanGroups.push(g); });
-  if (top) centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); top.scene.add(g); fanGroups.push(g); });
+  centres.forEach(([cx, cy, cz], i) => { const g = buildFanBlades(cx, cy, cz, FR); perspLift.add(g); fanGroups.push({ g, idx: i }); });
+  if (top) centres.forEach(([cx, cy, cz], i) => { const g = buildFanBlades(cx, cy, cz, FR); top.scene.add(g); fanGroups.push({ g, idx: i }); });
 
   // ship-frame coordinate helper: along (-1 stern … +1 bow), beam (±1), up (0 keel … 1 top)
   const axes = detectAxes(model, box, sz);
@@ -643,7 +663,7 @@ function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
-  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
+  for (const { g, idx } of fanGroups) g.rotation.y += dt * 4.5 * (fanSpeed[idx] || 0);   // spin per mag-lev cohesion
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
     if (!sw.visible) continue;
     const act = sw.userData.active;
@@ -739,10 +759,7 @@ function applyShield() {
   shields.forEach(({ svg, arcs }) => {
     svg.style.setProperty('--o', op);
     svg.classList.toggle('offline', offline);
-    arcs.forEach(arc => {
-      const fade = Math.max(0, Math.min(1, (arc.mag - 0.15) / 0.5));   // hide/fade edge-on facings
-      arc.el.style.display = fade <= 0.02 ? 'none' : '';
-      arc.el.style.opacity = fade.toFixed(2);
+    arcs.forEach(arc => {                          // all four cardinal arcs always shown
       const c = offline ? '#ef4444' : SHIELD_COL[st(arc.facing)];
       arc.el.style.stroke = c; arc.el.style.color = c;
     });
@@ -815,6 +832,7 @@ function render() {
   applyAltitude();
   updateMarkers(s);
   updateDrones(s);
+  updateFans(s);
 }
 render();
 addEventListener('storage', render);
