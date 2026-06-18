@@ -397,6 +397,31 @@ function applyAltitude() {
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
+// ---- operator-triggered damage dots (read-only / player view only, ?dots) ----
+const DOTS = new URLSearchParams(location.search).has('dots');
+let damageMarkers = [];
+function buildDot(x, y, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.position.set(x, y, z); m.visible = false; m.userData.baseOp = 0.9;
+  return m;
+}
+function addMarker(parent, x, y, z, evalFn) {
+  const mesh = buildDot(x, y, z); parent.add(mesh);
+  damageMarkers.push({ mesh, eval: evalFn });
+}
+function updateMarkers(s) {
+  if (!DOTS) return;
+  for (const m of damageMarkers) {
+    const r = m.eval(s);
+    m.mesh.visible = !!(r && r.show);
+    if (r && r.show) { m.mesh.material.color.setHex(r.color); m.mesh.userData.baseOp = r.op || 0.9; }
+  }
+}
+const dotEngine = i => s => { const v = s.engines[i]; return v > 66 ? { show: false } : { show: true, color: v > 33 ? 0xfacc15 : 0xef4444 }; };
+const dotWhen   = (cond, color) => s => cond(s) ? { show: true, color } : { show: false };
+
 const persp = makeView('cv-persp', (v) => {
   const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
   c.position.set(150, 92, 168);
@@ -513,6 +538,18 @@ loader.load(MODEL_URL, (res) => {
   centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); perspLift.add(g); fanGroups.push(g); });
   if (top) centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); top.scene.add(g); fanGroups.push(g); });
 
+  // operator-triggered damage dots at system locations (read-only view only)
+  if (DOTS) {
+    damageMarkers = [];
+    const deckY = box.min.y + sz.y * 0.62, lenIsX = sz.x >= sz.z, Lh = (lenIsX ? sz.x : sz.z) / 2;
+    const along = f => lenIsX ? [f * Lh, deckY + 4, 0] : [0, deckY + 4, f * Lh];
+    centres.forEach((c, i) => addMarker(perspLift, c[0], c[1] + 4, c[2], dotEngine(i)));    // 4 engines
+    addMarker(perspLift, 0, box.min.y + sz.y * 0.92, 0, dotWhen(s => s.aiCore, 0xfacc15));  // AI core
+    addMarker(perspLift, ...along(0.36), dotWhen(s => s.weapons === 0, 0xef4444));          // weapons
+    addMarker(perspLift, ...along(-0.36), dotWhen(s => s.drones === 0, 0xef4444));          // drones
+    addMarker(perspLift, ...along(0.05), dotWhen(s => s.hull === 'CRITICAL' || s.hull === 'OFFLINE', 0xef4444)); // hull breach
+  }
+
   configureOrthos(model);
   applyShield();
   applyAltitude();
@@ -529,6 +566,8 @@ function tick() {
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
   for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
+  if (DOTS) { const bl = 0.3 + 0.7 * Math.abs(Math.sin(now / 220));   // blink the damage dots
+    for (const m of damageMarkers) if (m.mesh.visible) m.mesh.material.opacity = (m.mesh.userData.baseOp || 0.9) * bl; }
   for (const v of views) {                           // keep each canvas matched to its frame
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
@@ -678,6 +717,7 @@ function render() {
 
   applyShield();
   applyAltitude();
+  updateMarkers(s);
 }
 render();
 addEventListener('storage', render);

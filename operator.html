@@ -80,6 +80,10 @@
   .sp-a{ grid-column:2; grid-row:3; } .sp-p{ grid-column:1; grid-row:2; }
   .sp-mid{ grid-column:2; grid-row:2; border:0; color:var(--dim); font-size:8px; cursor:default; }
 
+  /* embedded holographic status panel */
+  .holo{ width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
+  .holo iframe{ width:100%; height:430px; border:0; display:block; }
+
   .hint{ font-size:8px; color:var(--dim); }
   .btn-wide{ font:inherit; font-size:10px; letter-spacing:1px; padding:8px; width:100%; cursor:pointer;
     background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
@@ -112,6 +116,9 @@
       <a class="ctl-only" href="index.html" target="_blank" rel="noopener">⤢ open display</a>
     </div>
   </header>
+
+  <!-- live holographic status panel (read-only mode also gets the damage dots) -->
+  <div class="holo"><iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe></div>
 
   <div class="grid">
     <!-- POWER ALLOCATION -->
@@ -298,6 +305,8 @@ renderAll();
 // ---- locked / view-only mode: players can watch live state, not operate it ----
 const Q = new URLSearchParams(location.search);
 const LOCKED = Q.has('display') || Q.has('locked');
+// the read-only (player) view shows operator-triggered damage dots; the operator's does not
+document.getElementById('holo-frame').src = LOCKED ? 'index.html?dots=1' : 'index.html';
 if (LOCKED) {
   document.body.classList.add('locked');
   document.getElementById('con-title').textContent = 'SHIP STATUS · LIVE';
