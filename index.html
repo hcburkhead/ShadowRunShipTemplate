@@ -311,18 +311,27 @@ function detectFans(model, box, sz) {
   return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
 }
 
-// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y).
+// Each blade is a tapered quad outline (narrow at the hub, wider at the tip) so it
+// has real definition and stays readable when stopped; plus a small hub ring.
 function buildFanBlades(x, y, z, r) {
-  const pts = [], Nb = 16, ri = r * 0.16, ro = r * 0.72;   // shorter blades
+  const pts = [], Nb = 12, ri = r * 0.18, ro = r * 0.74, wi = 0.05, wo = 0.19;
+  const P = (rad, ang, yy) => [Math.cos(ang) * rad, yy, Math.sin(ang) * rad];
+  const edge = (a, b) => pts.push(...a, ...b);
   for (let i = 0; i < Nb; i++) {
     const a = i / Nb * Math.PI * 2;
-    pts.push(Math.cos(a)*ri, 0, Math.sin(a)*ri, Math.cos(a)*ro, 0.4, Math.sin(a)*ro);
+    const il = P(ri, a - wi, 0),   ir = P(ri, a + wi, 0);     // hub end (narrow)
+    const ot = P(ro, a + wo, 0.5), ol = P(ro, a - wo, 0.5);   // tip end (wide, pitched up)
+    edge(il, ir); edge(ir, ot); edge(ot, ol); edge(ol, il);  // blade outline
+  }
+  for (let i = 0; i < 12; i++) {                               // hub ring
+    edge(P(ri, i/12*Math.PI*2, 0), P(ri, (i+1)/12*Math.PI*2, 0));
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   const g = new THREE.Group();
   g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+    color: GLINT, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false })));
   g.position.set(x, y, z);
   return g;
 }
