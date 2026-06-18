@@ -227,7 +227,7 @@ function buildCardinalArcs(frame) {
   svg.setAttribute('class', 'shield');
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
-  const cx = 50, cy = 50, rx = 47, ry = 39, span = 34 * Math.PI/180;
+  const cx = 50, cy = 50, rx = 46, ry = 42, span = 35 * Math.PI/180;
   const arcs = CARDINALS.map(deg => {
     const c = deg * Math.PI/180, a0 = c - span, a1 = c + span;
     const p = document.createElementNS(SVGNS, 'path');
@@ -294,26 +294,49 @@ const persp = makeView('cv-persp', (v) => {
   v.controls.target.set(0, 0, 0);
   return c;
 });
-function ortho(eye, up) {
-  return (v) => {
-    const c = new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -2000, 4000);
-    c.position.set(...eye); if (up) c.up.set(...up); c.lookAt(0, 0, 0);
-    return c;
-  };
+function orthoView(id, role) {
+  const v = makeView(id, () => new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -3000, 5000));
+  if (v) v.role = role;
+  return v;
 }
-const top  = makeView('cv-top',  ortho([0, 600, 0.01], [0, 0, -1]));   // dorsal
-const port = makeView('cv-port', ortho([0, 0, 600]));                  // side (port)
-const fore = makeView('cv-fore', ortho([600, 0, 0]));                  // bow-on
-const aft  = makeView('cv-aft',  ortho([-600, 0, 0]));                 // stern-on
+const top  = orthoView('cv-top',  'top');    // dorsal
+const port = orthoView('cv-port', 'side');   // side profile
+const fore = orthoView('cv-fore', 'fore');   // bow end-on
+const aft  = orthoView('cv-aft',  'aft');    // stern end-on
 [persp, top, port, fore, aft].forEach(v => v && views.push(v));
+
+// orient + frame each ortho view from the model's ACTUAL proportions, so length
+// always runs along the side/top views and the end-on views are true front/rear.
+function configureOrthos(box) {
+  const sz = new THREE.Vector3(); box.getSize(sz);
+  const H = sz.y, lenIsX = sz.x >= sz.z;     // which horizontal axis is the hull length
+  const L = lenIsX ? sz.x : sz.z;            // length
+  const B = lenIsX ? sz.z : sz.x;            // beam
+  const D = 1200, M = 1.45;                  // camera distance, fit margin
+  const set = (v, pos, up, w, h) => {
+    if (!v) return;
+    v.cam.position.set(...pos); v.cam.up.set(...up); v.cam.lookAt(0, 0, 0);
+    v.fit = { w: w * M, h: h * M };          // world extents this view must frame
+  };
+  set(top,  [0, D, 0.001],                lenIsX ? [1,0,0] : [0,0,1], B, L); // dorsal: beam × length
+  set(port, lenIsX ? [0,0,D]  : [D,0,0],  [0,1,0],                    L, H); // side: length × height
+  set(fore, lenIsX ? [D,0,0]  : [0,0,D],  [0,1,0],                    B, H); // bow end-on: beam × height
+  set(aft,  lenIsX ? [-D,0,0] : [0,0,-D], [0,1,0],                    B, H); // stern end-on: beam × height
+  resizeAll();
+}
 
 function resize(v) {
   const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
   if (!w || !h) return;
   v.renderer.setSize(w, h, false);
   const a = w / h;
-  if (v.cam.isPerspectiveCamera) { v.cam.aspect = a; }
-  else { v.cam.left = -HALF * a; v.cam.right = HALF * a; v.cam.top = HALF; v.cam.bottom = -HALF; }
+  if (v.cam.isPerspectiveCamera) {
+    v.cam.aspect = a;
+  } else {                                   // fit the view's content to the frame
+    const f = v.fit || { w: HALF * 2, h: HALF * 2 };
+    const halfV = Math.max(f.h / 2, (f.w / 2) / a);
+    v.cam.top = halfV; v.cam.bottom = -halfV; v.cam.left = -halfV * a; v.cam.right = halfV * a;
+  }
   v.cam.updateProjectionMatrix();
 }
 function resizeAll() { views.forEach(resize); }
@@ -330,6 +353,7 @@ loader.load(MODEL_URL, (res) => {
   box.getSize(sz);
   shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
   persp.scene.add(shieldRing);
+  configureOrthos(box);
   applyShield();
   resizeAll();
 }, undefined, (err) => {
