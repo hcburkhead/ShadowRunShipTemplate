@@ -209,32 +209,55 @@ function fitToFrame(g, target = 160) {
   return wrap;
 }
 
-// ---- shield: a flat segmented arc ring overlaid on each view (SVG) ----
-// One ellipse of curved panels hugging the ship; each panel recolours by its
-// damage state — N0 green, N1 yellow, N2 red. Kept 2D so it never reads as a
-// confusing 3D bubble.
+// ---- shields ----
+// 4 directional panels: [0]=FORE/top, [1]=STARBOARD/right, [2]=AFT/bottom,
+// [3]=PORT/left. Each recolours by damage state — N0 green, N1 yellow, N2 red.
+// 2D views get four cardinal arcs framing the centred ship; the 3D view gets a
+// segmented ring on the floor under the ship so you can read which side is hit.
 const SVGNS = 'http://www.w3.org/2000/svg';
-function buildShieldSVG(frame, n = 8) {
+const CARDINALS = [270, 0, 90, 180];   // deg (SVG y-down): top, right, bottom, left
+function buildCardinalArcs(frame) {
   const svg = document.createElementNS(SVGNS, 'svg');
   svg.setAttribute('class', 'shield');
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
-  const cx = 50, cy = 50, rx = 47, ry = 33, gap = 0.07;
-  const arcs = [];
-  for (let i = 0; i < n; i++) {
-    const a0 = (i / n) * 2*Math.PI + gap, a1 = ((i + 1) / n) * 2*Math.PI - gap;
-    const x0 = cx + rx*Math.cos(a0), y0 = cy + ry*Math.sin(a0);
-    const x1 = cx + rx*Math.cos(a1), y1 = cy + ry*Math.sin(a1);
+  const cx = 50, cy = 50, rx = 47, ry = 45, span = 36 * Math.PI/180;
+  const arcs = CARDINALS.map(deg => {
+    const c = deg * Math.PI/180, a0 = c - span, a1 = c + span;
     const p = document.createElementNS(SVGNS, 'path');
-    p.setAttribute('d', `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${rx} ${ry} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`);
+    p.setAttribute('d', `M ${(cx+rx*Math.cos(a0)).toFixed(2)} ${(cy+ry*Math.sin(a0)).toFixed(2)} `
+                      + `A ${rx} ${ry} 0 0 1 ${(cx+rx*Math.cos(a1)).toFixed(2)} ${(cy+ry*Math.sin(a1)).toFixed(2)}`);
     p.setAttribute('fill', 'none');
-    p.setAttribute('stroke-width', '2.4');
+    p.setAttribute('stroke-width', '3');
     p.setAttribute('stroke-linecap', 'round');
     p.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.appendChild(p); arcs.push(p);
-  }
+    svg.appendChild(p); return p;
+  });
   frame.appendChild(svg);
   return { svg, arcs };
+}
+// 3D shield ring: 4 arc segments on the XZ floor plane under the ship
+// (FORE +X, STARBOARD +Z, AFT -X, PORT -Z) — same panel order as the 2D arcs.
+function buildShieldRing(radius, y) {
+  const group = new THREE.Group();
+  const centers = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+  const span = 36 * Math.PI/180, seg = 16;
+  const arcs = centers.map(c => {
+    const pts = [];
+    for (let i = 0; i < seg; i++) {
+      const t0 = c - span + (2*span)*i/seg, t1 = c - span + (2*span)*(i+1)/seg;
+      pts.push([radius*Math.cos(t0), 0, radius*Math.sin(t0)], [radius*Math.cos(t1), 0, radius*Math.sin(t1)]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x4ade80, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ls.userData.baseOp = 0.6;
+    group.add(ls); return ls;
+  });
+  group.position.y = y;
+  group.userData.arcs = arcs;
+  return group;
 }
 
 // ---- four independent views (shared scene-graph via cloned line geometry) ----
@@ -251,8 +274,9 @@ function makeView(id, build) {
   return v;
 }
 const views = [];
-// a shield arc-ring overlay per view frame (built from .frame elements)
-const shields = [...document.querySelectorAll('.frame')].map(f => buildShieldSVG(f));
+// cardinal shield arcs on the 3 orthographic frames (skip the perspective frame)
+const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
+let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
 
 const persp = makeView('cv-persp', (v) => {
   const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
@@ -294,6 +318,12 @@ const loader = new FBXLoader();
 loader.load(MODEL_URL, (res) => {
   const model = fitToFrame(wireframeOf(res.scene || res));
   views.forEach(v => v.scene.add(v === persp ? model : model.clone()));
+  // segmented shield ring on the floor under the ship (perspective view only)
+  const box = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3();
+  box.getSize(sz);
+  shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
+  persp.scene.add(shieldRing);
+  applyShield();
   resizeAll();
 }, undefined, (err) => {
   console.warn('[console] model load failed:', err);
@@ -304,6 +334,10 @@ loader.load(MODEL_URL, (res) => {
 function tick() {
   requestAnimationFrame(tick);
   if (persp && persp.controls) persp.controls.update();
+  if (shieldRing) {                                  // gentle breathing on the floor ring
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 700);
+    for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
+  }
   views.forEach(v => v.renderer.render(v.scene, v.cam));
 }
 requestAnimationFrame(tick);
@@ -356,26 +390,32 @@ function setDot(id, c, flash) {
   d.style.color = c; d.classList.toggle('flash', !!flash);
 }
 
-// recolour every shield arc from its damage state (N0 green/N1 yellow/N2 red);
-// the ring brightens with shield power and goes faint-red flashing when offline.
+// recolour the 4 shield panels (2D arcs + 3D floor ring) from their damage
+// state (N0 green/N1 yellow/N2 red); brighten with shield power, flash faint
+// red when offline.
 const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
+const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
 function applyShield() {
-  if (!shields.length) return;
   let pw = {}, dmg = {};
   try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
   try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
   const sp = Number.isFinite(+pw.shields) ? +pw.shields : 25;
-  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : new Array(8).fill(0);
+  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
   const offline = sp === 0;
   const op = offline ? 0.5 : sp <= 4 ? 0.45 : sp <= 10 ? 0.6 : sp <= 20 ? 0.78 : 0.95;
+  const st = i => Math.max(0, Math.min(2, panels[i] | 0));
+
   shields.forEach(({ svg, arcs }) => {
     svg.style.setProperty('--o', op);
     svg.classList.toggle('offline', offline);
     arcs.forEach((p, i) => {
-      const st = Math.max(0, Math.min(2, panels[i] | 0));
-      const c = offline ? '#ef4444' : SHIELD_COL[st];
+      const c = offline ? '#ef4444' : SHIELD_COL[st(i)];
       p.style.stroke = c; p.style.color = c;
     });
+  });
+  if (shieldRing) shieldRing.userData.arcs.forEach((ls, i) => {
+    ls.material.color.setHex(offline ? 0xef4444 : SHIELD_HEX[st(i)]);
+    ls.userData.baseOp = offline ? 0.2 : 0.35 + 0.55 * op;
   });
 }
 function render() {
