@@ -1,0 +1,8 @@
+# local test/dev artifacts (Playwright + npm), never part of the app
+node_modules/
+package.json
+package-lock.json
+_shot.mjs
+_inspect.html
+_gen.mjs
+*.tmp
