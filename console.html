@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helicarrier — Holographic Console</title>
+<style>
+  :root{
+    --bg:#040d04; --panel:#07140a; --edge:#1e4d1e;
+    --g1:#4ade80; --g2:#2bbf6a; --g3:#137a3c; --dim:#2d6a2d;
+    --amber:#f6a23c; --red:#ef4444; --lav:#b99cff; --glint:#bef9d2;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; background:var(--bg); font-family:'Courier New',monospace; color:var(--g1);
+             overflow:hidden; letter-spacing:1px; }
+
+  /* ---- LCARS grid ---- */
+  #console{ position:absolute; inset:0; display:grid; gap:6px; padding:6px;
+    grid-template-columns:74px 1fr 238px; grid-template-rows:1fr 132px;
+    grid-template-areas:"rail main orthos" "rail readouts orthos"; }
+
+  /* left LCARS rail */
+  .rail{ grid-area:rail; display:flex; flex-direction:column; gap:6px; }
+  .rail .elbow{ height:64px; background:var(--g3); border-radius:34px 34px 6px 6px;
+    position:relative; }
+  .rail .elbow::after{ content:""; position:absolute; right:-6px; bottom:0; width:30px; height:18px;
+    background:var(--g3); }
+  .pill{ border-radius:6px; padding:7px 6px; font-size:8px; font-weight:bold; color:#02160a;
+    text-align:right; line-height:1.2; word-break:break-word; }
+  .pill.a{ background:var(--amber); } .pill.g{ background:var(--g2); }
+  .pill.d{ background:var(--g3); } .pill.l{ background:var(--lav); }
+  .pill.grow{ flex:1; display:flex; align-items:flex-end; justify-content:flex-end; border-radius:6px 6px 34px 34px; }
+
+  .frame{ position:relative; background:#020a05; border-radius:8px; overflow:hidden;
+    border:1px solid var(--edge); }
+  .frame .vlabel{ position:absolute; top:7px; left:10px; font-size:9px; color:var(--g2); z-index:3;
+    text-shadow:0 0 6px rgba(74,222,128,.5); }
+  .frame .tag{ position:absolute; top:7px; right:10px; font-size:8px; color:var(--dim); z-index:3; }
+  canvas{ display:block; width:100%; height:100%; }
+  /* hologram scanlines + sweep */
+  .scan{ position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,30,16,0) 0 2px, rgba(0,40,22,.22) 2px 3px); }
+  .sweep{ position:absolute; left:0; right:0; height:34%; z-index:2; pointer-events:none;
+    background:linear-gradient(0deg, transparent, rgba(74,222,128,.10) 60%, transparent);
+    animation:sweep 5.5s linear infinite; }
+  @keyframes sweep{ 0%{transform:translateY(120%)} 100%{transform:translateY(-220%)} }
+
+  .main{ grid-area:main; }
+  .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
+  .oview{ flex:1; min-height:0; }
+  /* per-view readouts moved to top-left so the bottom shield arc stays clear */
+  .oview .oinfo{ position:absolute; left:10px; top:21px; z-index:3;
+    font-size:8px; color:var(--g2); display:flex; flex-direction:column; gap:1px; line-height:1.3; }
+  .oview .oinfo b{ color:var(--glint); font-weight:normal; }
+
+  /* ---- readout strip (flex-wraps so it fits narrow screens) ---- */
+  .readouts{ grid-area:readouts; display:flex; flex-wrap:wrap; align-content:center; gap:6px; }
+  .card{ flex:1 1 150px; min-width:120px; background:var(--panel); border:1px solid var(--edge);
+    border-radius:6px; padding:7px 9px; display:flex; flex-direction:column; gap:4px; }
+  .card .h{ font-size:8px; color:var(--dim); letter-spacing:2px; }
+
+  .hull-state{ font-size:21px; font-weight:bold; letter-spacing:2px; line-height:1; }
+  .hull-sub{ font-size:8px; color:var(--dim); }
+
+  .pwr-val{ font-size:18px; font-weight:bold; }
+  .pwr-bar{ display:flex; height:13px; border:1px solid var(--edge); border-radius:3px; overflow:hidden; }
+  .pwr-bar .s{ height:100%; }
+  .pwr-leg{ display:flex; gap:8px; font-size:7.5px; color:var(--dim); }
+  .pwr-leg i{ font-style:normal; }
+  .pwr-leg b{ display:inline-block; width:7px; height:7px; border-radius:2px; vertical-align:middle; margin-right:3px; }
+
+  .eng-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:5px 8px; }
+  .eng{ display:flex; flex-direction:column; gap:2px; }
+  .eng .lbl{ display:flex; justify-content:space-between; font-size:7.5px; color:var(--dim); }
+  .eng .lbl b{ color:var(--glint); font-weight:normal; }
+  .eng .track{ height:6px; background:#0c1f10; border-radius:3px; overflow:hidden; }
+  .eng .fill{ height:100%; width:100%; border-radius:3px; transition:width .3s,background .3s; }
+
+  .sys-grid{ display:grid; grid-template-columns:1fr 1fr; gap:5px 8px; }
+  .sysind{ display:flex; align-items:center; gap:6px; font-size:9px; }
+  .sysind .dot{ width:10px; height:10px; border-radius:50%; flex:none;
+    box-shadow:0 0 7px currentColor; background:currentColor; }
+  .sysind .nm{ color:var(--dim); font-size:7.5px; letter-spacing:1px; }
+  .sysind .st{ font-size:9px; font-weight:bold; }
+
+  .flash{ animation:fl .8s steps(1) infinite; }
+  @keyframes fl{ 50%{ opacity:.18; } }
+
+  /* shield arc-ring overlay (sits over each view, under the labels) */
+  .shield{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none;
+    transition:opacity .4s; animation:shbreathe 3.4s ease-in-out infinite; }
+  .shield path{ transition:stroke .3s; filter:drop-shadow(0 0 2px currentColor); }
+  .shield.offline{ animation:shflash .7s steps(1) infinite; }
+  @keyframes shbreathe{ 0%,100%{opacity:var(--o,.9)} 50%{opacity:calc(var(--o,.9)*.7)} }
+  @keyframes shflash{ 50%{opacity:.12} }
+
+  /* ---- responsive: keep it viewable on most screens ---- */
+  @media (max-width: 900px) {
+    #console{ grid-template-columns:56px 1fr;
+      grid-template-rows:minmax(200px,1.3fr) minmax(150px,1fr) auto;
+      grid-template-areas:"rail main" "rail orthos" "rail readouts"; }
+    .orthos{ flex-direction:row; }            /* profiles sit in a row under the main view */
+    .pill{ font-size:7px; padding:5px 4px; }
+  }
+  @media (max-width: 560px) {
+    #console{ grid-template-columns:1fr; padding:4px;
+      grid-template-rows:minmax(180px,1.3fr) minmax(120px,1fr) auto;
+      grid-template-areas:"main" "orthos" "readouts"; }
+    .rail{ display:none; }
+  }
+
+  #err{ position:absolute; inset:0; display:none; place-items:center; text-align:center;
+    color:var(--amber); font-size:12px; padding:30px; z-index:50; }
+</style>
+</head>
+<body>
+<div id="console">
+
+  <div class="rail">
+    <div class="elbow"></div>
+    <div class="pill a">STS&nbsp;OPS</div>
+    <div class="pill g">HOLO<br>PROJ</div>
+    <div class="pill d">SENTRIS<br>TECH</div>
+    <div class="pill l">AERO<br>DIV</div>
+    <div class="pill grow d">02&middot;47</div>
+  </div>
+
+  <div class="frame main">
+    <div class="vlabel">PERSPECTIVE</div><div class="tag">EDGES ONLY</div>
+    <canvas id="cv-persp"></canvas>
+    <div class="scan"></div><div class="sweep"></div>
+  </div>
+
+  <div class="orthos">
+    <div class="frame oview">
+      <div class="vlabel">DORSAL</div><div class="tag">TOP</div>
+      <canvas id="cv-top"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>BEAM</span><span>ENG <b id="ot-eng">NOMINAL</b></span></div>
+    </div>
+    <div class="frame oview">
+      <div class="vlabel">PORT</div><div class="tag">SIDE</div>
+      <canvas id="cv-port"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>SHLD <b id="op-shd">—</b></span><span>HULL <b id="op-hull">NOMINAL</b></span></div>
+    </div>
+    <div class="frame oview">
+      <div class="vlabel">FORE</div><div class="tag">FRONT</div>
+      <canvas id="cv-fore"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>WPN <b id="of-wpn">—</b></span><span>AI <b id="of-ai">ONLINE</b></span></div>
+    </div>
+    <div class="frame oview">
+      <div class="vlabel">AFT</div><div class="tag">REAR</div>
+      <canvas id="cv-aft"></canvas><div class="scan"></div>
+      <div class="oinfo"><span>DRN <b id="oa-drn">—</b></span><span>HULL <b id="oa-hull">NOMINAL</b></span></div>
+    </div>
+  </div>
+
+  <div class="readouts">
+    <div class="card">
+      <span class="h">HULL INTEGRITY</span>
+      <span class="hull-state" id="hull-state">NOMINAL</span>
+      <span class="hull-sub" id="hull-sub">all sections green</span>
+    </div>
+
+    <div class="card">
+      <span class="h">MAIN POWER</span>
+      <span class="pwr-val" id="pwr-val">125%</span>
+      <div class="pwr-bar">
+        <div class="s" id="pseg-core" style="background:var(--g1)"></div>
+        <div class="s" id="pseg-aux"  style="background:var(--g2)"></div>
+        <div class="s" id="pseg-batt" style="background:var(--amber)"></div>
+      </div>
+      <div class="pwr-leg">
+        <i><b style="background:var(--g1)"></b>CORE</i>
+        <i><b style="background:var(--g2)"></b>AUX</i>
+        <i><b style="background:var(--amber)"></b>BATT</i>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="h">ENGINE STRUCTURAL INTEGRITY</span>
+      <div class="eng-grid" id="eng-grid"></div>
+    </div>
+
+    <div class="card">
+      <span class="h">SUBSYSTEMS</span>
+      <div class="sys-grid">
+        <div class="sysind"><span class="dot" id="d-shd"></span><span><span class="nm">SHIELDS</span><br><span class="st" id="s-shd">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-wpn"></span><span><span class="nm">WEAPONS</span><br><span class="st" id="s-wpn">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-drn"></span><span><span class="nm">DRONES</span><br><span class="st" id="s-drn">—</span></span></div>
+        <div class="sysind"><span class="dot" id="d-ai"></span><span><span class="nm">AI CORE</span><br><span class="st" id="s-ai">—</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="err">WebGL unavailable — the holographic console needs a WebGL-capable browser.</div>
+
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import { FBXLoader } from './vendor/FBXLoader.js';
+
+const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
+const MODEL_URL = new URLSearchParams(location.search).get('model') || 'Helicarrier.fbx';
+
+// ---- wireframe + fit helpers (shared approach with holo.html) ----
+function wireframeOf(root, threshold = 24) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (o.isMesh && o.geometry) {
+      const eg = new THREE.EdgesGeometry(o.geometry, threshold);
+      const ls = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({
+        color: GREEN, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      o.updateWorldMatrix(true, false);
+      ls.applyMatrix4(o.matrixWorld);
+      out.add(ls);
+    }
+  });
+  return out;
+}
+// denser wireframe for the main hologram: bright feature edges + a faint full
+// triangle mesh, so the hull's structure reads clearly for damage indicators.
+function buildDetailed(root) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    o.updateWorldMatrix(true, false);
+    const mesh = new THREE.LineSegments(new THREE.WireframeGeometry(o.geometry),
+      new THREE.LineBasicMaterial({ color: DIM, transparent: true, opacity: 0.13,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    mesh.applyMatrix4(o.matrixWorld); out.add(mesh);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 18),
+      new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.92,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    edges.applyMatrix4(o.matrixWorld); out.add(edges);
+  });
+  return out;
+}
+function fitToFrame(g, target = 160) {
+  const box = new THREE.Box3().setFromObject(g);
+  const size = new THREE.Vector3(), center = new THREE.Vector3();
+  box.getSize(size); box.getCenter(center);
+  g.position.sub(center);
+  const wrap = new THREE.Group(); wrap.add(g);
+  wrap.scale.setScalar(target / Math.max(size.x, size.y, size.z));
+  return wrap;
+}
+
+// ---- shields ----
+// 4 directional panels: [0]=FORE/top, [1]=STARBOARD/right, [2]=AFT/bottom,
+// [3]=PORT/left. Each recolours by damage state — N0 green, N1 yellow, N2 red.
+// 2D views get four cardinal arcs framing the centred ship; the 3D view gets a
+// segmented ring on the floor under the ship so you can read which side is hit.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const CARDINALS = [270, 0, 90, 180];   // deg (SVG y-down): top, right, bottom, left
+function buildCardinalArcs(frame) {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('class', 'shield');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const cx = 50, cy = 50, rx = 44, ry = 40, span = 35 * Math.PI/180;
+  const arcs = CARDINALS.map(deg => {
+    const c = deg * Math.PI/180, a0 = c - span, a1 = c + span;
+    const p = document.createElementNS(SVGNS, 'path');
+    p.setAttribute('d', `M ${(cx+rx*Math.cos(a0)).toFixed(2)} ${(cy+ry*Math.sin(a0)).toFixed(2)} `
+                      + `A ${rx} ${ry} 0 0 1 ${(cx+rx*Math.cos(a1)).toFixed(2)} ${(cy+ry*Math.sin(a1)).toFixed(2)}`);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke-width', '3');
+    p.setAttribute('stroke-linecap', 'round');
+    p.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(p); return p;
+  });
+  frame.appendChild(svg);
+  return { svg, arcs };
+}
+// locate the four lift-fan duct centres: cluster the outboard deck geometry into
+// four quadrants (handles the hull being off-centre from its long prow).
+function detectFans(model, box, sz) {
+  model.updateWorldMatrix(true, true);
+  const yMin = box.min.y + sz.y * 0.45, xT = sz.x * 0.22, v = new THREE.Vector3();
+  const verts = []; let zSum = 0;
+  model.traverse(o => {
+    const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      if (v.y > yMin && Math.abs(v.x) > xT) { verts.push([v.x, v.z]); zSum += v.z; }
+    }
+  });
+  if (!verts.length) return [];
+  const zc = zSum / verts.length;
+  const acc = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];     // sumX, sumZ, count per quadrant
+  for (const [x, z] of verts) { const q = (x > 0 ? 0 : 1) + (z > zc ? 0 : 2); acc[q][0]+=x; acc[q][1]+=z; acc[q][2]++; }
+  const deckY = box.min.y + sz.y * 0.62;
+  return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
+}
+
+// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+function buildFanBlades(x, y, z, r) {
+  const pts = [], Nb = 16, ri = r * 0.16, ro = r * 0.72;   // shorter blades
+  for (let i = 0; i < Nb; i++) {
+    const a = i / Nb * Math.PI * 2;
+    pts.push(Math.cos(a)*ri, 0, Math.sin(a)*ri, Math.cos(a)*ro, 0.4, Math.sin(a)*ro);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const g = new THREE.Group();
+  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+  g.position.set(x, y, z);
+  return g;
+}
+
+// is this line segment a static fan spoke? (radial line inside a duct, at deck level)
+function isSpoke(aw, bw, fans) {
+  const mx = (aw.x+bw.x)/2, my = (aw.y+bw.y)/2, mz = (aw.z+bw.z)/2;
+  let dx = bw.x-aw.x, dz = bw.z-aw.z; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+  for (const f of fans) {
+    if (my < f.yMin) continue;
+    const rx = mx-f.cx, rz = mz-f.cz, rr = Math.hypot(rx, rz);
+    if (rr > f.r) continue;
+    if (rr < f.r * 0.1) return true;                    // hub
+    if (Math.abs(dx * rx/rr + dz * rz/rr) > 0.5) return true;   // radial → spoke
+  }
+  return false;
+}
+// strip the model's own fan-spoke segments so only the animated blades show
+function filterModelSpokes(group, fans) {
+  group.updateWorldMatrix(true, true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  group.traverse(o => {
+    if (!o.isLineSegments || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, m = o.matrixWorld, keep = [];
+    for (let i = 0; i < pos.count; i += 2) {
+      a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1);
+      if (isSpoke(a.clone().applyMatrix4(m), b.clone().applyMatrix4(m), fans)) continue;
+      keep.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    }
+    o.geometry.dispose();
+    o.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(keep, 3));
+  });
+}
+
+// 3D shield ring: 4 arc segments on the XZ floor plane under the ship
+// (FORE +X, STARBOARD +Z, AFT -X, PORT -Z) — same panel order as the 2D arcs.
+function buildShieldRing(radius, y) {
+  const group = new THREE.Group();
+  const centers = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+  const span = 36 * Math.PI/180, seg = 16;
+  const arcs = centers.map(c => {
+    const pts = [];
+    for (let i = 0; i < seg; i++) {
+      const t0 = c - span + (2*span)*i/seg, t1 = c - span + (2*span)*(i+1)/seg;
+      pts.push([radius*Math.cos(t0), 0, radius*Math.sin(t0)], [radius*Math.cos(t1), 0, radius*Math.sin(t1)]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x4ade80, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ls.userData.baseOp = 0.6;
+    group.add(ls); return ls;
+  });
+  group.position.y = y;
+  group.userData.arcs = arcs;
+  return group;
+}
+
+// ---- four independent views (shared scene-graph via cloned line geometry) ----
+const HALF = 96;   // ortho world half-height to frame the fitted model
+function makeView(id, build) {
+  const canvas = document.getElementById(id);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true }); }
+  catch (e) { document.getElementById('err').style.display = 'grid'; return null; }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  const v = { canvas, renderer, scene, controls: null };
+  v.cam = build(v);
+  return v;
+}
+const views = [];
+// cardinal shield arcs on the 3 orthographic frames (skip the perspective frame)
+const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
+let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
+let fanGroups = [];      // spinning lift-fan blade overlays
+const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
+
+const persp = makeView('cv-persp', (v) => {
+  const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
+  c.position.set(150, 92, 168);
+  v.controls = new OrbitControls(c, v.renderer.domElement);
+  v.controls.enableDamping = true; v.controls.enablePan = false;
+  v.controls.autoRotate = true; v.controls.autoRotateSpeed = 0.7;
+  v.controls.minDistance = 110; v.controls.maxDistance = 520;
+  v.controls.target.set(0, 0, 0);
+  return c;
+});
+function orthoView(id, role) {
+  const v = makeView(id, () => new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -3000, 5000));
+  if (v) v.role = role;
+  return v;
+}
+const top  = orthoView('cv-top',  'top');    // dorsal
+const port = orthoView('cv-port', 'side');   // side profile
+const fore = orthoView('cv-fore', 'fore');   // bow end-on
+const aft  = orthoView('cv-aft',  'aft');    // stern end-on
+[persp, top, port, fore, aft].forEach(v => v && views.push(v));
+
+// orient + frame each ortho view from the model's ACTUAL proportions: detect the
+// hull's long axis AND which end is the (tapered) bow, so the side view is the
+// only profile and FORE/AFT are true front/rear. Dorsal is rotated so the long
+// hull lies horizontally and fills the wide frame.
+function configureOrthos(model) {
+  model.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(model);
+  const sz = new THREE.Vector3(); box.getSize(sz);
+  const lenIsX = sz.x >= sz.z;
+  const L = lenIsX ? sz.x : sz.z, B = lenIsX ? sz.z : sz.x, H = sz.y;
+
+  // tell front from rear by the under-hull pods: the FRONT has a single central
+  // intake that hangs deep on the centreline, the REAR has two side booster pods
+  // with a gap at the centreline. Whichever end's centreline geometry reaches
+  // lowest is the front.
+  const lo = lenIsX ? box.min.x : box.min.z, hi = lenIsX ? box.max.x : box.max.z;
+  const span = (hi - lo) || 1, v = new THREE.Vector3();
+  const beamT = B * 0.10, endZone = span * 0.34;
+  let loMinY = Infinity, hiMinY = Infinity;
+  model.traverse(o => {
+    const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      const la = lenIsX ? v.x : v.z, ba = lenIsX ? Math.abs(v.z) : Math.abs(v.x);
+      if (ba > beamT) continue;                        // centreline column only
+      if (la > hi - endZone) { if (v.y < hiMinY) hiMinY = v.y; }
+      else if (la < lo + endZone) { if (v.y < loMinY) loMinY = v.y; }
+    }
+  });
+  const bowSign = hiMinY <= loMinY ? 1 : -1;          // front = deepest central intake
+
+  const D = 1400, M = 1.32;
+  const set = (view, pos, up, w, h) => { if (!view) return;
+    view.cam.position.set(...pos); view.cam.up.set(...up); view.cam.lookAt(0, 0, 0);
+    view.fit = { w: w * M, h: h * M }; };
+  const beamUp = lenIsX ? [0, 0, 1] : [1, 0, 0];     // beam as screen-up → length horizontal
+  // FRONT/REAR are slightly elevated (as in the references) so the under-hull pods
+  // read clearly: one central intake forward, two booster pods aft.
+  const e = 6 * Math.PI / 180, se = Math.sin(e), ce = Math.cos(e), vExt = H * ce + L * se;
+  const fEye = lenIsX ? [bowSign * D * ce, D * se, 0] : [0, D * se, bowSign * D * ce];
+  const aEye = lenIsX ? [-bowSign * D * ce, D * se, 0] : [0, D * se, -bowSign * D * ce];
+  set(top,  [0, D, 0.0001],              beamUp,  L, B);     // dorsal (length horizontal)
+  set(port, lenIsX ? [0,0,D] : [D,0,0],  [0,1,0], L, H);     // side profile
+  set(fore, fEye, [0,1,0],                        B, vExt);  // FRONT — single intake
+  set(aft,  aEye, [0,1,0],                        B, vExt);  // REAR — two booster pods
+  resizeAll();
+}
+
+function resize(v) {
+  const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
+  if (!w || !h) return;
+  v.renderer.setSize(w, h, false);
+  const a = w / h;
+  if (v.cam.isPerspectiveCamera) {
+    v.cam.aspect = a;
+  } else {                                   // fit the view's content to the frame
+    const f = v.fit || { w: HALF * 2, h: HALF * 2 };
+    const halfV = Math.max(f.h / 2, (f.w / 2) / a);
+    v.cam.top = halfV; v.cam.bottom = -halfV; v.cam.left = -halfV * a; v.cam.right = halfV * a;
+  }
+  v.cam.updateProjectionMatrix();
+}
+function resizeAll() { views.forEach(resize); }
+addEventListener('resize', resizeAll);
+new ResizeObserver(resizeAll).observe(document.getElementById('console'));
+
+// ---- load the model once, drop a cloned wireframe into each view ----
+const loader = new FBXLoader();
+loader.load(MODEL_URL, (res) => {
+  const root = res.scene || res;
+  const model = fitToFrame(wireframeOf(root));                 // clean feature edges (ortho views)
+  const detailed = fitToFrame(buildDetailed(root));            // denser wireframe (perspective)
+  const box = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3();
+  box.getSize(sz);
+
+  // find the lift-fan ducts, hide the model's own static spokes inside them
+  const centres = detectFans(model, box, sz), FR = sz.x * FAN_RF;
+  const fans = centres.map(c => ({ cx: c[0], cz: c[2], r: FR * 1.15, yMin: box.min.y + sz.y * 0.42 }));
+  filterModelSpokes(model, fans);
+  filterModelSpokes(detailed, fans);
+
+  [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
+  persp.scene.add(detailed);
+  shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
+  persp.scene.add(shieldRing);
+
+  // spinning fan blades inside the four ducts (perspective + dorsal)
+  fanGroups = [];
+  [persp, top].forEach(v => { if (!v) return;
+    centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); v.scene.add(g); fanGroups.push(g); });
+  });
+
+  configureOrthos(model);
+  applyShield();
+  resizeAll();
+}, undefined, (err) => {
+  console.warn('[console] model load failed:', err);
+  document.getElementById('err').style.display = 'grid';
+  document.getElementById('err').textContent = 'Could not load ' + MODEL_URL;
+});
+
+let lastT = performance.now();
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
+  if (persp && persp.controls) persp.controls.update();
+  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
+  for (const v of views) {                           // keep each canvas matched to its frame
+    const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
+    if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
+  }
+  if (shieldRing) {                                  // gentle breathing on the floor ring
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 700);
+    for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
+  }
+  views.forEach(v => v.renderer.render(v.scene, v.cam));
+}
+requestAnimationFrame(tick);
+
+// ===================================================================
+//  LIVE READOUTS — driven by the dashboard's localStorage state
+// ===================================================================
+function band(v) {                       // 0-25 power → status + colour
+  if (v === 0) return { label: 'OFFLINE',  c: '#ef4444' };
+  if (v <= 4)  return { label: 'CRITICAL', c: '#ef4444' };
+  if (v <= 10) return { label: 'LOW',      c: '#f97316' };
+  if (v <= 15) return { label: 'REDUCED',  c: '#f97316' };
+  if (v <= 20) return { label: 'PARTIAL',  c: '#facc15' };
+  return         { label: 'NOMINAL',  c: '#4ade80' };
+}
+const HULL = {
+  NOMINAL:  { c: '#4ade80', sub: 'all sections green' },
+  DAMAGED:  { c: '#facc15', sub: 'structural stress detected' },
+  CRITICAL: { c: '#f97316', sub: 'hull breach — bracing failing' },
+  OFFLINE:  { c: '#ef4444', sub: 'integrity field collapsed' },
+};
+function intColor(p) { return p > 66 ? '#4ade80' : p > 33 ? '#facc15' : '#ef4444'; }
+
+// build the 6 engine integrity bars once
+const ENG_IDS = ['E1','E2','E3','E4','B1','B2'];
+const engGrid = document.getElementById('eng-grid');
+ENG_IDS.forEach(id => {
+  const el = document.createElement('div'); el.className = 'eng';
+  el.innerHTML = `<div class="lbl"><span>${id}</span><b id="engv-${id}">100</b></div>`
+               + `<div class="track"><div class="fill" id="engf-${id}"></div></div>`;
+  engGrid.appendChild(el);
+});
+
+function readState() {
+  let pw = {}, dmg = {};
+  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  const num = (v, d) => Number.isFinite(+v) ? +v : d;
+  return {
+    sys: num(pw.sys, 25), drones: num(pw.drones, 25),
+    weapons: num(pw.weapons, 25), shields: num(pw.shields, 25),
+    hull: dmg.hull || 'NOMINAL',
+    engines:  Array.isArray(dmg.engines)  ? dmg.engines  : [100, 100, 100, 100],
+    boosters: Array.isArray(dmg.boosters) ? dmg.boosters : [100, 100],
+    aiCore: !!dmg.aiCore,
+  };
+}
+function setDot(id, c, flash) {
+  const d = document.getElementById(id);
+  d.style.color = c; d.classList.toggle('flash', !!flash);
+}
+
+// recolour the 4 shield panels (2D arcs + 3D floor ring) from their damage
+// state (N0 green/N1 yellow/N2 red); brighten with shield power, flash faint
+// red when offline.
+const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
+const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
+function applyShield() {
+  let pw = {}, dmg = {};
+  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  const sp = Number.isFinite(+pw.shields) ? +pw.shields : 25;
+  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
+  const offline = sp === 0;
+  const op = offline ? 0.5 : sp <= 4 ? 0.45 : sp <= 10 ? 0.6 : sp <= 20 ? 0.78 : 0.95;
+  const st = i => Math.max(0, Math.min(2, panels[i] | 0));
+
+  shields.forEach(({ svg, arcs }) => {
+    svg.style.setProperty('--o', op);
+    svg.classList.toggle('offline', offline);
+    arcs.forEach((p, i) => {
+      const c = offline ? '#ef4444' : SHIELD_COL[st(i)];
+      p.style.stroke = c; p.style.color = c;
+    });
+  });
+  if (shieldRing) shieldRing.userData.arcs.forEach((ls, i) => {
+    ls.material.color.setHex(offline ? 0xef4444 : SHIELD_HEX[st(i)]);
+    ls.userData.baseOp = offline ? 0.2 : 0.35 + 0.55 * op;
+  });
+}
+function render() {
+  const s = readState();
+
+  // hull
+  const h = HULL[s.hull] || HULL.NOMINAL;
+  const hs = document.getElementById('hull-state');
+  hs.textContent = s.hull; hs.style.color = h.c;
+  hs.classList.toggle('flash', s.hull === 'CRITICAL' || s.hull === 'OFFLINE');
+  document.getElementById('hull-sub').textContent = h.sub;
+  document.getElementById('op-hull').textContent = s.hull;
+  document.getElementById('op-hull').style.color = h.c;
+
+  // main power 125% = core (base) + aux 25 + battery 25
+  document.getElementById('pseg-core').style.width = (100/125*100) + '%';
+  document.getElementById('pseg-aux').style.width  = (12.5/125*100) + '%';
+  document.getElementById('pseg-batt').style.width = (12.5/125*100) + '%';
+
+  // engine structural integrity (4 props + 2 boosters)
+  const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
+  ENG_IDS.forEach((id, i) => {
+    const p = Math.max(0, Math.min(100, Number.isFinite(+vals[i]) ? +vals[i] : 100));
+    document.getElementById('engv-' + id).textContent = p;
+    const f = document.getElementById('engf-' + id);
+    f.style.width = p + '%'; f.style.background = intColor(p);
+  });
+
+  // subsystems
+  const shd = band(s.shields), drn = band(s.drones), eng = band(s.sys);
+  const wpnOn = s.weapons > 0, wpn = band(s.weapons);
+  setDot('d-shd', shd.c, s.shields <= 4);
+  document.getElementById('s-shd').textContent = shd.label;
+  document.getElementById('s-shd').style.color = shd.c;
+
+  setDot('d-wpn', wpnOn ? wpn.c : '#ef4444', false);
+  document.getElementById('s-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
+  document.getElementById('s-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
+
+  setDot('d-drn', drn.c, s.drones <= 4);
+  document.getElementById('s-drn').textContent = drn.label;
+  document.getElementById('s-drn').style.color = drn.c;
+
+  setDot('d-ai', s.aiCore ? '#facc15' : '#4ade80', s.aiCore);
+  document.getElementById('s-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
+  document.getElementById('s-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+
+  // ortho overlay readouts
+  document.getElementById('ot-eng').textContent = eng.label;
+  document.getElementById('ot-eng').style.color = eng.c;
+  document.getElementById('op-shd').textContent = shd.label;
+  document.getElementById('op-shd').style.color = shd.c;
+  document.getElementById('of-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
+  document.getElementById('of-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
+  document.getElementById('of-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
+  document.getElementById('of-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+  document.getElementById('oa-drn').textContent = drn.label;
+  document.getElementById('oa-drn').style.color = drn.c;
+  document.getElementById('oa-hull').textContent = s.hull;
+  document.getElementById('oa-hull').style.color = h.c;
+
+  applyShield();
+}
+render();
+addEventListener('storage', render);
+let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); bc.onmessage = render; } catch (e) {}
+setInterval(render, 1500);   // catch same-tab updates / damage-state edits
+</script>
+</body>
+</html>
