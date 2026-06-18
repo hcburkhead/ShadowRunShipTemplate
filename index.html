@@ -51,9 +51,9 @@
     filter:drop-shadow(0 0 6px rgba(74,222,128,.3)); animation:badgePulse 5s ease-in-out infinite; }
   .badge svg{ position:absolute; inset:0; width:100%; height:100%; display:block; opacity:.7; }
   .badge .badge-img{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:60%; height:auto; mix-blend-mode:screen;     /* black recedes into the scene, green carries */
-    filter:drop-shadow(0 0 4px rgba(74,222,128,.55)) saturate(1.15); }
-  @keyframes badgePulse{ 0%,100%{opacity:.3} 50%{opacity:.42} }
+    width:60%; height:auto;     /* the original black-and-green logo, just faded */
+    filter:drop-shadow(0 0 3px rgba(74,222,128,.35)); }
+  @keyframes badgePulse{ 0%,100%{opacity:.46} 50%{opacity:.6} }
 
   .main{ grid-area:main; }
   .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
