@@ -297,18 +297,34 @@ function detectFans(model, box, sz) {
   return acc.filter(a => a[2]).map(a => [a[0]/a[2], deckY, a[1]/a[2]]);
 }
 
-// spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
+// spinning contra-rotating fan-blade overlays (MCU Helicarrier style)
 function buildFanBlades(x, y, z, r) {
   const pts = [], Nb = 16;
   for (let i = 0; i < Nb; i++) {
     const a = i / Nb * Math.PI * 2;
+    // Maintained the 10% shorter outer radius calculation (r * 0.9)
     pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*r*0.9, 0.4, Math.sin(a)*r*0.9);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  
+  const mat = new THREE.LineBasicMaterial({
+    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false 
+  });
+
   const g = new THREE.Group();
-  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-    color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
+  
+  // Upper rotor (shifted up slightly)
+  const upperFan = new THREE.LineSegments(geo, mat);
+  upperFan.position.y = r * 0.08; 
+  g.add(upperFan);
+
+  // Lower rotor (shifted down slightly, offset angle to prevent perfect overlapping)
+  const lowerFan = new THREE.LineSegments(geo, mat);
+  lowerFan.position.y = -r * 0.08;
+  lowerFan.rotation.y = Math.PI / Nb; 
+  g.add(lowerFan);
+
   g.position.set(x, y, z);
   return g;
 }
@@ -479,7 +495,13 @@ function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
-  for (const g of fanGroups) g.rotation.y += dt * 4.5;   // spin the lift fans
+
+  // Animating both child meshes inside the fan layout independently 
+  for (const g of fanGroups) {
+    g.children[0].rotation.y += dt * 4.5;   // Upper rotor spins clockwise
+    g.children[1].rotation.y -= dt * 4.5;   // Lower rotor spins counter-clockwise
+  }
+
   for (const v of views) {                           // keep each canvas matched to its frame
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
