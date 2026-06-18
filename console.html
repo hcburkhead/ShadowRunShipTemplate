@@ -299,10 +299,10 @@ function detectFans(model, box, sz) {
 
 // spinning fan-blade overlay that sits inside a lift-fan duct (axis = Y)
 function buildFanBlades(x, y, z, r) {
-  const pts = [], Nb = 16;
+  const pts = [], Nb = 16, ri = r * 0.16, ro = r * 0.72;   // shorter blades
   for (let i = 0; i < Nb; i++) {
     const a = i / Nb * Math.PI * 2;
-    pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*0.8, 0.4, Math.sin(a)*0.8);
+    pts.push(Math.cos(a)*ri, 0, Math.sin(a)*ri, Math.cos(a)*ro, 0.4, Math.sin(a)*ro);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
@@ -311,6 +311,36 @@ function buildFanBlades(x, y, z, r) {
     color: GLINT, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })));
   g.position.set(x, y, z);
   return g;
+}
+
+// is this line segment a static fan spoke? (radial line inside a duct, at deck level)
+function isSpoke(aw, bw, fans) {
+  const mx = (aw.x+bw.x)/2, my = (aw.y+bw.y)/2, mz = (aw.z+bw.z)/2;
+  let dx = bw.x-aw.x, dz = bw.z-aw.z; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+  for (const f of fans) {
+    if (my < f.yMin) continue;
+    const rx = mx-f.cx, rz = mz-f.cz, rr = Math.hypot(rx, rz);
+    if (rr > f.r) continue;
+    if (rr < f.r * 0.1) return true;                    // hub
+    if (Math.abs(dx * rx/rr + dz * rz/rr) > 0.5) return true;   // radial → spoke
+  }
+  return false;
+}
+// strip the model's own fan-spoke segments so only the animated blades show
+function filterModelSpokes(group, fans) {
+  group.updateWorldMatrix(true, true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  group.traverse(o => {
+    if (!o.isLineSegments || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, m = o.matrixWorld, keep = [];
+    for (let i = 0; i < pos.count; i += 2) {
+      a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1);
+      if (isSpoke(a.clone().applyMatrix4(m), b.clone().applyMatrix4(m), fans)) continue;
+      keep.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    }
+    o.geometry.dispose();
+    o.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(keep, 3));
+  });
 }
 
 // 3D shield ring: 4 arc segments on the XZ floor plane under the ship
@@ -450,16 +480,22 @@ const loader = new FBXLoader();
 loader.load(MODEL_URL, (res) => {
   const root = res.scene || res;
   const model = fitToFrame(wireframeOf(root));                 // clean feature edges (ortho views)
-  [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
-  persp.scene.add(fitToFrame(buildDetailed(root)));            // denser wireframe (perspective)
-  // segmented shield ring on the floor under the ship (perspective view only)
+  const detailed = fitToFrame(buildDetailed(root));            // denser wireframe (perspective)
   const box = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3();
   box.getSize(sz);
+
+  // find the lift-fan ducts, hide the model's own static spokes inside them
+  const centres = detectFans(model, box, sz), FR = sz.x * FAN_RF;
+  const fans = centres.map(c => ({ cx: c[0], cz: c[2], r: FR * 1.15, yMin: box.min.y + sz.y * 0.42 }));
+  filterModelSpokes(model, fans);
+  filterModelSpokes(detailed, fans);
+
+  [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
+  persp.scene.add(detailed);
   shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
   persp.scene.add(shieldRing);
 
-  // spinning fan blades inside the four detected lift-fan ducts (perspective + dorsal)
-  const centres = detectFans(model, box, sz), FR = sz.x * FAN_RF;
+  // spinning fan blades inside the four ducts (perspective + dorsal)
   fanGroups = [];
   [persp, top].forEach(v => { if (!v) return;
     centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); v.scene.add(g); fanGroups.push(g); });
