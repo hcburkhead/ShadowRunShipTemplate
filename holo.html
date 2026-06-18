@@ -72,6 +72,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const app = document.getElementById('app');
@@ -236,6 +237,56 @@ function jet(x, z, rot) {
 jet(108, 6, 0.15); jet(100, -7, -0.1); jet(92, 8, 0.12); jet(-58, -6, 3.0);
 
 ship.scale.setScalar(0.62);
+
+// ---------- real model loader (vendor/helicarrier.glb) ----------
+// If a real .glb is present it replaces the procedural ship, re-rendered as
+// green wireframe edges (no faces). If it's missing/fails, we keep the
+// procedural Helicarrier above as a fallback.
+const Q = new URLSearchParams(location.search);
+const MODEL_URL = Q.get('model') || 'vendor/helicarrier.glb';
+const WIRE_FULL = Q.get('wire') === 'full';   // every triangle edge vs. clean feature edges
+const ROT = [ +(Q.get('rx')||0), +(Q.get('ry')||0), +(Q.get('rz')||0) ].map(v => v * Math.PI/180);
+
+function wireframeOf(root, { color = GREEN, opacity = 0.85, full = false, threshold = 24 } = {}) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (o.isMesh && o.geometry) {
+      const eg = full ? new THREE.WireframeGeometry(o.geometry)
+                      : new THREE.EdgesGeometry(o.geometry, threshold);
+      const ls = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({
+        color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+      o.updateWorldMatrix(true, false);
+      ls.applyMatrix4(o.matrixWorld);     // bake transforms into a flat group
+      out.add(ls);
+    }
+  });
+  return out;
+}
+function fitToFrame(g, target = 165) {
+  const box = new THREE.Box3().setFromObject(g);
+  const size = new THREE.Vector3(), center = new THREE.Vector3();
+  box.getSize(size); box.getCenter(center);
+  g.position.sub(center);                                // recenter at origin
+  const wrap = new THREE.Group();
+  wrap.add(g);
+  wrap.scale.setScalar(target / Math.max(size.x, size.y, size.z));
+  wrap.rotation.set(ROT[0], ROT[1], ROT[2]);
+  return wrap;
+}
+
+new GLTFLoader().load(MODEL_URL, (gltf) => {
+  // success → drop the procedural parts, show the real model as wireframe
+  for (const c of [...ship.children]) ship.remove(c);
+  fans.length = 0;
+  const model = fitToFrame(wireframeOf(gltf.scene, { full: WIRE_FULL }));
+  ship.add(model);
+  ship.scale.setScalar(1);
+  document.getElementById('hud-tl').querySelector('.t2').textContent =
+    'S.H.I.E.L.D. HELICARRIER  |  3D MODEL · WIREFRAME';
+}, undefined, (err) => {
+  console.warn('[holo] no model at ' + MODEL_URL + ' — using procedural fallback.', err);
+});
 
 // ---------- holographic projector base (static, ship hovers above) ----------
 const base = new THREE.Group();
