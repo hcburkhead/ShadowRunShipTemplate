@@ -114,54 +114,55 @@
 <body>
     <div class="wrap">
       <header>
-          <svg class="logo" viewBox="0 0 100 100" aria-label="STS">
+        <svg class="logo" viewBox="0 0 100 100" aria-label="STS">
           <!-- outer hex -->
-            <polygon points="50,6 92,30 92,70 50,94 8,70 8,30" fill="none" stroke="#4ade80" stroke-width="3"/>
-      
-            <defs>
-          <!-- 1) binarize filter: grayscale → boost contrast → hard threshold -->
-              <filter id="binarize">
-                <feColorMatrix type="matrix"
-                  values="0.2126 0.7152 0.0722 0 0
-                          0.2126 0.7152 0.0722 0 0
-                          0.2126 0.7152 0.0722 0 0
-                          0      0      0      1 0" result="gray"/>
-                <feComponentTransfer in="gray" result="high">
-                  <feFuncR type="gamma" amplitude="1" exponent="0.6" offset="0"/>
-                  <feFuncG type="gamma" amplitude="1" exponent="0.6" offset="0"/>
-                  <feFuncB type="gamma" amplitude="1" exponent="0.6" offset="0"/>
-                </feComponentTransfer>
-                <feComponentTransfer in="high" result="bw">
-                  <feFuncR type="table" tableValues="0 1"/>
-                  <feFuncG type="table" tableValues="0 1"/>
-                  <feFuncB type="table" tableValues="0 1"/>
-                  <feFuncA type="table" tableValues="0 1"/>
-                </feComponentTransfer>
-              </filter>
-      
-              <!-- 2) mask: produce opaque white where letters are, black elsewhere -->
-              <mask id="lettersMask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
-                <rect x="0" y="0" width="100" height="100" fill="black"/>
-                <g filter="url(#binarize)">
-                  <image href="sts.png" x="28" y="26" width="44" height="44" preserveAspectRatio="xMidYMid meet"/>
-                </g>
-              </mask>
-      
-              <!-- clip to inner hex -->
-              <clipPath id="hexClip">
-                <polygon points="50,20 78,36 78,64 50,80 22,64 22,36"/>
-              </clipPath>
-            </defs>
-      
-            <!-- 3) inside hex: black background, green letters revealed by mask -->
-            <g clip-path="url(#hexClip)">
-              <rect x="22" y="20" width="56" height="60" fill="#000"/>
-              <rect x="22" y="20" width="56" height="60" fill="#2bbf6a" mask="url(#lettersMask)"/>
-            </g>
-      
-            <!-- 4) inner outline on top -->
-            <polygon points="50,20 78,36 78,64 50,80 22,64 22,36" fill="none" stroke="#2bbf6a" stroke-width="2"/>
-          </svg>
+          <polygon points="50,6 92,30 92,70 50,94 8,70 8,30" fill="none" stroke="#4ade80" stroke-width="3"/>
+        
+          <defs>
+            <!-- grayscale -> contrast -> hard threshold -->
+            <filter id="binarize">
+              <feColorMatrix type="matrix"
+                values="0.2126 0.7152 0.0722 0 0
+                        0.2126 0.7152 0.0722 0 0
+                        0.2126 0.7152 0.0722 0 0
+                        0      0      0      1 0" result="gray"/>
+              <feComponentTransfer in="gray" result="high">
+                <feFuncR type="gamma" amplitude="1" exponent="0.6" offset="0"/>
+                <feFuncG type="gamma" amplitude="1" exponent="0.6" offset="0"/>
+                <feFuncB type="gamma" amplitude="1" exponent="0.6" offset="0"/>
+              </feComponentTransfer>
+              <feComponentTransfer in="high" result="bw">
+                <feFuncR type="table" tableValues="0 1"/>
+                <feFuncG type="table" tableValues="0 1"/>
+                <feFuncB type="table" tableValues="0 1"/>
+                <feFuncA type="table" tableValues="0 1"/>
+              </feComponentTransfer>
+            </filter>
+        
+            <!-- mask: white where letters are, black elsewhere -->
+            <mask id="lettersMask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+              <rect x="0" y="0" width="100" height="100" fill="black"/>
+              <g filter="url(#binarize)">
+                <!-- adjust x/y/width/height if you changed image placement -->
+                <image href="sts.png" x="28" y="26" width="44" height="44" preserveAspectRatio="xMidYMid meet"/>
+              </g>
+            </mask>
+        
+            <clipPath id="hexClip">
+              <polygon points="50,20 78,36 78,64 50,80 22,64 22,36"/>
+            </clipPath>
+          </defs>
+        
+          <!-- black interior, reveal green only where mask (letters) is opaque -->
+          <g clip-path="url(#hexClip)">
+            <rect x="22" y="20" width="56" height="60" fill="#000"/>
+            <rect x="22" y="20" width="56" height="60" fill="#2bbf6a" mask="url(#lettersMask)"/>
+          </g>
+        
+          <!-- inner outline on top -->
+          <polygon points="50,20 78,36 78,64 50,80 22,64 22,36" fill="none" stroke="#2bbf6a" stroke-width="2"/>
+        </svg>
+  
     
         <div>
           <h1 id="con-title">OPERATOR CONSOLE</h1>
