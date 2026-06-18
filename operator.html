@@ -226,7 +226,7 @@ const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 
 // ---- power allocation ----
 function clampBudget(changed) {
-  let v = +document.getElementById('sl-' + changed).value;
+  let v = state.power[changed];                       // use the intended value (slider OR toggle)
   const others = KEYS.filter(k => k !== changed).reduce((a, k) => a + state.power[k], 0);
   if (v + others > 100) v = Math.max(0, 100 - others);
   state.power[changed] = v;
@@ -241,6 +241,7 @@ function renderPower() {
   document.getElementById('pwr-total').textContent = total + '% / 100%';
 }
 KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
+  state.power[k] = +document.getElementById('sl-' + k).value;   // adopt the slider, then clamp
   clampBudget(k); renderPower(); savePower();
 }));
 document.getElementById('sl-boost').addEventListener('input', e => {

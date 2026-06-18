@@ -249,20 +249,23 @@ function fitToFrame(g, target = 160) {
 }
 
 // ---- shields ----
-// 4 directional panels: [0]=FORE/top, [1]=STARBOARD/right, [2]=AFT/bottom,
-// [3]=PORT/left. Each recolours by damage state — N0 green, N1 yellow, N2 red.
-// 2D views get four cardinal arcs framing the centred ship; the 3D view gets a
-// segmented ring on the floor under the ship so you can read which side is hit.
+// 4 directional panels [0]=FORE, [1]=STARBOARD, [2]=AFT, [3]=PORT, each recolouring
+// by damage state (N0 green / N1 yellow / N2 red). Each view PROJECTS those world
+// facings into its own screen, so a damaged facing's arc points the right way in
+// every view (e.g. a hit FORE shield lights the arc toward the nose). The 3D view
+// gets a matching segmented ring on the floor.
 const SVGNS = 'http://www.w3.org/2000/svg';
-const CARDINALS = [270, 0, 90, 180];   // deg (SVG y-down): top, right, bottom, left
-function buildCardinalArcs(frame) {
+function buildViewShield(frame, camera, facings) {
   const svg = document.createElementNS(SVGNS, 'svg');
   svg.setAttribute('class', 'shield');
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
-  const cx = 50, cy = 50, rx = 44, ry = 40, span = 35 * Math.PI/180;
-  const arcs = CARDINALS.map(deg => {
-    const c = deg * Math.PI/180, a0 = c - span, a1 = c + span;
+  const cx = 50, cy = 50, rx = 44, ry = 40, span = 33 * Math.PI/180;
+  const inv = camera.matrixWorldInverse, v = new THREE.Vector3();
+  const arcs = facings.map((f, idx) => {
+    v.copy(f).transformDirection(inv);          // facing direction in camera space
+    const mag = Math.hypot(v.x, v.y);           // in-plane amount (0 = edge-on … 1 = perpendicular)
+    const a = Math.atan2(-v.y, v.x), a0 = a - span, a1 = a + span;  // SVG ellipse angle (y-down)
     const p = document.createElementNS(SVGNS, 'path');
     p.setAttribute('d', `M ${(cx+rx*Math.cos(a0)).toFixed(2)} ${(cy+ry*Math.sin(a0)).toFixed(2)} `
                       + `A ${rx} ${ry} 0 0 1 ${(cx+rx*Math.cos(a1)).toFixed(2)} ${(cy+ry*Math.sin(a1)).toFixed(2)}`);
@@ -270,7 +273,8 @@ function buildCardinalArcs(frame) {
     p.setAttribute('stroke-width', '3');
     p.setAttribute('stroke-linecap', 'round');
     p.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.appendChild(p); return p;
+    svg.appendChild(p);
+    return { el: p, facing: idx, mag };
   });
   frame.appendChild(svg);
   return { svg, arcs };
@@ -343,13 +347,13 @@ function filterModelSpokes(group, fans) {
   });
 }
 
-// 3D shield ring: 4 arc segments on the XZ floor plane under the ship
-// (FORE +X, STARBOARD +Z, AFT -X, PORT -Z) — same panel order as the 2D arcs.
-function buildShieldRing(radius, y) {
+// 3D shield ring: one arc segment on the XZ floor per facing, headed in that
+// facing's true direction (fore points at the bow, etc.) — panel order matches.
+function buildShieldRing(radius, y, facings) {
   const group = new THREE.Group();
-  const centers = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
   const span = 36 * Math.PI/180, seg = 16;
-  const arcs = centers.map(c => {
+  const arcs = facings.map(f => {
+    const c = Math.atan2(f.z, f.x);             // heading of this facing in the XZ plane
     const pts = [];
     for (let i = 0; i < seg; i++) {
       const t0 = c - span + (2*span)*i/seg, t1 = c - span + (2*span)*(i+1)/seg;
@@ -381,8 +385,7 @@ function makeView(id, build) {
   return v;
 }
 const views = [];
-// cardinal shield arcs on the 3 orthographic frames (skip the perspective frame)
-const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
+let shields = [];        // per-view 2D shield arcs, built once cameras are oriented
 let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
 let fanGroups = [];      // spinning lift-fan blade overlays
 let perspLift = null;    // group the perspective ship rides in, offset by altitude
@@ -406,14 +409,15 @@ function buildDroneSwarm(cx, cy, cz, spread) {
   const swarm = new THREE.Group(); swarm.position.set(cx, cy, cz);
   const mat = (color, op) => new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
   const drones = [];
+  const remember = m => { m.userData.baseColor = m.material.color.getHex(); return m; };
   for (let i = 0; i < 5; i++) {
     const d = new THREE.Group();
-    d.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.6, 1, 2.6)), mat(0x6df3ff, 0.9)));
-    d.add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6),   // bright core so the drone reads inside the hull
-      new THREE.MeshBasicMaterial({ color: 0xbef9d2, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })));
+    d.add(remember(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.6, 1, 2.6)), mat(0x6df3ff, 0.9))));
+    d.add(remember(new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6),   // bright core so the drone reads inside the hull
+      new THREE.MeshBasicMaterial({ color: 0xbef9d2, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }))));
     const cg = new THREE.BufferGeometry();
     cg.setAttribute('position', new THREE.Float32BufferAttribute([-2.8,0.7,0, 2.8,0.7,0, 0,0.7,-2.8, 0,0.7,2.8], 3));
-    const cross = new THREE.LineSegments(cg, mat(0x6df3ff, 0.8)); d.add(cross);
+    const cross = remember(new THREE.LineSegments(cg, mat(0x6df3ff, 0.8))); d.add(cross);
     const a = (i / 5) * Math.PI * 2, rr = spread * (0.45 + 0.55 * (i % 2));
     d.position.set(Math.cos(a) * rr, (i % 3 - 1) * spread * 0.4, Math.sin(a) * rr);
     d.userData = { cross, phase: Math.random() * 6.28, baseY: d.position.y };
@@ -425,11 +429,14 @@ function buildDroneSwarm(cx, cy, cz, spread) {
 function updateDrones(s) {
   if (!droneSwarms.length) return;
   const bayDead = (s.areas.droneBay || 0) >= 2, active = s.drones > 0 && !bayDead;
-  const op = active ? 0.9 : 0.32;
+  const op = active ? 0.9 : 0.85;                 // powered-off drones go red + freeze
   for (const sw of droneSwarms) {
     sw.visible = !bayDead;                        // bay destroyed → drones gone
     sw.userData.active = active;
-    for (const d of sw.userData.drones) for (const c of d.children) c.material.opacity = op;
+    for (const d of sw.userData.drones) for (const c of d.children) {
+      c.material.opacity = op;
+      c.material.color.setHex(active ? c.userData.baseColor : 0xef4444);
+    }
   }
 }
 function buildDot(x, y, z) {
@@ -562,8 +569,6 @@ loader.load(MODEL_URL, (res) => {
   perspLift = new THREE.Group();
   perspLift.add(detailed);
   persp.scene.add(perspLift);
-  shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
-  persp.scene.add(shieldRing);            // floor ring stays put
 
   // spinning fan blades inside the four ducts (perspective rides the lift; dorsal static)
   fanGroups = [];
@@ -577,6 +582,16 @@ loader.load(MODEL_URL, (res) => {
     const lc = axes.bowSign * along * Lh, bc = beam * Bh, y = box.min.y + up * sz.y;
     return axes.lenIsX ? [lc, y, bc] : [bc, y, lc];
   };
+
+  // shield facings as world directions [FORE, STARBOARD, AFT, PORT], from the real axes
+  const lenU = axes.lenIsX ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,0,1);
+  const beamU = axes.lenIsX ? new THREE.Vector3(0,0,1) : new THREE.Vector3(1,0,0);
+  const FACINGS = [
+    lenU.clone().multiplyScalar(axes.bowSign), beamU.clone(),
+    lenU.clone().multiplyScalar(-axes.bowSign), beamU.clone().multiplyScalar(-1),
+  ];
+  shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10, FACINGS);
+  persp.scene.add(shieldRing);            // floor ring stays put
 
   // drones inside the hull's drone bay (not on the model) — perspective + dorsal
   const dPos = apos(-0.12, 0, 0.42), dSpread = sz.x * 0.12;
@@ -603,6 +618,17 @@ loader.load(MODEL_URL, (res) => {
   }
 
   configureOrthos(model, axes);
+
+  // build each profile view's 2D shield arcs by projecting the world facings into
+  // that view's camera, so a damaged facing points the right way per view
+  const orthoFrames = [...document.querySelectorAll('.oview')];   // dorsal, port, fore, aft
+  shields = [];
+  [[top, orthoFrames[0]], [port, orthoFrames[1]], [fore, orthoFrames[2]], [aft, orthoFrames[3]]].forEach(([v, frame]) => {
+    if (!v || !frame) return;
+    v.cam.updateMatrixWorld(true); v.cam.matrixWorldInverse.copy(v.cam.matrixWorld).invert();
+    shields.push(buildViewShield(frame, v.cam, FACINGS));
+  });
+
   applyShield();
   applyAltitude();
   resizeAll();
@@ -623,7 +649,7 @@ function tick() {
     const act = sw.userData.active;
     for (const d of sw.userData.drones) {
       d.userData.cross.rotation.y += dt * (act ? 16 : 0);
-      d.position.y = d.userData.baseY + Math.sin(now / 700 + d.userData.phase) * 1.3 * (act ? 1 : 0.3);
+      d.position.y = d.userData.baseY + (act ? Math.sin(now / 700 + d.userData.phase) * 1.3 : 0);  // freeze when off
     }
   }
   if (DOTS) { const bl = 0.3 + 0.7 * Math.abs(Math.sin(now / 220));   // blink the damage dots
@@ -713,9 +739,12 @@ function applyShield() {
   shields.forEach(({ svg, arcs }) => {
     svg.style.setProperty('--o', op);
     svg.classList.toggle('offline', offline);
-    arcs.forEach((p, i) => {
-      const c = offline ? '#ef4444' : SHIELD_COL[st(i)];
-      p.style.stroke = c; p.style.color = c;
+    arcs.forEach(arc => {
+      const fade = Math.max(0, Math.min(1, (arc.mag - 0.15) / 0.5));   // hide/fade edge-on facings
+      arc.el.style.display = fade <= 0.02 ? 'none' : '';
+      arc.el.style.opacity = fade.toFixed(2);
+      const c = offline ? '#ef4444' : SHIELD_COL[st(arc.facing)];
+      arc.el.style.stroke = c; arc.el.style.color = c;
     });
   });
   if (shieldRing) shieldRing.userData.arcs.forEach((ls, i) => {
