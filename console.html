@@ -302,7 +302,7 @@ function buildFanBlades(x, y, z, r) {
   const pts = [], Nb = 16;
   for (let i = 0; i < Nb; i++) {
     const a = i / Nb * Math.PI * 2;
-    pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*0.8, 0.4, Math.sin(a)*0.8);
+    pts.push(Math.cos(a)*r*0.16, 0, Math.sin(a)*r*0.16, Math.cos(a)*r*0.9, 0.4, Math.sin(a)*r*0.9);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
