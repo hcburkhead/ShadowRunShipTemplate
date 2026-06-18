@@ -330,33 +330,41 @@ function configureOrthos(model) {
   const lenIsX = sz.x >= sz.z;
   const L = lenIsX ? sz.x : sz.z, B = lenIsX ? sz.z : sz.x, H = sz.y;
 
-  // find the bow: bin the hull along its length and compare how wide each end is
+  // tell front from rear by the under-hull pods: the FRONT has a single central
+  // intake that hangs deep on the centreline, the REAR has two side booster pods
+  // with a gap at the centreline. Whichever end's centreline geometry reaches
+  // lowest is the front.
   const lo = lenIsX ? box.min.x : box.min.z, hi = lenIsX ? box.max.x : box.max.z;
-  const span = (hi - lo) || 1, N = 14, width = new Array(N).fill(0), v = new THREE.Vector3();
+  const span = (hi - lo) || 1, v = new THREE.Vector3();
+  const beamT = B * 0.10, endZone = span * 0.34;
+  let loMinY = Infinity, hiMinY = Infinity;
   model.traverse(o => {
     const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
-      const la = lenIsX ? v.x : v.z, pa = lenIsX ? Math.abs(v.z) : Math.abs(v.x);
-      let b = Math.floor((la - lo) / span * N); b = b < 0 ? 0 : b >= N ? N - 1 : b;
-      if (pa > width[b]) width[b] = pa;
+      const la = lenIsX ? v.x : v.z, ba = lenIsX ? Math.abs(v.z) : Math.abs(v.x);
+      if (ba > beamT) continue;                        // centreline column only
+      if (la > hi - endZone) { if (v.y < hiMinY) hiMinY = v.y; }
+      else if (la < lo + endZone) { if (v.y < loMinY) loMinY = v.y; }
     }
   });
-  const frontW = (width[0] + width[1] + width[2]) / 3, backW = (width[N-1] + width[N-2] + width[N-3]) / 3;
-  const bowSign = frontW <= backW ? -1 : 1;          // bow = the narrower (tapered) end
+  const bowSign = hiMinY <= loMinY ? 1 : -1;          // front = deepest central intake
 
-  const D = 1400, M = 1.5;
+  const D = 1400, M = 1.32;
   const set = (view, pos, up, w, h) => { if (!view) return;
     view.cam.position.set(...pos); view.cam.up.set(...up); view.cam.lookAt(0, 0, 0);
     view.fit = { w: w * M, h: h * M }; };
   const beamUp = lenIsX ? [0, 0, 1] : [1, 0, 0];     // beam as screen-up → length horizontal
-  const fEye = lenIsX ? [bowSign * D, 0, 0] : [0, 0, bowSign * D];
-  const aEye = lenIsX ? [-bowSign * D, 0, 0] : [0, 0, -bowSign * D];
-  set(top,  [0, D, 0.0001],              beamUp,  L, B);  // dorsal (length horizontal)
-  set(port, lenIsX ? [0,0,D] : [D,0,0],  [0,1,0], L, H);  // side profile
-  set(fore, fEye, [0,1,0],                        B, H);  // bow end-on  → FRONT
-  set(aft,  aEye, [0,1,0],                        B, H);  // stern end-on → REAR
+  // FRONT/REAR are slightly elevated (as in the references) so the under-hull pods
+  // read clearly: one central intake forward, two booster pods aft.
+  const e = 6 * Math.PI / 180, se = Math.sin(e), ce = Math.cos(e), vExt = H * ce + L * se;
+  const fEye = lenIsX ? [bowSign * D * ce, D * se, 0] : [0, D * se, bowSign * D * ce];
+  const aEye = lenIsX ? [-bowSign * D * ce, D * se, 0] : [0, D * se, -bowSign * D * ce];
+  set(top,  [0, D, 0.0001],              beamUp,  L, B);     // dorsal (length horizontal)
+  set(port, lenIsX ? [0,0,D] : [D,0,0],  [0,1,0], L, H);     // side profile
+  set(fore, fEye, [0,1,0],                        B, vExt);  // FRONT — single intake
+  set(aft,  aEye, [0,1,0],                        B, vExt);  // REAR — two booster pods
   resizeAll();
 }
 
