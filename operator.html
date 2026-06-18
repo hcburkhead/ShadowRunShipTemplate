@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STS — Operator Console</title>
+<style>
+  :root{
+    --bg:#040d04; --panel:#07140a; --panel2:#0a1c0e; --edge:#1e4d1e;
+    --g1:#4ade80; --g2:#2bbf6a; --g3:#137a3c; --dim:#2d6a2d;
+    --amber:#f6a23c; --yellow:#facc15; --red:#ef4444; --lav:#b99cff; --glint:#bef9d2;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--g1); font-family:'Courier New',monospace; letter-spacing:1px;
+        min-height:100vh; padding:14px; }
+  .wrap{ max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
+
+  /* header */
+  header{ display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--edge);
+          border-radius:8px 8px 8px 30px; padding:10px 16px; }
+  .logo{ width:46px; height:46px; flex:none; }
+  header h1{ font-size:16px; letter-spacing:3px; color:var(--glint); font-weight:bold; }
+  header .sub{ font-size:9px; color:var(--dim); margin-top:2px; }
+  header .right{ margin-left:auto; text-align:right; font-size:9px; color:var(--dim); }
+  header .right a{ color:var(--g1); text-decoration:none; border:1px solid var(--g3); border-radius:4px;
+                   padding:4px 10px; display:inline-block; margin-top:4px; }
+  header .right a:hover{ background:#0a1a0a; }
+  #netdot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--dim);
+           box-shadow:0 0 6px currentColor; margin-right:5px; vertical-align:middle; }
+
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:720px){ .grid{ grid-template-columns:1fr; } }
+
+  .card{ background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px;
+         display:flex; flex-direction:column; gap:10px; }
+  .card.full{ grid-column:1/-1; }
+  .card h2{ font-size:10px; letter-spacing:2px; color:var(--g2); display:flex; justify-content:space-between; }
+  .card h2 .v{ color:var(--glint); }
+
+  /* sliders */
+  .row{ display:flex; flex-direction:column; gap:3px; }
+  .row .lbl{ display:flex; justify-content:space-between; font-size:10px; color:var(--dim); }
+  .row .lbl b{ color:var(--g1); font-weight:normal; font-size:12px; }
+  input[type=range]{ width:100%; accent-color:var(--g1); cursor:pointer; height:4px; }
+  .twocol{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; }
+  .threecol{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px 12px; }
+
+  /* segmented buttons */
+  .seg{ display:flex; gap:4px; flex-wrap:wrap; }
+  .seg button{ flex:1; min-width:64px; font:inherit; font-size:10px; letter-spacing:1px; padding:7px 6px;
+    background:var(--panel2); color:var(--dim); border:1px solid var(--edge); border-radius:4px; cursor:pointer; }
+  .seg button:hover{ border-color:var(--g3); }
+  .seg button.on{ color:#03130a; font-weight:bold; }
+  .seg button.on.s0{ background:var(--g1); border-color:var(--g1); }
+  .seg button.on.s1{ background:var(--yellow); border-color:var(--yellow); }
+  .seg button.on.s2{ background:var(--red); border-color:var(--red); }
+  .seg button.on.warn{ background:var(--amber); border-color:var(--amber); }
+
+  /* toggle */
+  .toggle{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+           background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:8px 10px; }
+  .toggle .nm{ font-size:10px; color:var(--g1); }
+  .sw{ width:54px; height:24px; border-radius:13px; border:1px solid var(--edge); background:#0c1f10;
+       position:relative; cursor:pointer; flex:none; transition:background .2s; }
+  .sw .k{ position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+          background:var(--dim); transition:left .2s, background .2s; }
+  .sw.on{ background:#16361f; }
+  .sw.on .k{ left:32px; background:var(--g1); box-shadow:0 0 8px var(--g1); }
+  .sw.warn.on{ background:#3a2e12; } .sw.warn.on .k{ background:var(--yellow); box-shadow:0 0 8px var(--yellow); }
+
+  /* shield panel pad */
+  .shieldpad{ display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,30px);
+    gap:5px; max-width:240px; margin:0 auto; }
+  .shieldpad .sp{ border:1px solid var(--edge); border-radius:4px; background:var(--panel2);
+    font-size:9px; color:var(--dim); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .shieldpad .sp.lit0{ background:rgba(74,222,128,.25); border-color:var(--g1); color:var(--g1); }
+  .shieldpad .sp.lit1{ background:rgba(250,204,21,.25); border-color:var(--yellow); color:var(--yellow); }
+  .shieldpad .sp.lit2{ background:rgba(239,68,68,.3); border-color:var(--red); color:var(--red); }
+  .sp-f{ grid-column:2; grid-row:1; } .sp-s{ grid-column:3; grid-row:2; }
+  .sp-a{ grid-column:2; grid-row:3; } .sp-p{ grid-column:1; grid-row:2; }
+  .sp-mid{ grid-column:2; grid-row:2; border:0; color:var(--dim); font-size:8px; cursor:default; }
+
+  .hint{ font-size:8px; color:var(--dim); }
+  .btn-wide{ font:inherit; font-size:10px; letter-spacing:1px; padding:8px; width:100%; cursor:pointer;
+    background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
+  .btn-wide:hover{ background:#0a1a0a; }
+
+  /* locked / view-only mode (?display) — players can read but not operate */
+  .lockbadge{ display:none; color:var(--amber); font-weight:bold; }
+  body.locked .lockbadge{ display:inline-block; }
+  body.locked .ctl-only{ display:none !important; }
+  body.locked input[type=range], body.locked .sw,
+  body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
+  body.locked input[type=range]{ opacity:.8; }
+  body.locked .sw{ opacity:.85; } body.locked .seg button.on{ opacity:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="logo" viewBox="0 0 100 100" aria-label="STS">
+      <polygon points="50,6 92,30 92,70 50,94 8,70 8,30" fill="none" stroke="#4ade80" stroke-width="3"/>
+      <polygon points="50,20 78,36 78,64 50,80 22,64 22,36" fill="none" stroke="#2bbf6a" stroke-width="2"/>
+      <text x="50" y="58" text-anchor="middle" font-size="22" fill="#bef9d2" font-family="monospace" font-weight="bold">STS</text>
+    </svg>
+    <div>
+      <h1 id="con-title">OPERATOR CONSOLE</h1>
+      <div class="sub">AEROSPACE + SENTRIS TECHNOLOGIES · HELICARRIER CONTROL</div>
+    </div>
+    <div class="right">
+      <div><span id="netdot"></span><span id="netlbl">LOCAL</span> <span class="lockbadge">🔒 VIEW ONLY</span></div>
+      <a class="ctl-only" href="index.html" target="_blank" rel="noopener">⤢ open display</a>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- POWER ALLOCATION -->
+    <div class="card">
+      <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
+      <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
+      <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
+      <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
+      <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
+      <div class="row" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
+    </div>
+
+    <!-- HULL + ALTITUDE -->
+    <div class="card">
+      <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
+      <div class="seg" id="hull-seg">
+        <button data-h="NOMINAL">NOMINAL</button>
+        <button data-h="DAMAGED">DAMAGED</button>
+        <button data-h="CRITICAL">CRITICAL</button>
+        <button data-h="OFFLINE">OFFLINE</button>
+      </div>
+      <h2 style="margin-top:6px">ALTITUDE <span class="v" id="alt-v">100%</span></h2>
+      <input type="range" min="0" max="100" value="100" id="sl-alt">
+      <div class="hint">drop altitude to lower the ship projection in the display.</div>
+    </div>
+
+    <!-- ENGINE STRUCTURAL INTEGRITY -->
+    <div class="card">
+      <h2>ENGINE STRUCTURAL INTEGRITY</h2>
+      <div class="twocol" id="eng-rows"></div>
+    </div>
+
+    <!-- SHIELD PANELS -->
+    <div class="card">
+      <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
+      <div class="shieldpad">
+        <div class="sp sp-f" data-i="0">FORE</div>
+        <div class="sp sp-s" data-i="1">STBD</div>
+        <div class="sp sp-mid">SHLD</div>
+        <div class="sp sp-p" data-i="3">PORT</div>
+        <div class="sp sp-a" data-i="2">AFT</div>
+      </div>
+    </div>
+
+    <!-- SUBSYSTEMS -->
+    <div class="card full">
+      <h2>SUBSYSTEMS</h2>
+      <div class="threecol">
+        <div class="toggle"><span class="nm">WEAPONS</span><div class="sw" id="sw-weapons"><div class="k"></div></div></div>
+        <div class="toggle"><span class="nm">DRONES</span><div class="sw" id="sw-drones"><div class="k"></div></div></div>
+        <div class="toggle"><span class="nm">AI CORE DAMAGED</span><div class="sw warn" id="sw-ai"><div class="k"></div></div></div>
+      </div>
+      <div class="hint">weapons/drones toggle their power between full and offline. AI Core flags the damage indicator.</div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+//  Operator console — writes ship state to Firebase + localStorage + BroadcastChannel
+// ---------------------------------------------------------------------------
+const KEYS = ['sys', 'drones', 'weapons', 'shields'];
+const ENG = ['E1', 'E2', 'E3', 'E4', 'B1', 'B2'];
+
+// authoritative local state (seeded from storage, overwritten by cloud on connect)
+const state = {
+  power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, boost: 0 }),
+  damage: load('shipDamageState', { hull: 'NOMINAL', engines: [100,100,100,100], boosters: [100,100],
+                                    shieldPanels: [0,0,0,0], aiCore: false }),
+  altitude: load('shipAltitude', { v: 100 }).v,
+};
+function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
+
+let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
+let fb = null;   // { set, ref, db } once Firebase connects
+
+function pushKey(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  if (bc) { try { bc.postMessage(Date.now()); } catch (e) {} }
+  if (fb) { try { fb.set(fb.ref(fb.db, key), value); } catch (e) {} }
+}
+const savePower  = () => pushKey('shipPowerLevels', state.power);
+const saveDamage = () => pushKey('shipDamageState', state.damage);
+const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
+
+// ---- power allocation ----
+function clampBudget(changed) {
+  let v = +document.getElementById('sl-' + changed).value;
+  const others = KEYS.filter(k => k !== changed).reduce((a, k) => a + state.power[k], 0);
+  if (v + others > 100) v = Math.max(0, 100 - others);
+  state.power[changed] = v;
+  document.getElementById('sl-' + changed).value = v;
+}
+function renderPower() {
+  KEYS.forEach(k => { document.getElementById('sl-' + k).value = state.power[k];
+                      document.getElementById('v-' + k).textContent = state.power[k] + '%'; });
+  document.getElementById('sl-boost').value = state.power.boost || 0;
+  document.getElementById('v-boost').textContent = (state.power.boost || 0) + '%';
+  const total = KEYS.reduce((a, k) => a + state.power[k], 0);
+  document.getElementById('pwr-total').textContent = total + '% / 100%';
+}
+KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
+  clampBudget(k); renderPower(); savePower();
+}));
+document.getElementById('sl-boost').addEventListener('input', e => {
+  state.power.boost = +e.target.value; renderPower(); savePower();
+});
+
+// ---- hull ----
+function renderHull() {
+  document.getElementById('hull-v').textContent = state.damage.hull;
+  document.querySelectorAll('#hull-seg button').forEach(b => {
+    const on = b.dataset.h === state.damage.hull;
+    b.classList.toggle('on', on);
+    b.classList.toggle('s0', on && b.dataset.h === 'NOMINAL');
+    b.classList.toggle('warn', on && b.dataset.h === 'DAMAGED');
+    b.classList.toggle('s1', false);
+    b.classList.toggle('s2', on && (b.dataset.h === 'CRITICAL' || b.dataset.h === 'OFFLINE'));
+  });
+}
+document.querySelectorAll('#hull-seg button').forEach(b => b.addEventListener('click', () => {
+  state.damage.hull = b.dataset.h; renderHull(); saveDamage();
+}));
+
+// ---- altitude ----
+const altEl = document.getElementById('sl-alt');
+altEl.addEventListener('input', () => {
+  state.altitude = +altEl.value;
+  document.getElementById('alt-v').textContent = state.altitude + '%';
+  saveAlt();
+});
+function renderAlt() { altEl.value = state.altitude; document.getElementById('alt-v').textContent = state.altitude + '%'; }
+
+// ---- engine integrity (6 sliders) ----
+const engGrid = document.getElementById('eng-rows');
+ENG.forEach((id, i) => {
+  const div = document.createElement('div'); div.className = 'row';
+  div.innerHTML = `<div class="lbl"><span>${id}</span><b id="ev-${id}">100</b></div>`
+                + `<input type="range" min="0" max="100" value="100" id="es-${id}">`;
+  engGrid.appendChild(div);
+  div.querySelector('input').addEventListener('input', e => {
+    const v = +e.target.value;
+    if (i < 4) state.damage.engines[i] = v; else state.damage.boosters[i - 4] = v;
+    document.getElementById('ev-' + id).textContent = v; saveDamage();
+  });
+});
+function renderEngines() {
+  ENG.forEach((id, i) => {
+    const v = i < 4 ? state.damage.engines[i] : state.damage.boosters[i - 4];
+    document.getElementById('es-' + id).value = v;
+    document.getElementById('ev-' + id).textContent = v;
+  });
+}
+
+// ---- shield panels (cycle N0/N1/N2) ----
+const SP_CLASS = ['lit0', 'lit1', 'lit2'];
+function renderShields() {
+  document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => {
+    const st = state.damage.shieldPanels[+sp.dataset.i] | 0;
+    sp.classList.remove('lit0', 'lit1', 'lit2'); sp.classList.add(SP_CLASS[st]);
+  });
+}
+document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
+  const i = +sp.dataset.i;
+  state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
+  renderShields(); saveDamage();
+}));
+
+// ---- subsystems ----
+function setSwitch(el, on) { el.classList.toggle('on', on); }
+const swW = document.getElementById('sw-weapons'), swD = document.getElementById('sw-drones'), swA = document.getElementById('sw-ai');
+swW.addEventListener('click', () => { state.power.weapons = state.power.weapons > 0 ? 0 : 25; clampBudget('weapons'); renderPower(); renderSubs(); savePower(); });
+swD.addEventListener('click', () => { state.power.drones  = state.power.drones  > 0 ? 0 : 25; clampBudget('drones');  renderPower(); renderSubs(); savePower(); });
+swA.addEventListener('click', () => { state.damage.aiCore = !state.damage.aiCore; renderSubs(); saveDamage(); });
+function renderSubs() {
+  setSwitch(swW, state.power.weapons > 0);
+  setSwitch(swD, state.power.drones > 0);
+  setSwitch(swA, !!state.damage.aiCore);
+}
+
+function renderAll() { renderPower(); renderHull(); renderAlt(); renderEngines(); renderShields(); renderSubs(); }
+renderAll();
+
+// ---- locked / view-only mode: players can watch live state, not operate it ----
+const Q = new URLSearchParams(location.search);
+const LOCKED = Q.has('display') || Q.has('locked');
+if (LOCKED) {
+  document.body.classList.add('locked');
+  document.getElementById('con-title').textContent = 'SHIP STATUS · LIVE';
+  document.querySelectorAll('input, button').forEach(el => { el.disabled = true; el.tabIndex = -1; });
+}
+
+// keep in sync if another local tab changes things
+addEventListener('storage', () => {
+  state.power = load('shipPowerLevels', state.power);
+  state.damage = load('shipDamageState', state.damage);
+  state.altitude = load('shipAltitude', { v: state.altitude }).v;
+  renderAll();
+});
+
+// ---- Firebase (dynamic import; operator both writes and reads) ----
+const firebaseConfig = {
+  apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
+  authDomain: "shadowrun-ship-db.firebaseapp.com",
+  databaseURL: "https://shadowrun-ship-db-default-rtdb.firebaseio.com",
+  projectId: "shadowrun-ship-db",
+  storageBucket: "shadowrun-ship-db.firebasestorage.app",
+  messagingSenderId: "584465229092",
+  appId: "1:584465229092:web:d17e05b242a6c99c8c3fb1"
+};
+(async () => {
+  try {
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js");
+    const { getDatabase, ref, set, onValue } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js");
+    const db = getDatabase(initializeApp(firebaseConfig));
+    fb = { set, ref, db };
+    document.getElementById('netdot').style.color = '#4ade80';
+    document.getElementById('netlbl').textContent = 'CLOUD';
+    // adopt cloud state on connect (so a fresh operator matches what's live)
+    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderSubs(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); renderHull(); renderEngines(); renderShields(); renderSubs(); } });
+    onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
+  } catch (e) {
+    console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
+  }
+})();
+</script>
+</body>
+</html>

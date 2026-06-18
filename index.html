@@ -126,7 +126,7 @@
   </div>
 
   <div class="frame main">
-    <div class="vlabel">PERSPECTIVE</div><div class="tag">EDGES ONLY</div>
+    <div class="vlabel">PERSPECTIVE</div><div class="tag" id="alt-tag">EDGES ONLY</div>
     <canvas id="cv-persp"></canvas>
     <div class="scan"></div><div class="sweep"></div>
   </div>
@@ -385,6 +385,16 @@ const views = [];
 const shields = [...document.querySelectorAll('.oview.frame, .oview')].map(f => buildCardinalArcs(f));
 let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
 let fanGroups = [];      // spinning lift-fan blade overlays
+let perspLift = null;    // group the perspective ship rides in, offset by altitude
+// raise/lower the perspective ship from the operator's altitude value (0-100)
+function applyAltitude() {
+  if (!perspLift) return;
+  let alt = 100;
+  try { const d = JSON.parse(localStorage.getItem('shipAltitude') || 'null'); if (d && typeof d.v === 'number') alt = d.v; } catch (e) {}
+  perspLift.position.y = (alt - 100) * 0.32;
+  const tag = document.getElementById('alt-tag');
+  if (tag) { tag.textContent = 'ALT ' + alt + '%'; tag.style.color = alt <= 25 ? '#ef4444' : alt <= 60 ? '#facc15' : ''; }
+}
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
 const persp = makeView('cv-persp', (v) => {
@@ -491,18 +501,21 @@ loader.load(MODEL_URL, (res) => {
   filterModelSpokes(detailed, fans);
 
   [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
-  persp.scene.add(detailed);
+  // the perspective ship rides in a lift group so altitude can raise/lower it
+  perspLift = new THREE.Group();
+  perspLift.add(detailed);
+  persp.scene.add(perspLift);
   shieldRing = buildShieldRing(Math.max(sz.x, sz.z) * 0.56, box.min.y - 10);
-  persp.scene.add(shieldRing);
+  persp.scene.add(shieldRing);            // floor ring stays put
 
-  // spinning fan blades inside the four ducts (perspective + dorsal)
+  // spinning fan blades inside the four ducts (perspective rides the lift; dorsal static)
   fanGroups = [];
-  [persp, top].forEach(v => { if (!v) return;
-    centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); v.scene.add(g); fanGroups.push(g); });
-  });
+  centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); perspLift.add(g); fanGroups.push(g); });
+  if (top) centres.forEach(([cx, cy, cz]) => { const g = buildFanBlades(cx, cy, cz, FR); top.scene.add(g); fanGroups.push(g); });
 
   configureOrthos(model);
   applyShield();
+  applyAltitude();
   resizeAll();
 }, undefined, (err) => {
   console.warn('[console] model load failed:', err);
@@ -664,6 +677,7 @@ function render() {
   document.getElementById('oa-hull').style.color = h.c;
 
   applyShield();
+  applyAltitude();
 }
 render();
 addEventListener('storage', render);
@@ -694,6 +708,7 @@ const firebaseConfig = {
     });
     mirror('shipPowerLevels');     // power allocation, written by the operator
     mirror('shipDamageState');     // hull / engine / shield / subsystem damage
+    mirror('shipAltitude');        // altitude → raises/lowers the projection
   } catch (e) {
     console.warn('[console] Firebase unavailable — using local state.', e);
   }
