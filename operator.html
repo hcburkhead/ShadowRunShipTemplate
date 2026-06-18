@@ -115,23 +115,41 @@
     <div class="wrap">
       <header>
         <svg class="logo" viewBox="0 0 100 100" aria-label="STS">
+          <!-- outer hex -->
           <polygon points="50,6 92,30 92,70 50,94 8,70 8,30" fill="none" stroke="#4ade80" stroke-width="3"/>
     
           <defs>
+            <!-- convert source image to luminance (so white letters become mask) -->
+            <filter id="luma">
+              <feColorMatrix type="matrix"
+                values="0.2126 0.7152 0.0722 0 0
+                        0.2126 0.7152 0.0722 0 0
+                        0.2126 0.7152 0.0722 0 0
+                        0      0      0      1 0"/>
+            </filter>
+    
+            <!-- clip to inner hex -->
             <clipPath id="hexClip">
               <polygon points="50,20 78,36 78,64 50,80 22,64 22,36"/>
             </clipPath>
+    
+            <!-- mask from image: luminous parts -> opaque in mask -->
+            <mask id="lettersMask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+              <!-- black background (masked-out areas) -->
+              <rect x="0" y="0" width="100" height="100" fill="black"/>
+              <!-- the source image rendered in white where letters exist -->
+              <image href="sts.png" x="28" y="26" width="44" height="44" preserveAspectRatio="xMidYMid meet" filter="url(#luma)"/>
+            </mask>
           </defs>
     
+          <!-- inner hex background: black fill inside clipped area -->
           <g clip-path="url(#hexClip)">
-            <image href="sts.png"
-                   x="28" y="26"
-                   width="44" height="44"
-                   preserveAspectRatio="xMidYMid meet" />
-            <rect x="28" y="26" width="44" height="44" fill="#2bbf6a" style="mix-blend-mode:color; opacity:0.85"/>
+            <rect x="22" y="20" width="56" height="60" fill="#000"/>
+            <!-- colored letters: draw a green rectangle but reveal only where mask (letters) are opaque -->
+            <rect x="22" y="20" width="56" height="60" fill="#2bbf6a" mask="url(#lettersMask)"/>
           </g>
     
-          <!-- draw inner outline last so it stays visible over the tint -->
+          <!-- inner outline on top -->
           <polygon points="50,20 78,36 78,64 50,80 22,64 22,36" fill="none" stroke="#2bbf6a" stroke-width="2"/>
         </svg>
     
@@ -146,6 +164,7 @@
         </div>
       </header>
     </div>
+
 
   
     <div class="right">
