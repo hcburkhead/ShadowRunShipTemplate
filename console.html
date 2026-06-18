@@ -219,6 +219,25 @@ function wireframeOf(root, threshold = 24) {
   });
   return out;
 }
+// denser wireframe for the main hologram: bright feature edges + a faint full
+// triangle mesh, so the hull's structure reads clearly for damage indicators.
+function buildDetailed(root) {
+  root.updateWorldMatrix(true, true);
+  const out = new THREE.Group();
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    o.updateWorldMatrix(true, false);
+    const mesh = new THREE.LineSegments(new THREE.WireframeGeometry(o.geometry),
+      new THREE.LineBasicMaterial({ color: DIM, transparent: true, opacity: 0.13,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    mesh.applyMatrix4(o.matrixWorld); out.add(mesh);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 18),
+      new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.92,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    edges.applyMatrix4(o.matrixWorld); out.add(edges);
+  });
+  return out;
+}
 function fitToFrame(g, target = 160) {
   const box = new THREE.Box3().setFromObject(g);
   const size = new THREE.Vector3(), center = new THREE.Vector3();
@@ -389,8 +408,10 @@ new ResizeObserver(resizeAll).observe(document.getElementById('console'));
 // ---- load the model once, drop a cloned wireframe into each view ----
 const loader = new FBXLoader();
 loader.load(MODEL_URL, (res) => {
-  const model = fitToFrame(wireframeOf(res.scene || res));
-  views.forEach(v => v.scene.add(v === persp ? model : model.clone()));
+  const root = res.scene || res;
+  const model = fitToFrame(wireframeOf(root));                 // clean feature edges (ortho views)
+  [top, port, fore, aft].forEach(v => v && v.scene.add(model.clone()));
+  persp.scene.add(fitToFrame(buildDetailed(root)));            // denser wireframe (perspective)
   // segmented shield ring on the floor under the ship (perspective view only)
   const box = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3();
   box.getSize(sz);
