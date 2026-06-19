@@ -469,18 +469,39 @@ function enterCrash() {
   crashed = true;
   if (persp && persp.controls) persp.controls.autoRotate = false;
   document.body.classList.add('crashed');
-  for (const v of views) v.scene.traverse(o => { if (o.material && o.material.color) o.material.color.setHex(0xef4444); });
+  // flood every view red — but stash each material's real colour first so the
+  // operator can lift the ship back out of the crash by restoring its fans
+  for (const v of views) v.scene.traverse(o => {
+    if (o.material && o.material.color) {
+      if (o.material.userData._crashOC === undefined) o.material.userData._crashOC = o.material.color.getHex();
+      o.material.color.setHex(0xef4444);
+    }
+  });
+}
+function exitCrash() {
+  crashed = false;
+  if (persp && persp.controls) persp.controls.autoRotate = true;
+  document.body.classList.remove('crashed');
+  for (const v of views) v.scene.traverse(o => {
+    if (o.material && o.material.color && o.material.userData._crashOC !== undefined) {
+      o.material.color.setHex(o.material.userData._crashOC);
+      o.material.userData._crashOC = undefined;
+    }
+  });
+  render();   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
   if (!perspLift) return;
+  let failed = 0, subopt = 0;
+  for (const L of engineLift) { if (L <= 0) failed++; else if (L < 1) subopt++; }
+  if (crashed && failed <= 2) exitCrash();             // operator raised enough fans → recover
   if (!crashed) {
-    let failed = 0, subopt = 0;
-    for (const L of engineLift) { if (L <= 0) failed++; else if (L < 1) subopt++; }
     if (failed > 2) {
       curAlt -= 16 * dt;                              // >2 fans gone: catastrophic, falls to a crash
     } else {
       // 1-2 failures or suboptimal fans: the ship still floats, just sags to a lower,
-      // stable altitude — slowly for merely-suboptimal fans, faster for outright failures
+      // stable altitude — slowly for merely-suboptimal fans, faster for outright failures.
+      // Also how the ship climbs back after the operator restores its fans.
       const target = Math.max(12, cmdAlt - (failed * 16 + subopt * 6));
       const rate = failed > 0 ? 0.7 : subopt > 0 ? 0.12 : 1.5;       // subopt = very slow drift
       curAlt += (target - curAlt) * Math.min(1, dt * rate);
