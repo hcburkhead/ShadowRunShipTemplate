@@ -141,6 +141,14 @@
       <div class="holo"><iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe></div>
     
       <div class="grid">
+        <!-- MAIN BATTERY (DM-controlled core reserve) -->
+        <div class="card">
+          <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
+          <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
+            <input type="range" min="0" max="100" value="100" id="sl-battery"></div>
+          <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
+        </div>
+
         <!-- POWER ALLOCATION -->
         <div class="card">
           <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
@@ -227,7 +235,7 @@ function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
-  power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, boost: 0 }),
+  power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, boost: 0, battery: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
 };
@@ -261,7 +269,14 @@ function renderPower() {
   document.getElementById('v-boost').textContent = (state.power.boost || 0) + '%';
   const total = KEYS.reduce((a, k) => a + state.power[k], 0);
   document.getElementById('pwr-total').textContent = total + '% / 100%';
+  const bv = state.power.battery == null ? 100 : state.power.battery;
+  const bs = document.getElementById('sl-battery'); if (document.activeElement !== bs) bs.value = bv;
+  const bvEl = document.getElementById('batt-v');
+  bvEl.textContent = bv + '%'; bvEl.style.color = bv >= 75 ? '' : bv >= 35 ? 'var(--yellow)' : 'var(--red)';
 }
+document.getElementById('sl-battery').addEventListener('input', e => {
+  state.power.battery = +e.target.value; renderPower(); savePower();
+});
 KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
   state.power[k] = +document.getElementById('sl-' + k).value;   // adopt the slider, then clamp
   clampBudget(k); renderPower(); savePower();

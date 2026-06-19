@@ -789,6 +789,7 @@ function readState() {
     engines, boosters,
     aiCore: a ? (a.aiCore || 0) > 0 : !!dmg.aiCore,
     boost: Math.max(0, Math.min(25, num(pw.boost, 0))),
+    battery: Math.max(0, Math.min(100, num(pw.battery, 100))),   // DM-controlled main reserve
     areas: a || {},
   };
 }
@@ -837,9 +838,9 @@ function render() {
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 
-  // battery state: CORE (reactor base, up to 100%) + BATTERY BOOST drawn from the
-  // 25% AUXILIARY reserve → main power 100%..125% (drops if the reactor is hit).
-  const core = A2V(s.areas.reactor);                 // 100 / 50 / 0 with reactor health
+  // battery state: CORE = the DM-controlled main battery reserve (depleted as
+  // systems take damage), + BATTERY BOOST drawn from the 25% AUXILIARY reserve.
+  const core = s.battery;                             // 0..100, set by the operator
   const boost = s.boost;                             // 0..25 the players engage
   const auxLeft = 25 - boost;                         // unused auxiliary reserve
   const mainPower = core + boost;                     // active main power
