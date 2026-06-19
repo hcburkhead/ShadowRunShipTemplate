@@ -61,6 +61,19 @@
     filter:drop-shadow(0 0 3px rgba(74,222,128,.35)); }
   @keyframes badgePulse{ 0%,100%{opacity:.46} 50%{opacity:.6} }
 
+  /* crash state: red vignette over every view + a hull-down banner */
+  .crash-banner{ display:none; }
+  body.crashed .frame::after{ content:""; position:absolute; inset:0; z-index:3; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(239,68,68,0) 35%, rgba(239,68,68,.32) 100%);
+    box-shadow:inset 0 0 60px rgba(239,68,68,.5); animation:crashPulse 1.1s ease-in-out infinite; }
+  body.crashed .crash-banner{ display:block; position:absolute; left:50%; top:50%; z-index:4;
+    transform:translate(-50%,-50%); pointer-events:none; white-space:nowrap;
+    font:700 20px/1 "Segoe UI",system-ui,sans-serif; letter-spacing:3px; color:#fecaca;
+    padding:12px 22px; border:1.5px solid rgba(239,68,68,.8); background:rgba(40,8,8,.72);
+    text-shadow:0 0 10px rgba(239,68,68,.9); box-shadow:0 0 24px rgba(239,68,68,.5);
+    animation:crashPulse 1.1s ease-in-out infinite; }
+  @keyframes crashPulse{ 0%,100%{opacity:1} 50%{opacity:.45} }
+
   .main{ grid-area:main; }
   .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
   .oview{ flex:1; min-height:0; }
@@ -152,6 +165,7 @@
       <img class="badge-img" src="sts.png" alt="STS">
     </div>
     <div class="scan"></div><div class="sweep"></div>
+    <div class="crash-banner">&#9888; HULL DOWN &mdash; CRASHED</div>
   </div>
 
   <div class="orthos">
@@ -437,15 +451,55 @@ let shields = [];        // per-view 2D shield arcs, built once cameras are orie
 let shieldRing = null;   // 3D floor ring, added under the ship in the perspective scene
 let fanGroups = [];      // spinning lift-fan blade overlays ({ g, idx })
 let fanSpeed = [1, 1, 1, 1];   // per-fan spin factor (mag-lev cohesion: 1 full / .5 slow / 0 stopped)
-let perspLift = null;    // group the perspective ship rides in, offset by altitude
-// raise/lower the perspective ship from the operator's altitude value (0-100)
-function applyAltitude() {
-  if (!perspLift) return;
+let perspLift = null;    // group the perspective ship rides in (altitude + tilt)
+// ---- flight model: lift-fan failure makes the ship lose altitude (and crash at
+// 0), and lift asymmetry banks/pitches the hull toward the failing fans ----
+let cmdAlt = 100, curAlt = 100, crashed = false, flightInit = false;
+const engineLift = [1, 1, 1, 1];                    // per-fan lift = engine integrity / 100
+const fanBeamSign = [0, 0, 0, 0], fanLenSign = [0, 0, 0, 0];
+let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, curPitch = 0;
+
+function applyAltitude() {                          // read the operator's commanded altitude (0-100)
   let alt = 100;
   try { const d = JSON.parse(localStorage.getItem('shipAltitude') || 'null'); if (d && typeof d.v === 'number') alt = d.v; } catch (e) {}
-  perspLift.position.y = (alt - 100) * 0.32;
+  cmdAlt = Math.max(0, Math.min(100, alt));
+  if (!flightInit) { curAlt = cmdAlt; flightInit = true; }
+}
+function enterCrash() {
+  crashed = true;
+  if (persp && persp.controls) persp.controls.autoRotate = false;
+  document.body.classList.add('crashed');
+  for (const v of views) v.scene.traverse(o => { if (o.material && o.material.color) o.material.color.setHex(0xef4444); });
+}
+function updateFlight(dt) {
+  if (!perspLift) return;
+  if (!crashed) {
+    let failed = 0, subopt = 0;
+    for (const L of engineLift) { if (L <= 0) failed++; else if (L < 1) subopt++; }
+    if (failed > 2) {
+      curAlt -= 16 * dt;                              // >2 fans gone: catastrophic, falls to a crash
+    } else {
+      // 1-2 failures or suboptimal fans: the ship still floats, just sags to a lower,
+      // stable altitude — slowly for merely-suboptimal fans, faster for outright failures
+      const target = Math.max(12, cmdAlt - (failed * 16 + subopt * 6));
+      const rate = failed > 0 ? 0.7 : subopt > 0 ? 0.12 : 1.5;       // subopt = very slow drift
+      curAlt += (target - curAlt) * Math.min(1, dt * rate);
+    }
+    curAlt = Math.max(0, Math.min(100, curAlt));
+    if (curAlt <= 0.01 && failed > 2) enterCrash();
+  }
+  perspLift.position.y = (curAlt - 100) * 0.32;
+  let roll = 0, pitch = 0;                          // bank/pitch from lift asymmetry
+  for (let i = 0; i < 4; i++) { const d = 1 - engineLift[i]; roll += d * fanBeamSign[i]; pitch += d * fanLenSign[i]; }
+  const tR = Math.max(-0.4, Math.min(0.4, roll * 0.16)), tP = Math.max(-0.32, Math.min(0.32, pitch * 0.13));
+  curRoll += (tR - curRoll) * Math.min(1, dt * 2);
+  curPitch += (tP - curPitch) * Math.min(1, dt * 2);
+  perspLift.rotation[rollAxis] = curRoll * rollDir;
+  perspLift.rotation[pitchAxis] = curPitch * pitchDir;
   const tag = document.getElementById('alt-tag');
-  if (tag) { tag.textContent = 'ALT ' + alt + '%'; tag.style.color = alt <= 25 ? '#ef4444' : alt <= 60 ? '#facc15' : ''; }
+  if (tag) { const a = Math.round(curAlt);
+    tag.textContent = crashed ? 'CRASHED' : 'ALT ' + a + '%';
+    tag.style.color = (crashed || a <= 25) ? '#ef4444' : a <= 60 ? '#facc15' : ''; }
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
@@ -479,7 +533,8 @@ function buildDroneSwarm(cx, cy, cz, spread) {
 // mag-lev cohesion: fan spin speed + blade colour track each fan's integrity
 // (100 nominal → full speed/cyan, 50 suboptimal → half/amber, 0 offline → stopped/red)
 function updateFans(s) {
-  for (let i = 0; i < 4; i++) fanSpeed[i] = (s.engines[i] || 0) / 100;
+  for (let i = 0; i < 4; i++) { fanSpeed[i] = (s.engines[i] || 0) / 100; engineLift[i] = fanSpeed[i]; }
+  if (crashed) return;                 // crash paints everything red — leave blades alone
   for (const { g, idx } of fanGroups) {
     const v = s.engines[idx] || 0, col = v > 66 ? 0xbef9d2 : v > 33 ? 0xfacc15 : 0xef4444;
     g.traverse(o => { if (o.material) o.material.color.setHex(col); });   // colour both blade sets
@@ -649,6 +704,15 @@ loader.load(MODEL_URL, (res) => {
 
   // ship-frame coordinate helper: along (-1 stern … +1 bow), beam (±1), up (0 keel … 1 top)
   const axes = detectAxes(model, box, sz);
+
+  // flight model: which world axis is the hull's length vs. beam, and which side
+  // each lift fan sits on — so failing fans bank/pitch the hull toward themselves
+  rollAxis = axes.lenIsX ? 'x' : 'z';     // roll about the length axis (port/starboard tip)
+  pitchAxis = axes.lenIsX ? 'z' : 'x';    // pitch about the beam axis (bow/stern tip)
+  centres.forEach((c, i) => {
+    fanBeamSign[i] = Math.sign(axes.lenIsX ? c[2] : c[0]);   // +starboard / -port
+    fanLenSign[i] = Math.sign(axes.bowSign * (axes.lenIsX ? c[0] : c[2]));  // +bow / -stern
+  });
   const Lh = (axes.lenIsX ? sz.x : sz.z) / 2, Bh = (axes.lenIsX ? sz.z : sz.x) / 2;
   const apos = (along, beam, up) => {
     const lc = axes.bowSign * along * Lh, bc = beam * Bh, y = box.min.y + up * sz.y;
@@ -715,12 +779,13 @@ function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
   if (persp && persp.controls) persp.controls.update();
+  updateFlight(dt);                                      // altitude + bank/pitch from lift-fan failures
   for (const { g, idx } of fanGroups) {                  // counter-rotating sets, per mag-lev cohesion
-    const sp = dt * 4.5 * (fanSpeed[idx] || 0);
+    const sp = crashed ? 0 : dt * 4.5 * (fanSpeed[idx] || 0);   // everything stops once crashed
     g.userData.sets[0].rotation.y += sp; g.userData.sets[1].rotation.y -= sp;
   }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
-    if (!sw.visible) continue;
+    if (!sw.visible || crashed) continue;
     const act = sw.userData.active;
     for (const d of sw.userData.drones) {
       d.userData.cross.rotation.y += dt * (act ? 16 : 0);
@@ -893,11 +958,12 @@ function render() {
   document.getElementById('oa-hull').textContent = s.hull;
   document.getElementById('oa-hull').style.color = h.c;
 
-  applyShield();
   applyAltitude();
+  updateFans(s);                       // keep engineLift fed even mid-crash (flight model reads it)
+  if (crashed) return;                 // crash latches every view red — don't repaint over it
+  applyShield();
   updateMarkers(s);
   updateDrones(s);
-  updateFans(s);
 }
 render();
 addEventListener('storage', render);
