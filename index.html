@@ -189,13 +189,13 @@
       <span class="pwr-val" id="pwr-val">125%</span>
       <div class="pwr-bar">
         <div class="s" id="pseg-core" style="background:var(--g1)"></div>
-        <div class="s" id="pseg-aux"  style="background:var(--g2)"></div>
         <div class="s" id="pseg-batt" style="background:var(--amber)"></div>
+        <div class="s" id="pseg-aux"  style="background:#0e3a24"></div>
       </div>
       <div class="pwr-leg">
         <i><b style="background:var(--g1)"></b>CORE</i>
-        <i><b style="background:var(--g2)"></b>AUX</i>
-        <i><b style="background:var(--amber)"></b>BATT</i>
+        <i><b style="background:var(--amber)"></b>BOOST</i>
+        <i><b style="background:#0e3a24"></b>AUX RSV</i>
       </div>
     </div>
 
@@ -788,6 +788,7 @@ function readState() {
     hull: dmg.hull || 'NOMINAL',
     engines, boosters,
     aiCore: a ? (a.aiCore || 0) > 0 : !!dmg.aiCore,
+    boost: Math.max(0, Math.min(25, num(pw.boost, 0))),
     areas: a || {},
   };
 }
@@ -836,10 +837,18 @@ function render() {
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 
-  // main power 125% = core (base) + aux 25 + battery 25
-  document.getElementById('pseg-core').style.width = (100/125*100) + '%';
-  document.getElementById('pseg-aux').style.width  = (12.5/125*100) + '%';
-  document.getElementById('pseg-batt').style.width = (12.5/125*100) + '%';
+  // battery state: CORE (reactor base, up to 100%) + BATTERY BOOST drawn from the
+  // 25% AUXILIARY reserve → main power 100%..125% (drops if the reactor is hit).
+  const core = A2V(s.areas.reactor);                 // 100 / 50 / 0 with reactor health
+  const boost = s.boost;                             // 0..25 the players engage
+  const auxLeft = 25 - boost;                         // unused auxiliary reserve
+  const mainPower = core + boost;                     // active main power
+  document.getElementById('pseg-core').style.width = (core / 125 * 100) + '%';
+  document.getElementById('pseg-batt').style.width = (boost / 125 * 100) + '%';   // boost (active)
+  document.getElementById('pseg-aux').style.width  = (auxLeft / 125 * 100) + '%';  // reserve (dim)
+  const pv = document.getElementById('pwr-val');
+  pv.textContent = mainPower + '%';
+  pv.style.color = core >= 100 ? '' : core >= 50 ? '#facc15' : '#ef4444';
 
   // engine structural integrity (4 props + 2 boosters)
   const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
