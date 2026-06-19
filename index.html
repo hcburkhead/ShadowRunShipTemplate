@@ -931,7 +931,7 @@ function readState() {
     weapons: num(pw.weapons, 25), shields: num(pw.shields, 25),
     hull: dmg.hull || 'NOMINAL',
     engines, boosters,
-    aiCore: a ? (a.aiCore || 0) > 0 : !!dmg.aiCore,
+    aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
     boost: Math.max(0, Math.min(25, num(pw.boost, 0))),
     battery: Math.max(0, Math.min(100, num(pw.battery, 100))),   // DM-controlled main reserve
     areas: a || {},
@@ -1097,9 +1097,12 @@ function render() {
   document.getElementById('s-drn').textContent = drn.label;
   document.getElementById('s-drn').style.color = drn.c;
 
-  setDot('d-ai', s.aiCore ? '#facc15' : '#4ade80', s.aiCore);
-  document.getElementById('s-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
-  document.getElementById('s-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+  // AI core: ONLINE (green) / DAMAGED (yellow) / OFFLINE (red)
+  const aiLabel = s.aiCore >= 2 ? 'OFFLINE' : s.aiCore >= 1 ? 'DAMAGED' : 'ONLINE';
+  const aiColor = s.aiCore >= 2 ? '#ef4444' : s.aiCore >= 1 ? '#facc15' : '#4ade80';
+  setDot('d-ai', aiColor, s.aiCore >= 2);
+  document.getElementById('s-ai').textContent = aiLabel;
+  document.getElementById('s-ai').style.color = aiColor;
 
   // ortho overlay readouts
   document.getElementById('ot-eng').textContent = eng.label;
@@ -1108,8 +1111,8 @@ function render() {
   document.getElementById('op-shd').style.color = shd.c;
   document.getElementById('of-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
   document.getElementById('of-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
-  document.getElementById('of-ai').textContent = s.aiCore ? 'DAMAGED' : 'ONLINE';
-  document.getElementById('of-ai').style.color = s.aiCore ? '#facc15' : '#4ade80';
+  document.getElementById('of-ai').textContent = aiLabel;
+  document.getElementById('of-ai').style.color = aiColor;
   document.getElementById('oa-drn').textContent = drn.label;
   document.getElementById('oa-drn').style.color = drn.c;
   document.getElementById('oa-hull').textContent = s.hull;
