@@ -102,13 +102,12 @@
   .btn-wide:hover{ background:#0a1a0a; }
 
   /* locked / view-only mode (?display) — players can read but not operate */
-  .lockbadge{ display:none; color:var(--amber); font-weight:bold; }
-  body.locked .lockbadge{ display:inline-block; }
-  body.locked .ctl-only{ display:none !important; }
-  body.locked input[type=range], body.locked .sw,
-  body.locked .seg button, body.locked .shieldpad .sp, body.locked .btn-wide{ pointer-events:none; }
-  body.locked input[type=range]{ opacity:.8; }
-  body.locked .sw{ opacity:.85; } body.locked .seg button.on{ opacity:1; }
+  /* player view (?display): only the ship views + damage dots + battery boost */
+  .lockbadge{ display:none; color:var(--g1); font-weight:bold; }
+  body.player .lockbadge{ display:inline-block; }
+  body.player .ctl-only{ display:none !important; }
+  body.player .card{ display:none; }                 /* hide every control card... */
+  body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except battery boost */
 </style>
 </head>
 <body>
@@ -132,7 +131,7 @@
         </div>
       
         <div class="right">
-          <div><span id="netdot"></span><span id="netlbl">LOCAL</span> <span class="lockbadge">🔒 VIEW ONLY</span></div>
+          <div><span id="netdot"></span><span id="netlbl">LOCAL</span> <span class="lockbadge">▸ PLAYER VIEW</span></div>
           <a class="ctl-only" href="index.html" target="_blank" rel="noopener">⤢ open display</a>
         </div>
       </header>
@@ -149,9 +148,16 @@
           <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
           <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
           <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
-          <div class="row" style="margin-top:4px"><div class="lbl"><span>▲ BATTERY BOOST</span><b id="v-boost">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-boost"></div>
         </div>
-    
+
+        <!-- BATTERY BOOST (the players' control) -->
+        <div class="card boost-card">
+          <h2>BATTERY BOOST <span class="v" id="v-boost">0%</span></h2>
+          <div class="row"><div class="lbl"><span>▲ AUXILIARY RESERVE</span></div>
+            <input type="range" min="0" max="25" value="0" id="sl-boost"></div>
+          <div class="hint">25% reserve to boost the battery.</div>
+        </div>
+
         <!-- HULL + ALTITUDE -->
         <div class="card">
           <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
@@ -355,15 +361,18 @@ function renderSubs() {
 function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderFans(); renderShields(); renderSubs(); }
 renderAll();
 
-// ---- locked / view-only mode: players can watch live state, not operate it ----
+// ---- player view (?display): ship views + damage dots + the battery-boost control ----
 const Q = new URLSearchParams(location.search);
-const LOCKED = Q.has('display') || Q.has('locked');
-// the read-only (player) view shows operator-triggered damage dots; the operator's does not
-document.getElementById('holo-frame').src = LOCKED ? 'index.html?dots=1' : 'index.html';
-if (LOCKED) {
-  document.body.classList.add('locked');
-  document.getElementById('con-title').textContent = 'SHIP STATUS · LIVE';
-  document.querySelectorAll('input, button').forEach(el => { el.disabled = true; el.tabIndex = -1; });
+const PLAYER = Q.has('display') || Q.has('player');
+// players see the operator-triggered damage dots but no state readouts (bare)
+document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html';
+if (PLAYER) {
+  document.body.classList.add('player');
+  document.getElementById('con-title').textContent = 'PLAYER VIEW';
+  // only the battery-boost slider is operable; everything else is hidden anyway
+  document.querySelectorAll('input, button').forEach(el => {
+    if (el.id !== 'sl-boost') { el.disabled = true; el.tabIndex = -1; }
+  });
 }
 
 // keep in sync if another local tab changes things

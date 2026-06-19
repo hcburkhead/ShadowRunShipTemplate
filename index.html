@@ -19,6 +19,12 @@
     grid-template-columns:74px 1fr 238px; grid-template-rows:1fr 132px;
     grid-template-areas:"rail main orthos" "rail readouts orthos"; }
 
+  /* bare mode (player view): ship views + damage indicators only, no state readouts */
+  body.bare #console{ grid-template-rows:1fr; grid-template-areas:"rail main orthos"; }
+  body.bare .readouts{ display:none; }
+  body.bare .oview .oinfo{ display:none; }
+  body.bare #alt-tag{ display:none; }
+
   /* left LCARS rail */
   .rail{ grid-area:rail; display:flex; flex-direction:column; gap:6px; }
   .rail .elbow{ height:64px; background:var(--g3); border-radius:34px 34px 6px 6px;
@@ -445,6 +451,7 @@ const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
 // ---- operator-triggered damage dots (read-only / player view only, ?dots) ----
 const DOTS = new URLSearchParams(location.search).has('dots');
+if (new URLSearchParams(location.search).has('bare')) document.body.classList.add('bare');  // player view: hide state readouts
 let damageMarkers = [];
 let droneSwarms = [];    // procedural drones inside the hull (perspective + dorsal)
 // a small swarm of quad-drones for the drone bay; rotors spin + they bob when active
