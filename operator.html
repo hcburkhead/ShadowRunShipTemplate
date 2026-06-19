@@ -13,7 +13,7 @@
   *{ box-sizing:border-box; margin:0; padding:0; }
   body{ background:var(--bg); color:var(--g1); font-family:'Courier New',monospace; letter-spacing:1px;
         min-height:100vh; padding:14px; }
-  .wrap{ max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
+  .wrap{ max-width:1680px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
 
   /* header */
   header{ display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--edge);
@@ -28,8 +28,13 @@
   #netdot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--dim);
            box-shadow:0 0 6px currentColor; margin-right:5px; vertical-align:middle; }
 
-  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
-  @media (max-width:720px){ .grid{ grid-template-columns:1fr; } }
+  /* control blocks: each system group sits in its own labelled, full-width block */
+  .block{ display:flex; flex-direction:column; gap:8px; }
+  .block-title{ font-size:10px; letter-spacing:3px; color:var(--g2); display:flex; align-items:center; gap:8px;
+    padding-bottom:5px; border-bottom:1px solid var(--edge); }
+  .block-title::after{ content:""; flex:1; height:1px; background:linear-gradient(90deg, var(--edge), transparent); }
+  .block-grid{ display:grid; gap:12px; align-items:start;
+    grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); }
 
   .card{ background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px 14px;
          display:flex; flex-direction:column; gap:10px; }
@@ -73,9 +78,9 @@
   .sp-a{ grid-column:2; grid-row:3; } .sp-p{ grid-column:1; grid-row:2; }
   .sp-mid{ grid-column:2; grid-row:2; border:0; color:var(--dim); font-size:8px; cursor:default; }
 
-  /* damageable-area toggles */
-  .areas{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
-  @media (max-width:620px){ .areas{ grid-template-columns:repeat(2,1fr); } }
+  /* damageable-area toggles — grouped by category, the groups flow to fill width */
+  .areas{ display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px 12px; align-items:start; }
+  .area-group{ display:flex; flex-direction:column; gap:6px; }
   .area{ font:inherit; font-size:9px; letter-spacing:.5px; padding:8px 4px; cursor:pointer; border-radius:4px;
     background:var(--panel2); border:1px solid var(--edge); color:var(--dim); text-align:center; line-height:1.35; }
   .area:hover{ border-color:var(--g3); }
@@ -83,7 +88,7 @@
   .area.s0{ border-color:var(--g3); color:var(--g1); }
   .area.s1{ border-color:var(--yellow); color:var(--yellow); background:rgba(250,204,21,.12); }
   .area.s2{ border-color:var(--red); color:var(--red); background:rgba(239,68,68,.16); }
-  .cat{ grid-column:1/-1; font-size:8px; letter-spacing:2px; color:var(--dim); margin-top:4px; }
+  .cat{ font-size:8px; letter-spacing:2px; color:var(--dim); }
 
   /* embedded holographic status panel */
   .holo{ width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -99,6 +104,8 @@
   .lockbadge{ display:none; color:var(--g1); font-weight:bold; }
   body.player .lockbadge{ display:inline-block; }
   body.player .ctl-only{ display:none !important; }
+  body.player .block-title{ display:none; }          /* hide group headers... */
+  body.player .block:not(.power-block){ display:none; }  /* ...and every block except power */
   body.player .card{ display:none; }                 /* hide every control card... */
   body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except battery boost */
 </style>
@@ -133,83 +140,103 @@
       <!-- live holographic status panel (read-only mode also gets the damage dots) -->
       <div class="holo"><iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe></div>
     
-      <div class="grid">
-        <!-- MAIN BATTERY (DM-controlled core reserve) -->
-        <div class="card">
-          <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
-          <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
-            <input type="range" min="0" max="100" value="100" id="sl-battery"></div>
-          <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
-        </div>
-
-        <!-- POWER ALLOCATION -->
-        <div class="card">
-          <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
-          <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
-          <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
-          <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
-          <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
-        </div>
-
-        <!-- BATTERY BOOST (the players' control) -->
-        <div class="card boost-card">
-          <h2>BATTERY BOOST <span class="v" id="v-boost">0%</span></h2>
-          <div class="row"><div class="lbl"><span>▲ AUXILIARY RESERVE</span></div>
-            <input type="range" min="0" max="25" value="0" id="sl-boost"></div>
-          <div class="hint">25% reserve to boost the battery.</div>
-        </div>
-
-        <!-- HULL + ALTITUDE -->
-        <div class="card">
-          <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
-          <div class="seg" id="hull-seg">
-            <button data-h="NOMINAL">NOMINAL</button>
-            <button data-h="DAMAGED">DAMAGED</button>
-            <button data-h="CRITICAL">CRITICAL</button>
-            <button data-h="OFFLINE">OFFLINE</button>
+      <!-- ============ POWER & BATTERY ============ -->
+      <section class="block power-block">
+        <h3 class="block-title">⚡ POWER &amp; BATTERY</h3>
+        <div class="block-grid">
+          <!-- MAIN BATTERY (DM-controlled core reserve) -->
+          <div class="card">
+            <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
+            <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
+              <input type="range" min="0" max="100" value="100" id="sl-battery"></div>
+            <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
           </div>
-          <h2 style="margin-top:6px">ALTITUDE <span class="v" id="alt-v">100%</span></h2>
-          <input type="range" min="0" max="100" value="100" id="sl-alt">
-          <div class="hint">drop altitude to lower the ship projection in the display.</div>
-          <h2 style="margin-top:6px">IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
-          <div class="timerset">
-            <input type="number" min="0" max="99" step="1" value="10" id="in-tti-m" aria-label="minutes">
-            <span class="tcolon">:</span>
-            <input type="number" min="0" max="59" step="1" value="0" id="in-tti-s" aria-label="seconds">
-            <span class="tunit">MM&nbsp;:&nbsp;SS</span>
-          </div>
-          <div class="seg" id="tti-ctl" style="margin-top:6px">
-            <button id="tti-start">▶ START</button>
-            <button id="tti-stop">❚❚ STOP</button>
-            <button id="tti-reset">↺ RESET</button>
-          </div>
-          <div class="hint">set a duration, then start / stop / reset the impact countdown on the display.</div>
-        </div>
 
-        <!-- MAG-LEV COHESION (lift fans) -->
-        <div class="card">
-          <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
-          <div id="fan-rows"></div>
-        </div>
-    
-        <!-- SHIELD PANELS -->
-        <div class="card">
-          <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
-          <div class="shieldpad">
-            <div class="sp sp-f" data-i="0">FORE</div>
-            <div class="sp sp-s" data-i="1">STBD</div>
-            <div class="sp sp-mid">SHLD</div>
-            <div class="sp sp-p" data-i="3">PORT</div>
-            <div class="sp sp-a" data-i="2">AFT</div>
+          <!-- BATTERY BOOST (the players' control) -->
+          <div class="card boost-card">
+            <h2>BATTERY BOOST <span class="v" id="v-boost">0%</span></h2>
+            <div class="row"><div class="lbl"><span>▲ AUXILIARY RESERVE</span></div>
+              <input type="range" min="0" max="25" value="0" id="sl-boost"></div>
+            <div class="hint">25% reserve to boost the battery.</div>
+          </div>
+
+          <!-- POWER ALLOCATION -->
+          <div class="card">
+            <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
+            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
+            <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
+            <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
+            <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
           </div>
         </div>
-    
-        <!-- DAMAGE CONTROL -->
-        <div class="card full">
-          <h2>DAMAGE CONTROL <span class="v hint ctl-only">areas cycle ONLINE · DAMAGED · OFFLINE — subsystems toggle power on/off</span></h2>
-          <div class="areas" id="area-grid"></div>
+      </section>
+
+      <!-- ============ FLIGHT ============ -->
+      <section class="block">
+        <h3 class="block-title">✈ FLIGHT</h3>
+        <div class="block-grid">
+          <!-- MAG-LEV COHESION (lift fans) -->
+          <div class="card">
+            <h2>MAG-LEV COHESION <span class="v hint ctl-only">100 nominal · 50 suboptimal · 0 offline</span></h2>
+            <div id="fan-rows"></div>
+          </div>
+
+          <!-- ALTITUDE + IMPACT TIMER -->
+          <div class="card">
+            <h2>ALTITUDE <span class="v" id="alt-v">100%</span></h2>
+            <input type="range" min="0" max="100" value="100" id="sl-alt">
+            <div class="hint">drop altitude to lower the ship projection in the display.</div>
+            <h2 style="margin-top:6px">IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
+            <div class="timerset">
+              <input type="number" min="0" max="99" step="1" value="10" id="in-tti-m" aria-label="minutes">
+              <span class="tcolon">:</span>
+              <input type="number" min="0" max="59" step="1" value="0" id="in-tti-s" aria-label="seconds">
+              <span class="tunit">MM&nbsp;:&nbsp;SS</span>
+            </div>
+            <div class="seg" id="tti-ctl" style="margin-top:6px">
+              <button id="tti-start">▶ START</button>
+              <button id="tti-stop">❚❚ STOP</button>
+              <button id="tti-reset">↺ RESET</button>
+            </div>
+            <div class="hint">set a duration, then start / stop / reset the impact countdown on the display.</div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <!-- ============ DAMAGE & DEFENSE ============ -->
+      <section class="block">
+        <h3 class="block-title">⛨ DAMAGE &amp; DEFENSE</h3>
+        <div class="block-grid">
+          <!-- HULL INTEGRITY -->
+          <div class="card">
+            <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
+            <div class="seg" id="hull-seg">
+              <button data-h="NOMINAL">NOMINAL</button>
+              <button data-h="DAMAGED">DAMAGED</button>
+              <button data-h="CRITICAL">CRITICAL</button>
+              <button data-h="OFFLINE">OFFLINE</button>
+            </div>
+          </div>
+
+          <!-- SHIELD PANELS -->
+          <div class="card">
+            <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
+            <div class="shieldpad">
+              <div class="sp sp-f" data-i="0">FORE</div>
+              <div class="sp sp-s" data-i="1">STBD</div>
+              <div class="sp sp-mid">SHLD</div>
+              <div class="sp sp-p" data-i="3">PORT</div>
+              <div class="sp sp-a" data-i="2">AFT</div>
+            </div>
+          </div>
+
+          <!-- DAMAGE CONTROL -->
+          <div class="card full">
+            <h2>DAMAGE CONTROL <span class="v hint ctl-only">areas cycle ONLINE · DAMAGED · OFFLINE — subsystems toggle power on/off</span></h2>
+            <div class="areas" id="area-grid"></div>
+          </div>
+        </div>
+      </section>
     </div>
 
 <script type="module">
@@ -357,15 +384,21 @@ setInterval(() => {   // live badge while the countdown runs
 // power on/off (ONLINE/OFFLINE), so clicking them cuts/restores their power.
 const POWER_SUBS = [['weapons', 'WEAPONS'], ['drones', 'DRONES']];
 const areaGrid = document.getElementById('area-grid');
-let lastCat = '';
+const catGroups = {};
+function catGroup(cat) {   // one column per category (label + its buttons), groups flow to fill width
+  if (!catGroups[cat]) {
+    const g = document.createElement('div'); g.className = 'area-group';
+    const h = document.createElement('div'); h.className = 'cat'; h.textContent = cat; g.appendChild(h);
+    catGroups[cat] = g; areaGrid.appendChild(g);
+  }
+  return catGroups[cat];
+}
 AREAS.forEach(([k, label, cat]) => {
-  if (cat !== lastCat) { const c = document.createElement('div'); c.className = 'cat'; c.textContent = cat; areaGrid.appendChild(c); lastCat = cat; }
   const b = document.createElement('button'); b.className = 'area'; b.dataset.a = k;
   b.innerHTML = `${label}<span class="st"></span>`;
   b.addEventListener('click', () => { state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; renderAreas(); saveDamage(); });
-  areaGrid.appendChild(b);
+  catGroup(cat).appendChild(b);
 });
-{ const c = document.createElement('div'); c.className = 'cat'; c.textContent = 'SUBSYSTEMS'; areaGrid.appendChild(c); }
 POWER_SUBS.forEach(([k, label]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.p = k;
   b.innerHTML = `${label}<span class="st"></span>`;
@@ -373,7 +406,7 @@ POWER_SUBS.forEach(([k, label]) => {
     state.power[k] = state.power[k] > 0 ? 0 : 25;   // not damageable — just cut/restore power
     clampBudget(k); renderPower(); renderPowerSubs(); savePower();
   });
-  areaGrid.appendChild(b);
+  catGroup('SUBSYSTEMS').appendChild(b);
 });
 function renderAreas() {
   AREAS.forEach(([k]) => {
