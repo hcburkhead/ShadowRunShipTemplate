@@ -495,17 +495,20 @@ let shieldRing = null;   // 3D floor ring, added under the ship in the perspecti
 let fanGroups = [];      // spinning lift-fan blade overlays ({ g, idx })
 let fanSpeed = [1, 1, 1, 1];   // per-fan spin factor (mag-lev cohesion: 1 full / .5 slow / 0 stopped)
 let perspLift = null;    // group the perspective ship rides in (altitude + tilt)
-// ---- flight model: if more than two lift fans fail, a TIME-TO-IMPACT timer
-// counts down (the players' cue to get the engines back); the ship doesn't
-// actually drop, but lift asymmetry still banks/pitches the hull (kerning).
-// Restoring the fans stops and resets the timer. ----
+// ---- flight model: the DM sets/starts/stops/resets an IMPACT TIMER from the
+// operator; the display counts it down (top-right) and "impacts" at 0:00. The
+// DM keeps full altitude control via the slider, and lift asymmetry still
+// banks/pitches the hull (kerning) independently of the timer. ----
 let cmdAlt = 100, curAlt = 100, crashed = false, flightInit = false;
 const engineLift = [1, 1, 1, 1];                    // per-fan lift = engine integrity / 100
 const fanBeamSign = [0, 0, 0, 0], fanLenSign = [0, 0, 0, 0];
 let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, curPitch = 0;
-// time to impact (seconds) — defaults to 10:00; ?tti=<sec> overrides for testing/tuning
-const TTI_MAX = Math.max(1, +new URLSearchParams(location.search).get('tti') || 600);
-let ttiLeft = TTI_MAX, ttiActive = false;
+// DM-controlled impact timer, mirrored from the operator via the shipTimer key
+let timerCfg = { duration: 600, remaining: 600, running: false, endsAt: null };
+function readTimer() {
+  try { const d = JSON.parse(localStorage.getItem('shipTimer') || 'null');
+    if (d && typeof d.duration === 'number') timerCfg = d; } catch (e) {}
+}
 function fmtClock(sec) {
   sec = Math.max(0, Math.ceil(sec));
   return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
@@ -529,7 +532,7 @@ function enterCrash() {
       o.material.color.setHex(0xef4444);
     }
   });
-  logEvent('⚠ IMPACT — lift never recovered', 'drop');
+  logEvent('⚠ IMPACT — countdown reached zero', 'drop');
 }
 function exitCrash() {
   crashed = false;
@@ -541,30 +544,22 @@ function exitCrash() {
       o.material.userData._crashOC = undefined;
     }
   });
-  logEvent('▸ lift restored — hull stable', 'gain');
+  logEvent('▸ impact cleared — hull stable', 'gain');
   render();   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
   if (!perspLift) return;
-  let failed = 0;
-  for (const L of engineLift) if (L <= 0) failed++;
-  const critical = failed > 2;                        // more than two lift fans down
 
-  // TIME TO IMPACT: counts down while critical; stops + resets the moment the
-  // engines come back; reaching 0:00 is the (non-descending) impact.
-  if (critical && !crashed) {
-    if (!ttiActive) { ttiActive = true; logEvent('⚠ LIFT FAILURE — impact countdown started (' + fmtClock(TTI_MAX) + ')', 'drop'); }
-    ttiLeft -= dt;
-    if (ttiLeft <= 0) { ttiLeft = 0; enterCrash(); }
-  } else if (!critical) {
-    if (ttiActive) logEvent('▸ lift restored — impact countdown reset', 'gain');
-    ttiActive = false;
-    ttiLeft = TTI_MAX;
-    if (crashed) exitCrash();                          // engines back after an impact → recover
-  }
-  document.body.classList.toggle('tti-on', ttiActive && !crashed);
+  // IMPACT TIMER: driven entirely by the DM (set/start/stop/reset). The display
+  // shows it once started, "impacts" at 0:00, and clears when the DM resets it.
+  const t = timerCfg;
+  const tl = Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : (t.remaining || 0));
+  const started = t.running || (t.remaining || 0) < (t.duration || 0) - 0.01;
+  document.body.classList.toggle('tti-on', started && !crashed);
   const clk = document.getElementById('tti-clock');
-  if (clk) clk.textContent = fmtClock(ttiLeft);
+  if (clk) clk.textContent = fmtClock(tl);
+  if (t.running && tl <= 0 && !crashed) enterCrash();   // ran out → impact
+  else if (!started && crashed) exitCrash();            // DM reset → clear impact
 
   // altitude: simply ride the operator's commanded altitude — no automatic drop
   curAlt += (cmdAlt - curAlt) * Math.min(1, dt * 1.5);
@@ -1005,7 +1000,7 @@ let logPrev = null;
 function logDiff(s) {
   if (!LOGVIEW) return;
   const snap = { sys: s.sys, drones: s.drones, weapons: s.weapons, shields: s.shields,
-                 hull: s.hull, battery: s.battery, boost: s.boost, areas: {} };
+                 hull: s.hull, battery: s.battery, boost: s.boost, tRun: !!timerCfg.running, areas: {} };
   for (const k in AREA_LABELS) snap.areas[k] = Math.max(0, Math.min(2, (s.areas[k] || 0) | 0));
   if (!logPrev) { logPrev = snap; logEvent('▸ uplink initialized — monitoring ship systems.', 'gain'); return; }
 
@@ -1038,6 +1033,10 @@ function logDiff(s) {
     logEvent(snap.boost > 0 ? '⚡ BATTERY BOOST engaged (+' + snap.boost + '%)' : '○ battery boost disengaged',
              snap.boost > 0 ? 'gain' : '');
   }
+  if (snap.tRun !== logPrev.tRun) {                             // DM started / stopped the impact timer
+    logEvent(snap.tRun ? '▶ impact timer started (' + fmtClock(timerCfg.remaining) + ')' : '❚❚ impact timer stopped',
+             snap.tRun ? 'warn' : '');
+  }
   logPrev = snap;
 }
 const logClearBtn = document.getElementById('log-clear');
@@ -1049,6 +1048,7 @@ if (logClearBtn) logClearBtn.addEventListener('click', () => {
 
 function render() {
   const s = readState();
+  readTimer();
   logDiff(s);
 
   // hull

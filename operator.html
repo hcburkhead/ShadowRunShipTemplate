@@ -42,6 +42,12 @@
   .row .lbl{ display:flex; justify-content:space-between; font-size:10px; color:var(--dim); }
   .row .lbl b{ color:var(--g1); font-weight:normal; font-size:12px; }
   input[type=range]{ width:100%; accent-color:var(--g1); cursor:pointer; height:4px; }
+  .timerset{ display:flex; align-items:center; gap:6px; }
+  .timerset input[type=number]{ width:58px; font:inherit; font-size:15px; text-align:center;
+    background:var(--panel2); color:var(--g1); border:1px solid var(--edge); border-radius:4px; padding:5px 4px; }
+  .timerset .tcolon{ color:var(--g1); font-size:15px; font-weight:bold; }
+  .timerset .tunit{ font-size:8px; color:var(--dim); letter-spacing:2px; margin-left:4px; }
+  #tti-ctl button.on{ background:var(--g1); border-color:var(--g1); color:#03130a; font-weight:bold; }
   .twocol{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; }
   .threecol{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px 12px; }
 
@@ -178,6 +184,19 @@
           <h2 style="margin-top:6px">ALTITUDE <span class="v" id="alt-v">100%</span></h2>
           <input type="range" min="0" max="100" value="100" id="sl-alt">
           <div class="hint">drop altitude to lower the ship projection in the display.</div>
+          <h2 style="margin-top:6px">IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
+          <div class="timerset">
+            <input type="number" min="0" max="99" step="1" value="10" id="in-tti-m" aria-label="minutes">
+            <span class="tcolon">:</span>
+            <input type="number" min="0" max="59" step="1" value="0" id="in-tti-s" aria-label="seconds">
+            <span class="tunit">MM&nbsp;:&nbsp;SS</span>
+          </div>
+          <div class="seg" id="tti-ctl" style="margin-top:6px">
+            <button id="tti-start">▶ START</button>
+            <button id="tti-stop">❚❚ STOP</button>
+            <button id="tti-reset">↺ RESET</button>
+          </div>
+          <div class="hint">set a duration, then start / stop / reset the impact countdown on the display.</div>
         </div>
     
         <!-- ENGINE STRUCTURAL INTEGRITY -->
@@ -238,6 +257,7 @@ const state = {
   power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, boost: 0, battery: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
+  timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
 };
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
@@ -253,6 +273,7 @@ function pushKey(key, value) {
 const savePower  = () => pushKey('shipPowerLevels', state.power);
 const saveDamage = () => pushKey('shipDamageState', state.damage);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
+const saveTimer  = () => pushKey('shipTimer', state.timer);
 
 // ---- power allocation ----
 function clampBudget(changed) {
@@ -309,6 +330,50 @@ altEl.addEventListener('input', () => {
   saveAlt();
 });
 function renderAlt() { altEl.value = state.altitude; document.getElementById('alt-v').textContent = state.altitude + '%'; }
+
+// ---- DM-controlled impact timer (set / start / stop / reset) ----
+const ttiM = document.getElementById('in-tti-m'), ttiS = document.getElementById('in-tti-s');
+const fmtT = sec => { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+function timerLeft() {   // live seconds remaining
+  const t = state.timer;
+  return Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : t.remaining);
+}
+function setDurationFromInputs() {   // editing the fields sets + resets the timer to that length
+  const dur = Math.max(1, (parseInt(ttiM.value) || 0) * 60 + (parseInt(ttiS.value) || 0));
+  state.timer = { duration: dur, remaining: dur, running: false, endsAt: null };
+  saveTimer(); renderTimer();
+}
+[ttiM, ttiS].forEach(el => el.addEventListener('change', setDurationFromInputs));
+document.getElementById('tti-start').addEventListener('click', () => {
+  const t = state.timer;
+  if (t.running) return;
+  if (t.remaining <= 0) t.remaining = t.duration;     // a finished timer starts over
+  t.running = true; t.endsAt = Date.now() + t.remaining * 1000;
+  saveTimer(); renderTimer();
+});
+document.getElementById('tti-stop').addEventListener('click', () => {
+  const t = state.timer;
+  if (!t.running) return;
+  t.remaining = timerLeft(); t.running = false; t.endsAt = null;   // freeze (pause)
+  saveTimer(); renderTimer();
+});
+document.getElementById('tti-reset').addEventListener('click', () => {
+  const t = state.timer;
+  t.running = false; t.endsAt = null; t.remaining = t.duration;
+  saveTimer(); renderTimer();
+});
+function renderTimer() {
+  const t = state.timer;
+  if (document.activeElement !== ttiM) ttiM.value = Math.floor(t.duration / 60);
+  if (document.activeElement !== ttiS) ttiS.value = t.duration % 60;
+  document.getElementById('tti-v').textContent = fmtT(timerLeft());
+  document.getElementById('tti-start').classList.toggle('on', t.running);
+}
+setInterval(() => {   // live badge while the countdown runs
+  if (!state.timer.running) return;
+  document.getElementById('tti-v').textContent = fmtT(timerLeft());
+  if (timerLeft() <= 0) { document.getElementById('tti-start').classList.remove('on'); }
+}, 500);
 
 // ---- damageable areas (cycle ONLINE / DAMAGED / OFFLINE) ----
 const areaGrid = document.getElementById('area-grid');
@@ -373,7 +438,7 @@ function renderSubs() {
   setSwitch(swD, state.power.drones > 0);
 }
 
-function renderAll() { renderPower(); renderHull(); renderAlt(); renderAreas(); renderFans(); renderShields(); renderSubs(); }
+function renderAll() { renderPower(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderFans(); renderShields(); renderSubs(); }
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the battery-boost control ----
@@ -397,6 +462,7 @@ addEventListener('storage', () => {
   state.damage = load('shipDamageState', state.damage);
   state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
+  state.timer = load('shipTimer', state.timer);
   renderAll();
 });
 
@@ -422,6 +488,7 @@ const firebaseConfig = {
     onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderSubs(); } });
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
+    onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
