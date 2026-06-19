@@ -363,7 +363,7 @@ renderAll();
 
 // ---- player view (?display): ship views + damage dots + the battery-boost control ----
 const Q = new URLSearchParams(location.search);
-const PLAYER = Q.has('display') || Q.has('player');
+const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
 // players see the operator-triggered damage dots but no state readouts (bare)
 document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html';
 if (PLAYER) {
