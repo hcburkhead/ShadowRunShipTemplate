@@ -98,6 +98,16 @@
     animation:crashPulse 1.1s ease-in-out infinite; }
   @keyframes crashPulse{ 0%,100%{opacity:1} 50%{opacity:.45} }
 
+  /* TIME TO IMPACT countdown — top-right of the perspective view, shown only
+     while more than two lift fans are down (players' cue to restore engines) */
+  .tti{ position:absolute; top:24px; right:10px; z-index:4; display:none; text-align:right;
+    pointer-events:none; }
+  body.tti-on .tti{ display:block; animation:ttiPulse 1s ease-in-out infinite; }
+  .tti-lbl{ display:block; font-size:8px; letter-spacing:2px; color:var(--red); }
+  .tti-clock{ display:block; font:700 24px/1 'Courier New',monospace; color:var(--red);
+    text-shadow:0 0 12px rgba(239,68,68,.85); }
+  @keyframes ttiPulse{ 0%,100%{opacity:1} 50%{opacity:.5} }
+
   .main{ grid-area:main; }
   .orthos{ grid-area:orthos; display:flex; flex-direction:column; gap:6px; }
   .oview{ flex:1; min-height:0; }
@@ -185,6 +195,10 @@
 
   <div class="frame main">
     <div class="vlabel">PERSPECTIVE</div><div class="tag" id="alt-tag">EDGES ONLY</div>
+    <div class="tti" id="tti">
+      <span class="tti-lbl">&#9888; TIME TO IMPACT</span>
+      <span class="tti-clock" id="tti-clock">10:00</span>
+    </div>
     <canvas id="cv-persp"></canvas>
     <div class="badge">
       <svg viewBox="0 0 100 100" aria-label="STS">
@@ -194,7 +208,7 @@
       <img class="badge-img" src="sts.png" alt="STS">
     </div>
     <div class="scan"></div><div class="sweep"></div>
-    <div class="crash-banner">&#9888; HULL DOWN &mdash; CRASHED</div>
+    <div class="crash-banner">&#9888; IMPACT</div>
   </div>
 
   <div class="orthos">
@@ -481,12 +495,21 @@ let shieldRing = null;   // 3D floor ring, added under the ship in the perspecti
 let fanGroups = [];      // spinning lift-fan blade overlays ({ g, idx })
 let fanSpeed = [1, 1, 1, 1];   // per-fan spin factor (mag-lev cohesion: 1 full / .5 slow / 0 stopped)
 let perspLift = null;    // group the perspective ship rides in (altitude + tilt)
-// ---- flight model: lift-fan failure makes the ship lose altitude (and crash at
-// 0), and lift asymmetry banks/pitches the hull toward the failing fans ----
+// ---- flight model: if more than two lift fans fail, a TIME-TO-IMPACT timer
+// counts down (the players' cue to get the engines back); the ship doesn't
+// actually drop, but lift asymmetry still banks/pitches the hull (kerning).
+// Restoring the fans stops and resets the timer. ----
 let cmdAlt = 100, curAlt = 100, crashed = false, flightInit = false;
 const engineLift = [1, 1, 1, 1];                    // per-fan lift = engine integrity / 100
 const fanBeamSign = [0, 0, 0, 0], fanLenSign = [0, 0, 0, 0];
 let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, curPitch = 0;
+// time to impact (seconds) — defaults to 10:00; ?tti=<sec> overrides for testing/tuning
+const TTI_MAX = Math.max(1, +new URLSearchParams(location.search).get('tti') || 600);
+let ttiLeft = TTI_MAX, ttiActive = false;
+function fmtClock(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
 
 function applyAltitude() {                          // read the operator's commanded altitude (0-100)
   let alt = 100;
@@ -506,7 +529,7 @@ function enterCrash() {
       o.material.color.setHex(0xef4444);
     }
   });
-  logEvent('⚠ HULL DOWN — SHIP CRASHED', 'drop');
+  logEvent('⚠ IMPACT — lift never recovered', 'drop');
 }
 function exitCrash() {
   crashed = false;
@@ -518,40 +541,47 @@ function exitCrash() {
       o.material.userData._crashOC = undefined;
     }
   });
-  logEvent('▸ lift restored — climbing back to altitude', 'gain');
+  logEvent('▸ lift restored — hull stable', 'gain');
   render();   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
   if (!perspLift) return;
-  let failed = 0, subopt = 0;
-  for (const L of engineLift) { if (L <= 0) failed++; else if (L < 1) subopt++; }
-  if (crashed && failed <= 2) exitCrash();             // operator raised enough fans → recover
-  if (!crashed) {
-    if (failed > 2) {
-      curAlt -= 16 * dt;                              // >2 fans gone: catastrophic, falls to a crash
-    } else {
-      // 1-2 failures or suboptimal fans: the ship still floats, just sags to a lower,
-      // stable altitude — slowly for merely-suboptimal fans, faster for outright failures.
-      // Also how the ship climbs back after the operator restores its fans.
-      const target = Math.max(12, cmdAlt - (failed * 16 + subopt * 6));
-      const rate = failed > 0 ? 0.7 : subopt > 0 ? 0.12 : 1.5;       // subopt = very slow drift
-      curAlt += (target - curAlt) * Math.min(1, dt * rate);
-    }
-    curAlt = Math.max(0, Math.min(100, curAlt));
-    if (curAlt <= 0.01 && failed > 2) enterCrash();
+  let failed = 0;
+  for (const L of engineLift) if (L <= 0) failed++;
+  const critical = failed > 2;                        // more than two lift fans down
+
+  // TIME TO IMPACT: counts down while critical; stops + resets the moment the
+  // engines come back; reaching 0:00 is the (non-descending) impact.
+  if (critical && !crashed) {
+    if (!ttiActive) { ttiActive = true; logEvent('⚠ LIFT FAILURE — impact countdown started (' + fmtClock(TTI_MAX) + ')', 'drop'); }
+    ttiLeft -= dt;
+    if (ttiLeft <= 0) { ttiLeft = 0; enterCrash(); }
+  } else if (!critical) {
+    if (ttiActive) logEvent('▸ lift restored — impact countdown reset', 'gain');
+    ttiActive = false;
+    ttiLeft = TTI_MAX;
+    if (crashed) exitCrash();                          // engines back after an impact → recover
   }
+  document.body.classList.toggle('tti-on', ttiActive && !crashed);
+  const clk = document.getElementById('tti-clock');
+  if (clk) clk.textContent = fmtClock(ttiLeft);
+
+  // altitude: simply ride the operator's commanded altitude — no automatic drop
+  curAlt += (cmdAlt - curAlt) * Math.min(1, dt * 1.5);
   perspLift.position.y = (curAlt - 100) * 0.32;
-  let roll = 0, pitch = 0;                          // bank/pitch from lift asymmetry
+
+  // kerning: lift asymmetry still banks/pitches the hull toward the failing fans
+  let roll = 0, pitch = 0;
   for (let i = 0; i < 4; i++) { const d = 1 - engineLift[i]; roll += d * fanBeamSign[i]; pitch += d * fanLenSign[i]; }
   const tR = Math.max(-0.4, Math.min(0.4, roll * 0.16)), tP = Math.max(-0.32, Math.min(0.32, pitch * 0.13));
   curRoll += (tR - curRoll) * Math.min(1, dt * 2);
   curPitch += (tP - curPitch) * Math.min(1, dt * 2);
   perspLift.rotation[rollAxis] = curRoll * rollDir;
   perspLift.rotation[pitchAxis] = curPitch * pitchDir;
+
   const tag = document.getElementById('alt-tag');
-  if (tag) { const a = Math.round(curAlt);
-    tag.textContent = crashed ? 'CRASHED' : 'ALT ' + a + '%';
-    tag.style.color = (crashed || a <= 25) ? '#ef4444' : a <= 60 ? '#facc15' : ''; }
+  if (tag) { tag.textContent = crashed ? 'IMPACT' : 'ALT ' + Math.round(curAlt) + '%';
+    tag.style.color = crashed ? '#ef4444' : ''; }
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
