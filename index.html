@@ -153,9 +153,7 @@
   .shield{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none;
     transition:opacity .4s; animation:shbreathe 3.4s ease-in-out infinite; }
   .shield path{ transition:stroke .3s; filter:drop-shadow(0 0 2px currentColor); }
-  .shield.offline{ animation:shflash .7s steps(1) infinite; }
   @keyframes shbreathe{ 0%,100%{opacity:var(--o,.9)} 50%{opacity:calc(var(--o,.9)*.7)} }
-  @keyframes shflash{ 50%{opacity:.12} }
 
   /* ---- responsive: keep it viewable on most screens ---- */
   @media (max-width: 900px) {
@@ -648,7 +646,8 @@ function updateMarkers(s) {
   for (const m of damageMarkers) {
     const r = m.eval(s);
     m.mesh.visible = !!(r && r.show);
-    if (r && r.show) { m.mesh.material.color.setHex(r.color); m.mesh.userData.baseOp = r.op || 0.9; }
+    if (r && r.show) { m.mesh.material.color.setHex(r.color); m.mesh.userData.baseOp = r.op || 0.9;
+      m.mesh.userData.blink = r.color !== 0xef4444; }   // yellow (damaged) blinks; red (offline) stays solid
   }
 }
 const dotEngine = i => s => { const v = s.engines[i]; return v > 66 ? { show: false } : { show: true, color: v > 33 ? 0xfacc15 : 0xef4444 }; };
@@ -871,8 +870,9 @@ function tick() {
       d.position.y = d.userData.baseY + (act ? Math.sin(now / 700 + d.userData.phase) * 1.3 : 0);  // freeze when off
     }
   }
-  if (DOTS) { const bl = 0.3 + 0.7 * Math.abs(Math.sin(now / 220));   // blink the damage dots
-    for (const m of damageMarkers) if (m.mesh.visible) m.mesh.material.opacity = (m.mesh.userData.baseOp || 0.9) * bl; }
+  if (DOTS) { const bl = 0.3 + 0.7 * Math.abs(Math.sin(now / 220));   // blink only the yellow (damaged) dots
+    for (const m of damageMarkers) if (m.mesh.visible)
+      m.mesh.material.opacity = (m.mesh.userData.baseOp || 0.9) * (m.mesh.userData.blink ? bl : 1); }
   for (const v of views) {                           // keep each canvas matched to its frame
     const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
@@ -1055,7 +1055,7 @@ function render() {
   const h = HULL[s.hull] || HULL.NOMINAL;
   const hs = document.getElementById('hull-state');
   hs.textContent = s.hull; hs.style.color = h.c;
-  hs.classList.toggle('flash', s.hull === 'CRITICAL' || s.hull === 'OFFLINE');
+  hs.classList.toggle('flash', s.hull === 'DAMAGED');   // yellow blinks; critical/offline stay solid
   document.getElementById('hull-sub').textContent = h.sub;
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
@@ -1085,7 +1085,7 @@ function render() {
   // subsystems
   const shd = band(s.shields), drn = band(s.drones), eng = band(s.sys);
   const wpnOn = s.weapons > 0, wpn = band(s.weapons);
-  setDot('d-shd', shd.c, s.shields <= 4);
+  setDot('d-shd', shd.c, false);   // critical power shows solid red, no blink
   document.getElementById('s-shd').textContent = shd.label;
   document.getElementById('s-shd').style.color = shd.c;
 
@@ -1093,14 +1093,14 @@ function render() {
   document.getElementById('s-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
   document.getElementById('s-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
 
-  setDot('d-drn', drn.c, s.drones <= 4);
+  setDot('d-drn', drn.c, false);   // critical power shows solid red, no blink
   document.getElementById('s-drn').textContent = drn.label;
   document.getElementById('s-drn').style.color = drn.c;
 
   // AI core: ONLINE (green) / DAMAGED (yellow) / OFFLINE (red)
   const aiLabel = s.aiCore >= 2 ? 'OFFLINE' : s.aiCore >= 1 ? 'DAMAGED' : 'ONLINE';
   const aiColor = s.aiCore >= 2 ? '#ef4444' : s.aiCore >= 1 ? '#facc15' : '#4ade80';
-  setDot('d-ai', aiColor, s.aiCore >= 2);
+  setDot('d-ai', aiColor, s.aiCore === 1);   // blink only while damaged; offline stays solid red
   document.getElementById('s-ai').textContent = aiLabel;
   document.getElementById('s-ai').style.color = aiColor;
 
