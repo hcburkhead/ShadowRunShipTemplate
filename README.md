@@ -1,39 +1,40 @@
-# Ship Power Dashboard
+# Helicarrier Power Dashboard
 
-Tactical ship power management for tabletop RPG / DM use.
+Holographic ship-status console for tabletop RPG / DM use. A Three.js wireframe
+of the Helicarrier with live damage, power, and flight readouts. Static site —
+no build step; just open the files (or host on GitHub Pages).
 
 ## Files
-- `index.html` — the single, self-contained dashboard: the blueprint with live
-  SVG overlays, inset power bars, a main-power indicator, sliders, and a status
-  log. Just open it in a browser.
-- `ShipTemplate.png` — the ship schematic graphic.
+- `operator.html` — the DM control surface, with the holographic display
+  embedded. Drives everything below.
+- `index.html` — the holographic display: a perspective view + four profile
+  views (dorsal / port / fore / aft), driven by shared state.
+- `holo.html` — standalone holo view.
+- `Helicarrier.fbx` — the ship model. `sts.png` — logo. `vendor/` — Three.js.
 
-## How it works
-The schematic art stays as the base layer. Two transparent SVG layers sit on top,
-aligned to the image (viewBox 1538×688 = the image's native size):
-- a `mix-blend-mode: color` layer recolors each system's lines by power level
-- a `mix-blend-mode: screen` layer adds a soft glow
+State syncs via localStorage + BroadcastChannel, with optional Firebase for
+cross-device play.
 
-Drag a slider and that system's actual structures shift color:
-green (full) → yellow → orange → red (critical), pulsing red at 0%. The same
-slider also fills that system's bar inset over the schematic's power panel and
-updates the total-allocated readout in the main-power panel.
+## What the DM controls (operator.html)
+- **Power allocation** — engines / drones / weapons / shields, sharing a 100%
+  budget (auto-clamped).
+- **Main battery** — DM-set core reserve (depletes as systems take damage) plus
+  a 25% auxiliary reserve. Players spend the reserve via a **battery boost**.
+- **Damage control** — set each area (bridge, reactor, AI core, drone bay,
+  weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus hull
+  integrity and the four directional shield panels.
+- **Altitude** — slider that raises/lowers the ship projection.
+- **Impact timer** — a set / start / stop / reset countdown (defaults to 10:00)
+  shown top-right on the display; at 0:00 the ship "impacts" (resettable).
 
-## System → structure mapping
-| System  | Structures lit |
-|---------|----------------|
-| Engines | 4 dorsal turbine nacelles, side-profile turbine, 2 bow intake rings |
-| Drones  | internal drone bay (2×2) |
-| Weapons | mounted rail gun |
-| Shields | bow hexagon emitter |
+## On the display (index.html)
+- Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
+- The hull **kerns** — banks/pitches toward failing lift fans.
+- Directional shields, a floor shield ring, drone swarm, and blinking damage
+  dots, all colored by state.
+- A left-rail **system log** (DM view only) recording every state change.
 
-## Rules
-- Total battery is 100%, shared across all four systems; each capped at 25%.
-- Pushing one slider past the remaining budget clamps it automatically.
-
-## Tweaking overlay placement
-All overlay coordinates are plain SVG shapes inside the two `<svg>` blocks in
-`index.html`, in the image's pixel space (0–1538 x, 0–688 y). Nudge any
-`x/y/width/height/cx/cy/r/points` value to fine-tune a structure. The inset
-progress bars are positioned by percentage of the image in the `.bar-overlay`
-block.
+## Views
+- `operator.html` — DM console.
+- `operator.html?player-view` — player view: ship views, damage dots, impact
+  timer, and the battery-boost control only (no state readouts).
