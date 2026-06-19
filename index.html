@@ -37,6 +37,30 @@
   .pill.d{ background:var(--g3); } .pill.l{ background:var(--lav); }
   .pill.grow{ flex:1; display:flex; align-items:flex-end; justify-content:flex-end; border-radius:6px 6px 34px 34px; }
 
+  /* operator system-status log (left rail) — only on ?log=1, i.e. the DM view */
+  body.logview #console{ grid-template-columns:206px 1fr 238px; }
+  .log-area{ display:none; }
+  body.logview .deco{ display:none; }            /* the log replaces the decorative tabs */
+  body.logview .log-area{ display:flex; flex-direction:column; flex:1; min-height:0;
+    background:#040d04; border:1px solid var(--edge); border-radius:6px; overflow:hidden; }
+  .log-hdr{ display:flex; justify-content:space-between; align-items:center; gap:4px;
+    padding:6px 8px; font-size:8px; letter-spacing:1.5px; color:var(--g2);
+    border-bottom:1px solid var(--edge); background:#06170c; }
+  #log-clear{ font:inherit; font-size:7px; letter-spacing:1px; color:var(--dim);
+    background:transparent; border:1px solid var(--edge); border-radius:3px; padding:2px 6px; cursor:pointer; }
+  #log-clear:hover{ color:var(--g1); border-color:var(--g2); background:#0a1a0a; }
+  #log-entries{ flex:1; min-height:0; overflow-y:auto; padding:5px 7px;
+    display:flex; flex-direction:column; gap:2px; scrollbar-width:thin; scrollbar-color:var(--g3) transparent; }
+  #log-entries::-webkit-scrollbar{ width:6px; }
+  #log-entries::-webkit-scrollbar-thumb{ background:var(--g3); border-radius:3px; }
+  .log-entry{ font-size:8.5px; line-height:1.45; letter-spacing:.3px;
+    border-bottom:.5px solid #0a1e0a; padding-bottom:2px; }
+  .log-entry .lt{ color:var(--dim); margin-right:5px; }
+  .log-entry .lm{ color:var(--g1); }
+  .log-entry .lm.drop{ color:var(--red); }
+  .log-entry .lm.warn{ color:var(--amber); }
+  .log-entry .lm.gain{ color:var(--g1); }
+
   .frame{ position:relative; background:#020a05; border-radius:8px; overflow:hidden;
     border:1px solid var(--edge); }
   .frame .vlabel{ position:absolute; top:7px; left:10px; font-size:9px; color:var(--g2); z-index:3;
@@ -128,6 +152,7 @@
     #console{ grid-template-columns:56px 1fr;
       grid-template-rows:minmax(200px,1.3fr) minmax(150px,1fr) auto;
       grid-template-areas:"rail main" "rail orthos" "rail readouts"; }
+    body.logview #console{ grid-template-columns:180px 1fr; }
     .orthos{ flex-direction:row; }            /* profiles sit in a row under the main view */
     .pill{ font-size:7px; padding:5px 4px; }
   }
@@ -148,10 +173,14 @@
   <div class="rail">
     <div class="elbow"></div>
     <div class="pill a">STS&nbsp;OPS</div>
-    <div class="pill g">HOLO<br>PROJ</div>
-    <div class="pill d">SENTRIS<br>TECH</div>
-    <div class="pill l">AERO<br>DIV</div>
-    <div class="pill grow d">02&middot;47</div>
+    <div class="pill g deco">HOLO<br>PROJ</div>
+    <div class="pill d deco">SENTRIS<br>TECH</div>
+    <div class="pill l deco">AERO<br>DIV</div>
+    <div class="pill grow d deco">02&middot;47</div>
+    <div class="log-area">
+      <div class="log-hdr"><span>&#9656;&nbsp;SYSTEM&nbsp;LOG</span><button id="log-clear" type="button">CLR</button></div>
+      <div id="log-entries"></div>
+    </div>
   </div>
 
   <div class="frame main">
@@ -477,6 +506,7 @@ function enterCrash() {
       o.material.color.setHex(0xef4444);
     }
   });
+  logEvent('⚠ HULL DOWN — SHIP CRASHED', 'drop');
 }
 function exitCrash() {
   crashed = false;
@@ -488,6 +518,7 @@ function exitCrash() {
       o.material.userData._crashOC = undefined;
     }
   });
+  logEvent('▸ lift restored — climbing back to altitude', 'gain');
   render();   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
@@ -527,6 +558,8 @@ const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 // ---- operator-triggered damage dots (read-only / player view only, ?dots) ----
 const DOTS = new URLSearchParams(location.search).has('dots');
 if (new URLSearchParams(location.search).has('bare')) document.body.classList.add('bare');  // player view: hide state readouts
+const LOGVIEW = new URLSearchParams(location.search).has('log');                              // DM view only: left-rail system log
+if (LOGVIEW) document.body.classList.add('logview');
 let damageMarkers = [];
 let droneSwarms = [];    // procedural drones inside the hull (perspective + dorsal)
 // a small swarm of quad-drones for the drone bay; rotors spin + they bob when active
@@ -912,8 +945,81 @@ function applyShield() {
     ls.userData.baseOp = offline ? 0.2 : 0.35 + 0.55 * op;
   });
 }
+// ---- operator system-status log (left rail, ?log=1 — DM view only) ----
+const logT0 = Date.now();
+function logTs() {
+  const s = Math.floor((Date.now() - logT0) / 1000);
+  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(n => String(n).padStart(2, '0')).join(':');
+}
+function logEvent(msg, type) {
+  if (!LOGVIEW) return;
+  const el = document.getElementById('log-entries');
+  if (!el) return;
+  const r = document.createElement('div');
+  r.className = 'log-entry';
+  r.innerHTML = '<span class="lt">' + logTs() + '</span><span class="lm ' + (type || '') + '">' + msg + '</span>';
+  el.prepend(r);
+  while (el.children.length > 80) el.lastChild.remove();
+}
+const SYS_LABELS  = { sys: 'ENGINES', drones: 'DRONES', weapons: 'WEAPONS', shields: 'SHIELDS' };
+const AREA_LABELS = {
+  fanFP: 'LIFT FAN FWD-PORT', fanFS: 'LIFT FAN FWD-STBD',
+  fanAP: 'LIFT FAN AFT-PORT', fanAS: 'LIFT FAN AFT-STBD',
+  boostP: 'BOOSTER PORT', boostS: 'BOOSTER STBD',
+  bridge: 'BRIDGE', aiCore: 'AI CORE', reactor: 'REACTOR', droneBay: 'DRONE BAY',
+  wpnFwd: 'FWD BATTERY', wpnAft: 'AFT BATTERY',
+};
+const AREA_STATE = { 0: 'ONLINE', 1: 'DAMAGED', 2: 'OFFLINE' };
+const HULL_RANK  = { NOMINAL: 0, DAMAGED: 1, CRITICAL: 2, OFFLINE: 3 };
+let logPrev = null;
+function logDiff(s) {
+  if (!LOGVIEW) return;
+  const snap = { sys: s.sys, drones: s.drones, weapons: s.weapons, shields: s.shields,
+                 hull: s.hull, battery: s.battery, boost: s.boost, areas: {} };
+  for (const k in AREA_LABELS) snap.areas[k] = Math.max(0, Math.min(2, (s.areas[k] || 0) | 0));
+  if (!logPrev) { logPrev = snap; logEvent('▸ uplink initialized — monitoring ship systems.', 'gain'); return; }
+
+  for (const k of ['sys', 'drones', 'weapons', 'shields']) {     // power: log on status-band change
+    const b0 = band(logPrev[k]).label, b1 = band(snap[k]).label;
+    if (b0 !== b1) {
+      const down = snap[k] < logPrev[k];
+      logEvent((down ? '↓ ' : '↑ ') + SYS_LABELS[k] + ' — ' + b1, snap[k] === 0 ? 'drop' : down ? 'warn' : 'gain');
+    }
+  }
+  for (const k in AREA_LABELS) {                                 // each system / lift fan: damage & repair
+    const st = snap.areas[k], was = logPrev.areas[k];
+    if (st !== was) {
+      const recovering = st < was;
+      const icon = st === 2 ? '✖' : st === 1 ? '▲' : '●';
+      logEvent(icon + ' ' + AREA_LABELS[k] + ' ' + (recovering ? 'restored — ' : '') + AREA_STATE[st],
+               st === 2 ? 'drop' : st === 1 ? 'warn' : 'gain');
+    }
+  }
+  if (snap.hull !== logPrev.hull) {                              // hull integrity
+    const worse = (HULL_RANK[snap.hull] || 0) > (HULL_RANK[logPrev.hull] || 0);
+    logEvent((worse ? '⚠ ' : '● ') + 'HULL ' + snap.hull,
+             snap.hull === 'NOMINAL' ? 'gain' : snap.hull === 'DAMAGED' ? 'warn' : 'drop');
+  }
+  if (Math.abs(snap.battery - logPrev.battery) >= 8) {           // DM main reserve (skip tiny nudges)
+    const down = snap.battery < logPrev.battery;
+    logEvent((down ? '↓ ' : '↑ ') + 'MAIN RESERVE — ' + snap.battery + '%', down ? 'warn' : 'gain');
+  }
+  if ((snap.boost > 0) !== (logPrev.boost > 0)) {               // players engaging the battery boost
+    logEvent(snap.boost > 0 ? '⚡ BATTERY BOOST engaged (+' + snap.boost + '%)' : '○ battery boost disengaged',
+             snap.boost > 0 ? 'gain' : '');
+  }
+  logPrev = snap;
+}
+const logClearBtn = document.getElementById('log-clear');
+if (logClearBtn) logClearBtn.addEventListener('click', () => {
+  const el = document.getElementById('log-entries');
+  if (el) el.innerHTML = '';
+  logEvent('— log cleared.', '');
+});
+
 function render() {
   const s = readState();
+  logDiff(s);
 
   // hull
   const h = HULL[s.hull] || HULL.NOMINAL;

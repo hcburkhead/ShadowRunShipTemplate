@@ -380,7 +380,8 @@ renderAll();
 const Q = new URLSearchParams(location.search);
 const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
 // players see the operator-triggered damage dots but no state readouts (bare)
-document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html';
+// the DM's embedded display carries the system log (?log=1); players never do
+document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
