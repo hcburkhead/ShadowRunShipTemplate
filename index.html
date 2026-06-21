@@ -245,12 +245,10 @@
       <span class="pwr-val" id="pwr-val">125%</span>
       <div class="pwr-bar">
         <div class="s" id="pseg-core" style="background:var(--g1)"></div>
-        <div class="s" id="pseg-batt" style="background:var(--amber)"></div>
         <div class="s" id="pseg-aux"  style="background:#0e3a24"></div>
       </div>
       <div class="pwr-leg">
         <i><b style="background:var(--g1)"></b>CORE</i>
-        <i><b style="background:var(--amber)"></b>BOOST</i>
         <i><b style="background:#0e3a24"></b>AUX RSV</i>
       </div>
     </div>
@@ -653,7 +651,7 @@ function updateMarkers(s) {
 }
 const dotEngine = i => s => { const v = s.engines[i]; return v > 66 ? { show: false } : { show: true, color: v > 33 ? 0xfacc15 : 0xef4444 }; };
 const dotWhen   = (cond, color) => s => cond(s) ? { show: true, color } : { show: false };
-const dotArea   = key => s => { const v = s.areas[key] || 0; return v >= 2 ? { show: true, color: 0xef4444 } : v >= 1 ? { show: true, color: 0xfacc15 } : { show: false }; };
+const dotArea   = key => s => { const v = s.effArea(key); return v >= 2 ? { show: true, color: 0xef4444 } : v >= 1 ? { show: true, color: 0xfacc15 } : { show: false }; };
 
 const persp = makeView('cv-persp', (v) => {
   const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
@@ -916,16 +914,21 @@ ENG_IDS.forEach(id => {
 });
 
 const A2V = s => s >= 2 ? 0 : s >= 1 ? 50 : 100;   // area state (0/1/2) → integrity %
+// player auxiliary backup (0-25% per subsystem) lifts a failed system toward
+// sub-optimal: effective integrity = max(DM damage integrity, backup capped at 50%)
+function effInteg(areaState, backupPct) { return Math.max(A2V(areaState), Math.min(50, (backupPct || 0) * 2)); }
+function effAreaState(integ) { return integ >= 66 ? 0 : integ >= 25 ? 1 : 2; }   // → online / sub-optimal / offline
 function readState() {
-  let pw = {}, dmg = {};
+  let pw = {}, dmg = {}, bk = {};
   try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
   try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  try { bk  = JSON.parse(localStorage.getItem('shipBackup') || '{}') || {}; } catch (e) {}
   const num = (v, d) => Number.isFinite(+v) ? +v : d;
   const a = dmg.areas;
-  // engines / boosters / AI derived from the area damage map (fall back to legacy fields)
-  const engines  = a ? [A2V(a.fanFP), A2V(a.fanFS), A2V(a.fanAP), A2V(a.fanAS)]
+  // engines / boosters / AI derived from the area damage map, with player backup folded in
+  const engines  = a ? [effInteg(a.fanFP, bk.fanFP), effInteg(a.fanFS, bk.fanFS), effInteg(a.fanAP, bk.fanAP), effInteg(a.fanAS, bk.fanAS)]
                      : (Array.isArray(dmg.engines)  ? dmg.engines  : [100,100,100,100]);
-  const boosters = a ? [A2V(a.boostP), A2V(a.boostS)]
+  const boosters = a ? [effInteg(a.boostP, bk.boostP), effInteg(a.boostS, bk.boostS)]
                      : (Array.isArray(dmg.boosters) ? dmg.boosters : [100,100]);
   return {
     sys: num(pw.sys, 25), drones: num(pw.drones, 25),
@@ -933,9 +936,11 @@ function readState() {
     hull: dmg.hull || 'NOMINAL',
     engines, boosters,
     aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
-    boost: Math.max(0, Math.min(25, num(pw.boost, 0))),
     battery: Math.max(0, Math.min(100, num(pw.battery, 100))),   // DM-controlled main reserve
     areas: a || {},
+    backup: bk,
+    // effective area state (0/1/2) after applying player backup — used for the damage dots
+    effArea: key => effAreaState(effInteg((a && a[key]) || 0, bk[key])),
   };
 }
 function setDot(id, c, flash) {
@@ -949,14 +954,16 @@ function setDot(id, c, flash) {
 const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
 const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
 function applyShield() {
-  let pw = {}, dmg = {};
+  let pw = {}, dmg = {}, bk = {};
   try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
   try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+  try { bk  = JSON.parse(localStorage.getItem('shipBackup') || '{}') || {}; } catch (e) {}
   const sp = Number.isFinite(+pw.shields) ? +pw.shields : 25;
   const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
   const offline = sp === 0;
   const op = offline ? 0.5 : sp <= 4 ? 0.45 : sp <= 10 ? 0.6 : sp <= 20 ? 0.78 : 0.95;
-  const st = i => Math.max(0, Math.min(2, panels[i] | 0));
+  // effective panel state folds in player backup (a backed-up failed panel → sub-optimal)
+  const st = i => effAreaState(effInteg(Math.max(0, Math.min(2, panels[i] | 0)), bk['sh' + i]));
 
   shields.forEach(({ svg, arcs }) => {
     svg.style.setProperty('--o', op);
@@ -997,12 +1004,18 @@ const AREA_LABELS = {
 };
 const AREA_STATE = { 0: 'ONLINE', 1: 'DAMAGED', 2: 'OFFLINE' };
 const HULL_RANK  = { NOMINAL: 0, DAMAGED: 1, CRITICAL: 2, OFFLINE: 3 };
+const BK_LABELS  = {                                  // player-backup-able subsystems
+  fanFP: 'FAN F·P', fanFS: 'FAN F·S', fanAP: 'FAN A·P', fanAS: 'FAN A·S',
+  boostP: 'BOOSTER P', boostS: 'BOOSTER S', wpnFwd: 'FWD BATTERY', wpnAft: 'AFT BATTERY',
+  droneBay: 'DRONE BAY', sh0: 'SHLD FORE', sh1: 'SHLD STBD', sh2: 'SHLD AFT', sh3: 'SHLD PORT',
+};
 let logPrev = null;
 function logDiff(s) {
   if (!LOGVIEW) return;
   const snap = { sys: s.sys, drones: s.drones, weapons: s.weapons, shields: s.shields,
-                 hull: s.hull, battery: s.battery, boost: s.boost, tRun: !!timerCfg.running, areas: {} };
+                 hull: s.hull, battery: s.battery, tRun: !!timerCfg.running, areas: {}, bk: {} };
   for (const k in AREA_LABELS) snap.areas[k] = Math.max(0, Math.min(2, (s.areas[k] || 0) | 0));
+  for (const k in BK_LABELS) snap.bk[k] = Math.max(0, Math.min(25, (s.backup[k] || 0) | 0));
   if (!logPrev) { logPrev = snap; logEvent('▸ uplink initialized — monitoring ship systems.', 'gain'); return; }
 
   for (const k of ['sys', 'drones', 'weapons', 'shields']) {     // power: log on status-band change
@@ -1030,9 +1043,10 @@ function logDiff(s) {
     const down = snap.battery < logPrev.battery;
     logEvent((down ? '↓ ' : '↑ ') + 'MAIN RESERVE — ' + snap.battery + '%', down ? 'warn' : 'gain');
   }
-  if ((snap.boost > 0) !== (logPrev.boost > 0)) {               // players engaging the battery boost
-    logEvent(snap.boost > 0 ? '⚡ BATTERY BOOST engaged (+' + snap.boost + '%)' : '○ battery boost disengaged',
-             snap.boost > 0 ? 'gain' : '');
+  for (const k in BK_LABELS) {                                  // players raising/releasing per-system backup
+    const on = snap.bk[k] > 0, was = logPrev.bk[k] > 0;
+    if (on !== was) logEvent((on ? '⚡ ' : '○ ') + BK_LABELS[k] + (on ? ' backup engaged (' + snap.bk[k] + '%)' : ' backup released'),
+                             on ? 'gain' : '');
   }
   if (snap.tRun !== logPrev.tRun) {                             // DM started / stopped the impact timer
     logEvent(snap.tRun ? '▶ impact timer started (' + fmtClock(timerCfg.remaining) + ')' : '❚❚ impact timer stopped',
@@ -1061,15 +1075,13 @@ function render() {
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 
-  // battery state: CORE = the DM-controlled main battery reserve (depleted as
-  // systems take damage), + BATTERY BOOST drawn from the 25% AUXILIARY reserve.
+  // battery state: CORE = the DM-controlled main battery reserve + a 25%
+  // AUXILIARY reserve (players tap it per-system via backup) = up to 125%.
   const core = s.battery;                             // 0..100, set by the operator
-  const boost = s.boost;                             // 0..25 the players engage
-  const auxLeft = 25 - boost;                         // unused auxiliary reserve
-  const mainPower = core + boost;                     // active main power
+  const aux = 25;                                     // auxiliary / backup reserve
+  const mainPower = core + aux;                       // total main power (up to 125%)
   document.getElementById('pseg-core').style.width = (core / 125 * 100) + '%';
-  document.getElementById('pseg-batt').style.width = (boost / 125 * 100) + '%';   // boost (active)
-  document.getElementById('pseg-aux').style.width  = (auxLeft / 125 * 100) + '%';  // reserve (dim)
+  document.getElementById('pseg-aux').style.width  = (aux / 125 * 100) + '%';
   const pv = document.getElementById('pwr-val');
   pv.textContent = mainPower + '%';
   pv.style.color = core >= 100 ? '' : core >= 50 ? '#facc15' : '#ef4444';
