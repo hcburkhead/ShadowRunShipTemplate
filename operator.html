@@ -197,7 +197,7 @@
           <!-- POWER ALLOCATION -->
           <div class="card">
             <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
-            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-sys">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-sys"></div>
+            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-eng"></div>
             <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
             <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
             <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
@@ -268,7 +268,7 @@
 // ---------------------------------------------------------------------------
 //  Operator console — writes ship state to Firebase + localStorage + BroadcastChannel
 // ---------------------------------------------------------------------------
-const KEYS = ['sys', 'drones', 'weapons', 'shields'];
+const KEYS = ['eng', 'drones', 'weapons', 'shields'];
 // damageable areas (key, label, category) — each cycles ONLINE/DAMAGED/OFFLINE
 // the 4 lift fans use sliders (mag-lev cohesion: 100 nominal / 50 suboptimal / 0 offline)
 const FANS = [['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S']];
@@ -297,7 +297,7 @@ function defaultBackup() { const o = {}; BACKUP.forEach(([k]) => o[k] = 0); retu
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
-  power:  load('shipPowerLevels', { sys: 25, drones: 25, weapons: 25, shields: 25, battery: 100 }),
+  power:  load('shipPowerLevels', { eng: 25, drones: 25, weapons: 25, shields: 25, battery: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
   timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),

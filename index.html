@@ -931,7 +931,7 @@ function readState() {
   const boosters = a ? [effInteg(a.boostP, bk.boostP), effInteg(a.boostS, bk.boostS)]
                      : (Array.isArray(dmg.boosters) ? dmg.boosters : [100,100]);
   return {
-    sys: num(pw.sys, 25), drones: num(pw.drones, 25),
+    eng: num(pw.eng, 25), drones: num(pw.drones, 25),
     weapons: num(pw.weapons, 25), shields: num(pw.shields, 25),
     hull: dmg.hull || 'NOMINAL',
     engines, boosters,
@@ -994,7 +994,7 @@ function logEvent(msg, type) {
   el.prepend(r);
   while (el.children.length > 80) el.lastChild.remove();
 }
-const SYS_LABELS  = { sys: 'ENGINES', drones: 'DRONES', weapons: 'WEAPONS', shields: 'SHIELDS' };
+const SYS_LABELS  = { eng: 'ENGINES', drones: 'DRONES', weapons: 'WEAPONS', shields: 'SHIELDS' };
 const AREA_LABELS = {
   fanFP: 'LIFT FAN FWD-PORT', fanFS: 'LIFT FAN FWD-STBD',
   fanAP: 'LIFT FAN AFT-PORT', fanAS: 'LIFT FAN AFT-STBD',
@@ -1012,13 +1012,13 @@ const BK_LABELS  = {                                  // player-backup-able subs
 let logPrev = null;
 function logDiff(s) {
   if (!LOGVIEW) return;
-  const snap = { sys: s.sys, drones: s.drones, weapons: s.weapons, shields: s.shields,
+  const snap = { eng: s.eng, drones: s.drones, weapons: s.weapons, shields: s.shields,
                  hull: s.hull, battery: s.battery, tRun: !!timerCfg.running, areas: {}, bk: {} };
   for (const k in AREA_LABELS) snap.areas[k] = Math.max(0, Math.min(2, (s.areas[k] || 0) | 0));
   for (const k in BK_LABELS) snap.bk[k] = Math.max(0, Math.min(25, (s.backup[k] || 0) | 0));
   if (!logPrev) { logPrev = snap; logEvent('▸ uplink initialized — monitoring ship systems.', 'gain'); return; }
 
-  for (const k of ['sys', 'drones', 'weapons', 'shields']) {     // power: log on status-band change
+  for (const k of ['eng', 'drones', 'weapons', 'shields']) {     // power: log on status-band change
     const b0 = band(logPrev[k]).label, b1 = band(snap[k]).label;
     if (b0 !== b1) {
       const down = snap[k] < logPrev[k];
@@ -1096,7 +1096,7 @@ function render() {
   });
 
   // subsystems
-  const shd = band(s.shields), drn = band(s.drones), eng = band(s.sys);
+  const shd = band(s.shields), drn = band(s.drones), eng = band(s.eng);
   const wpnOn = s.weapons > 0, wpn = band(s.weapons);
   setDot('d-shd', shd.c, false);   // critical power shows solid red, no blink
   document.getElementById('s-shd').textContent = shd.label;
