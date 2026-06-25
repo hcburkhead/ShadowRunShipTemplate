@@ -18,9 +18,10 @@ cross-device play.
 ## What the DM controls (operator.html)
 - **Power allocation** — engines / drones / weapons / shields, sharing a 100%
   budget (auto-clamped).
-- **Main battery** — DM-set core reserve (depletes as systems take damage) plus
-  a 25% auxiliary reserve. Players tap the reserve via **per-system backup**
-  (0–25% each) to restore a failed pillar/subsystem to sub-optimal function.
+- **Main power (up to 175%)** — DM-set core reserve (100%) plus a shared **50%
+  aux** + **25% battery** reserve. Players **route** the aux/battery into the
+  four systems (a central slider + radio picker); aux spends first, then the
+  battery reserve. It's a tracker — the DM applies the in-game effect by hand.
 - **Damage control** — set each area (bridge, reactor, AI core, drone bay,
   weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus hull
   integrity and the four directional shield panels.
@@ -38,4 +39,4 @@ cross-device play.
 ## Views
 - `operator.html` — DM console.
 - `operator.html?player-view` — player view: ship views, damage dots, impact
-  timer, and the per-system backup controls only (no state readouts).
+  timer, and the power-routing control only (no state readouts).

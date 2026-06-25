@@ -91,12 +91,14 @@
   .area.s2{ border-color:var(--red); color:var(--red); background:rgba(239,68,68,.16); }
   .cat{ font-size:8px; letter-spacing:2px; color:var(--dim); }
 
-  /* auxiliary backup panel — per-pillar columns of 0-25% sliders */
-  .backup-grid{ display:grid; gap:10px 16px; align-items:start;
-    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); }
-  .bk-group{ display:flex; flex-direction:column; gap:7px; }
-  .bk-group .cat{ color:var(--g2); border-bottom:1px solid var(--edge); padding-bottom:3px; }
-  .bk-group .row .lbl{ font-size:9px; }
+  /* power routing — system radios that share one central slider */
+  .route-systems{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; }
+  .route-opt{ display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px;
+    background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:6px 9px; color:var(--dim); }
+  .route-opt span{ flex:1; }
+  .route-opt b{ color:var(--g1); font-weight:normal; }
+  .route-opt.active{ border-color:var(--g1); color:var(--g1); background:#0c2114; }
+  .route-opt input{ accent-color:var(--g1); }
 
   /* embedded holographic status panel */
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -125,14 +127,14 @@
   .btn-wide:hover{ background:#0a1a0a; }
 
   /* locked / view-only mode (?display) — players can read but not operate */
-  /* player view (?display): only the ship views + damage dots + auxiliary backup */
+  /* player view (?display): only the ship views + damage dots + power routing */
   .lockbadge{ display:none; color:var(--g1); font-weight:bold; }
   body.player .lockbadge{ display:inline-block; }
   body.player .ctl-only{ display:none !important; }
   body.player .block-title{ display:none; }          /* hide group headers... */
   body.player .block:not(.power-block){ display:none; }  /* ...and every block except power */
   body.player .card{ display:none; }                 /* hide every control card... */
-  body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except battery boost */
+  body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except power routing */
   body.player .viewport-controls{ display:none; }    /* players don't get the flight controls */
 </style>
 </head>
@@ -187,11 +189,13 @@
             <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
           </div>
 
-          <!-- AUXILIARY BACKUP (the players' control — per-system 0-25%) -->
+          <!-- POWER ROUTING (the players' control — route shared aux/battery reserve) -->
           <div class="card boost-card">
-            <h2>AUXILIARY BACKUP <span class="v hint">25% per system</span></h2>
-            <div id="backup-rows" class="backup-grid"></div>
-            <div class="hint">pour backup power into a failed pillar/subsystem to restore it to sub-optimal function.</div>
+            <h2>POWER ROUTING <span class="v">AUX&nbsp;<b id="aux-rsv">50%</b> · BATT&nbsp;<b id="batt-rsv">25%</b></span></h2>
+            <div id="route-systems" class="route-systems"></div>
+            <div class="row" style="margin-top:4px"><div class="lbl"><span id="route-label">▸ ENGINES</span><b id="route-val">0%</b></div>
+              <input type="range" min="0" max="75" step="1" value="0" id="sl-route"></div>
+            <div class="hint">pick a system, then route reserve power to it. aux (50%) is spent first; below that the 25% battery reserve kicks in. the DM applies the in-game effect (which shield/fan/etc.).</div>
           </div>
 
           <!-- POWER ALLOCATION -->
@@ -281,19 +285,12 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['NOMINAL', 'SUBOPT', 'OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
-// player-raiseable auxiliary backup (0-25% each): the 4 pillars' subsystems only
-// (NOT bridge / reactor / AI core). Raising one restores a failed system to
-// sub-optimal function. [key, label, pillar] — sh0..3 map to shield panels.
-const BACKUP = [
-  ['fanFP', 'FAN F·P', 'ENGINES'], ['fanFS', 'FAN F·S', 'ENGINES'],
-  ['fanAP', 'FAN A·P', 'ENGINES'], ['fanAS', 'FAN A·S', 'ENGINES'],
-  ['boostP', 'BOOSTER P', 'ENGINES'], ['boostS', 'BOOSTER S', 'ENGINES'],
-  ['wpnFwd', 'FWD BATTERY', 'WEAPONS'], ['wpnAft', 'AFT BATTERY', 'WEAPONS'],
-  ['droneBay', 'DRONE BAY', 'DRONES'],
-  ['sh0', 'SHLD FORE', 'SHIELDS'], ['sh1', 'SHLD STBD', 'SHIELDS'],
-  ['sh2', 'SHLD AFT', 'SHIELDS'], ['sh3', 'SHLD PORT', 'SHIELDS'],
-];
-function defaultBackup() { const o = {}; BACKUP.forEach(([k]) => o[k] = 0); return o; }
+// player power routing: a shared 50% AUX reserve + 25% BATTERY reserve that
+// players route across the 4 main systems (a tracker — the DM applies the
+// in-game effect manually). aux spends first, then the battery reserve.
+const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
+const AUX_MAX = 50, BATT_MAX = 25, POOL = AUX_MAX + BATT_MAX;   // 75 total player-routable
+function defaultAux() { const o = {}; ROUTE.forEach(([k]) => o[k] = 0); return o; }
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
@@ -301,11 +298,11 @@ const state = {
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
   timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
-  backup: load('shipBackup', defaultBackup()),
+  aux: load('shipAux', defaultAux()),
 };
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
-state.backup = Object.assign(defaultBackup(), state.backup || {});
+state.aux = Object.assign(defaultAux(), state.aux || {});
 
 let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
 let fb = null;   // { set, ref, db } once Firebase connects
@@ -317,7 +314,7 @@ function pushKey(key, value) {
 }
 const savePower  = () => pushKey('shipPowerLevels', state.power);
 const saveDamage = () => pushKey('shipDamageState', state.damage);
-const saveBackup = () => pushKey('shipBackup', state.backup);
+const saveAux    = () => pushKey('shipAux', state.aux);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 const saveTimer  = () => pushKey('shipTimer', state.timer);
 
@@ -347,33 +344,39 @@ KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', (
   clampBudget(k); renderPower(); savePower();
 }));
 
-// ---- auxiliary backup (player control): per-system 0-25% sliders, grouped by pillar ----
-const backupGrid = document.getElementById('backup-rows');
-const bkGroups = {};
-function bkGroup(pillar) {
-  if (!bkGroups[pillar]) {
-    const g = document.createElement('div'); g.className = 'bk-group';
-    const h = document.createElement('div'); h.className = 'cat'; h.textContent = pillar; g.appendChild(h);
-    bkGroups[pillar] = g; backupGrid.appendChild(g);
-  }
-  return bkGroups[pillar];
-}
-BACKUP.forEach(([k, label]) => {
-  const row = document.createElement('div'); row.className = 'row';
-  row.innerHTML = `<div class="lbl"><span>${label}</span><b id="bkv-${k}">0%</b></div>`
-                + `<input type="range" min="0" max="25" step="1" value="0" id="bk-${k}">`;
-  bkGroup(BACKUP.find(b => b[0] === k)[2]).appendChild(row);
-  row.querySelector('input').addEventListener('input', e => {
-    state.backup[k] = +e.target.value; renderBackup(); saveBackup();
-  });
+// ---- power routing (player control): central slider + radio, shared aux/battery reserve ----
+const routeSystems = document.getElementById('route-systems');
+let routeSel = 'eng';
+ROUTE.forEach(([k, label]) => {
+  const opt = document.createElement('label'); opt.className = 'route-opt'; opt.dataset.k = k;
+  opt.innerHTML = `<input type="radio" name="route" value="${k}"><span>${label}</span><b>0%</b>`;
+  opt.querySelector('input').addEventListener('change', () => { routeSel = k; renderRoute(); });
+  routeSystems.appendChild(opt);
 });
-function renderBackup() {
-  BACKUP.forEach(([k]) => {
-    const v = Math.max(0, Math.min(25, state.backup[k] | 0));
-    const sl = document.getElementById('bk-' + k); if (document.activeElement !== sl) sl.value = v;
-    const b = document.getElementById('bkv-' + k);
-    b.textContent = v + '%'; b.style.color = v > 0 ? 'var(--yellow)' : '';
+const routeTotal = () => ROUTE.reduce((a, [k]) => a + (state.aux[k] || 0), 0);
+document.getElementById('sl-route').addEventListener('input', e => {
+  state.aux[routeSel] = +e.target.value; renderRoute(); saveAux();
+});
+function renderRoute() {
+  const total = routeTotal();
+  const auxRsv  = Math.max(0, AUX_MAX - total);
+  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - AUX_MAX));
+  const ar = document.getElementById('aux-rsv');
+  ar.textContent = auxRsv + '%'; ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < 25 ? 'var(--yellow)' : '';
+  const br = document.getElementById('batt-rsv');
+  br.textContent = battRsv + '%'; br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
+  ROUTE.forEach(([k]) => {
+    const opt = routeSystems.querySelector(`.route-opt[data-k="${k}"]`);
+    opt.querySelector('b').textContent = (state.aux[k] || 0) + '%';
+    opt.classList.toggle('active', k === routeSel);
+    opt.querySelector('input').checked = k === routeSel;
   });
+  const cur = state.aux[routeSel] || 0;
+  document.getElementById('route-label').textContent = '▸ ' + ROUTE.find(r => r[0] === routeSel)[1];
+  document.getElementById('route-val').textContent = cur + '%';
+  const sl = document.getElementById('sl-route');
+  sl.max = String(cur + (POOL - total));            // can raise up to the remaining shared pool
+  if (document.activeElement !== sl) sl.value = cur;
 }
 
 // ---- hull ----
@@ -524,10 +527,10 @@ document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventLis
   renderShields(); saveDamage();
 }));
 
-function renderAll() { renderPower(); renderBackup(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
+function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
 renderAll();
 
-// ---- player view (?display): ship views + damage dots + the auxiliary-backup controls ----
+// ---- player view (?display): ship views + damage dots + the power-routing control ----
 const Q = new URLSearchParams(location.search);
 const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
 // players see the operator-triggered damage dots but no state readouts (bare)
@@ -536,9 +539,9 @@ document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' 
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
-  // only the per-system backup sliders are operable; everything else is hidden anyway
+  // only the power-routing control (slider + system radios) is operable
   document.querySelectorAll('input, button').forEach(el => {
-    if (!el.id.startsWith('bk-')) { el.disabled = true; el.tabIndex = -1; }
+    if (el.id !== 'sl-route' && el.getAttribute('name') !== 'route') { el.disabled = true; el.tabIndex = -1; }
   });
 }
 
@@ -549,7 +552,7 @@ addEventListener('storage', () => {
   state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
   state.timer = load('shipTimer', state.timer);
-  state.backup = Object.assign(defaultBackup(), load('shipBackup', state.backup));
+  state.aux = Object.assign(defaultAux(), load('shipAux', state.aux));
   renderAll();
 });
 
@@ -576,7 +579,7 @@ const firebaseConfig = {
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
-    onValue(ref(db, 'shipBackup'),      s => { const d = s.val(); if (d) { state.backup = Object.assign(defaultBackup(), d); renderBackup(); } });
+    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = Object.assign(defaultAux(), d); renderRoute(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
