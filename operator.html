@@ -165,10 +165,8 @@
       </header>
     
     
-      <!-- live holographic status panel (read-only mode also gets the damage dots) -->
       <div class="holo">
         <iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe>
-        <!-- flight controls overlaid on the ship's viewport (they directly affect it) -->
         <div class="viewport-controls">
           <div class="vc-h">⬡ MAG-LEV COHESION</div>
           <div id="fan-rows"></div>
@@ -177,11 +175,9 @@
         </div>
       </div>
     
-      <!-- ============ POWER & BATTERY ============ -->
       <section class="block power-block">
         <h3 class="block-title">⚡ POWER &amp; BATTERY</h3>
         <div class="block-grid">
-          <!-- MAIN BATTERY (DM-controlled core reserve) -->
           <div class="card">
             <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
             <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
@@ -189,16 +185,14 @@
             <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
           </div>
 
-          <!-- POWER ROUTING (the players' control — route shared aux/battery reserve) -->
           <div class="card boost-card">
             <h2>POWER ROUTING <span class="v">AUX&nbsp;<b id="aux-rsv">50%</b> · BATT&nbsp;<b id="batt-rsv">25%</b></span></h2>
             <div id="route-systems" class="route-systems"></div>
             <div class="row" style="margin-top:4px"><div class="lbl"><span id="route-label">▸ ENGINES</span><b id="route-val">0%</b></div>
               <input type="range" min="0" max="75" step="1" value="0" id="sl-route"></div>
-            <div class="hint">Pick a system, then route reserve power to it. Aux - up to 50% is spent first. Then, the 25% battery reserve kicks in.</div>
+            <div class="hint">Pick a system, then route reserve power to it. Aux (dynamic based on ship integrity) is spent first. Then, the 25% battery reserve kicks in.</div>
           </div>
 
-          <!-- POWER ALLOCATION -->
           <div class="card">
             <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
             <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-eng"></div>
@@ -209,11 +203,9 @@
         </div>
       </section>
 
-      <!-- ============ FLIGHT ============ -->
       <section class="block">
         <h3 class="block-title">✈ FLIGHT</h3>
         <div class="block-grid compact">
-          <!-- IMPACT TIMER (fan + altitude controls live on the viewport overlay) -->
           <div class="card">
             <h2>IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
             <div class="timerset">
@@ -232,11 +224,9 @@
         </div>
       </section>
 
-      <!-- ============ DAMAGE & DEFENSE ============ -->
       <section class="block">
         <h3 class="block-title">⛨ DAMAGE &amp; DEFENSE</h3>
         <div class="block-grid">
-          <!-- HULL INTEGRITY -->
           <div class="card">
             <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
             <div class="seg" id="hull-seg">
@@ -247,7 +237,6 @@
             </div>
           </div>
 
-          <!-- SHIELD PANELS -->
           <div class="card">
             <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
             <div class="shieldpad">
@@ -259,7 +248,6 @@
             </div>
           </div>
 
-          <!-- DAMAGE CONTROL -->
           <div class="card full">
             <h2>DAMAGE CONTROL <span class="v hint ctl-only">areas cycle ONLINE · DAMAGED · OFFLINE — subsystems toggle power on/off</span></h2>
             <div class="areas" id="area-grid"></div>
@@ -285,11 +273,11 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['NOMINAL', 'SUBOPT', 'OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
-// player power routing: a shared 50% AUX reserve + 25% BATTERY reserve that
+// player power routing: a shared dynamically calculated AUX reserve + 25% BATTERY reserve that
 // players route across the 4 main systems (a tracker — the DM applies the
 // in-game effect manually). aux spends first, then the battery reserve.
 const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
-const AUX_MAX = 50, BATT_MAX = 25, POOL = AUX_MAX + BATT_MAX;   // 75 total player-routable
+const BASE_AUX = 50, BATT_MAX = 25; // Total pool is now dynamically calculated
 function defaultAux() { const o = {}; ROUTE.forEach(([k]) => o[k] = 0); return o; }
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
@@ -317,6 +305,48 @@ const saveDamage = () => pushKey('shipDamageState', state.damage);
 const saveAux    = () => pushKey('shipAux', state.aux);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 const saveTimer  = () => pushKey('shipTimer', state.timer);
+
+// Calculate dynamic aux max based on damage (2% damaged, 5% offline)
+function getDynamicAuxMax() {
+  let deduction = 0;
+  
+  // 1. Check all standard damage areas and lift fans
+  for (let k in state.damage.areas) {
+    const st = state.damage.areas[k];
+    if (st === 1) deduction += 2;      // DAMAGED
+    else if (st === 2) deduction += 5; // OFFLINE
+  }
+  
+  // 2. Check the 4 shield panels
+  state.damage.shieldPanels.forEach(st => {
+    if (st === 1) deduction += 2;
+    else if (st === 2) deduction += 5;
+  });
+  
+  return Math.max(0, BASE_AUX - deduction); // Prevent max from going negative
+}
+
+// Automatically claw back routed power if damage shrinks the pool below current usage
+function checkAuxBudget() {
+  const dynamicPool = getDynamicAuxMax() + BATT_MAX;
+  let total = routeTotal();
+  let changed = false;
+  
+  while (total > dynamicPool) {
+    // Find the system with the highest routed power and pull 1% out
+    let maxK = ROUTE[0][0];
+    ROUTE.forEach(([k]) => { if ((state.aux[k] || 0) > (state.aux[maxK] || 0)) maxK = k; });
+    
+    if (state.aux[maxK] > 0) {
+      state.aux[maxK]--;
+      total--;
+      changed = true;
+    } else {
+      break; // Safe exit if something breaks
+    }
+  }
+  if (changed) saveAux();
+}
 
 // ---- power allocation ----
 function clampBudget(changed) {
@@ -354,28 +384,40 @@ ROUTE.forEach(([k, label]) => {
   routeSystems.appendChild(opt);
 });
 const routeTotal = () => ROUTE.reduce((a, [k]) => a + (state.aux[k] || 0), 0);
+
 document.getElementById('sl-route').addEventListener('input', e => {
   state.aux[routeSel] = +e.target.value; renderRoute(); saveAux();
 });
+
 function renderRoute() {
   const total = routeTotal();
-  const auxRsv  = Math.max(0, AUX_MAX - total);
-  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - AUX_MAX));
+  const auxMax = getDynamicAuxMax();
+  const dynamicPool = auxMax + BATT_MAX;
+  
+  const auxRsv  = Math.max(0, auxMax - total);
+  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - auxMax));
+  
   const ar = document.getElementById('aux-rsv');
-  ar.textContent = auxRsv + '%'; ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < 25 ? 'var(--yellow)' : '';
+  ar.textContent = auxRsv + '%'; 
+  ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < (auxMax / 2) ? 'var(--yellow)' : '';
+  
   const br = document.getElementById('batt-rsv');
-  br.textContent = battRsv + '%'; br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
+  br.textContent = battRsv + '%'; 
+  br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
+  
   ROUTE.forEach(([k]) => {
     const opt = routeSystems.querySelector(`.route-opt[data-k="${k}"]`);
     opt.querySelector('b').textContent = (state.aux[k] || 0) + '%';
     opt.classList.toggle('active', k === routeSel);
     opt.querySelector('input').checked = k === routeSel;
   });
+  
   const cur = state.aux[routeSel] || 0;
   document.getElementById('route-label').textContent = '▸ ' + ROUTE.find(r => r[0] === routeSel)[1];
   document.getElementById('route-val').textContent = cur + '%';
+  
   const sl = document.getElementById('sl-route');
-  sl.max = String(cur + (POOL - total));            // can raise up to the remaining shared pool
+  sl.max = String(cur + Math.max(0, dynamicPool - total)); // Scale slider to dynamic remaining pool
   if (document.activeElement !== sl) sl.value = cur;
 }
 
@@ -465,7 +507,13 @@ function catGroup(cat) {   // one column per category (label + its buttons), gro
 AREAS.forEach(([k, label, cat]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.a = k;
   b.innerHTML = `${label}<span class="st"></span>`;
-  b.addEventListener('click', () => { state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; renderAreas(); saveDamage(); });
+  b.addEventListener('click', () => { 
+    state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; 
+    renderAreas(); 
+    saveDamage(); 
+    checkAuxBudget(); 
+    renderRoute(); 
+  });
   catGroup(cat).appendChild(b);
 });
 POWER_SUBS.forEach(([k, label]) => {
@@ -501,7 +549,10 @@ FANS.forEach(([k, label]) => {
   fanGrid.appendChild(div);
   div.querySelector('input').addEventListener('input', e => {
     state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
-    renderFans(); saveDamage();
+    renderFans(); 
+    saveDamage(); 
+    checkAuxBudget(); 
+    renderRoute();
   });
 });
 function renderFans() {
@@ -524,7 +575,10 @@ function renderShields() {
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
-  renderShields(); saveDamage();
+  renderShields(); 
+  saveDamage(); 
+  checkAuxBudget(); 
+  renderRoute();
 }));
 
 function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
@@ -553,6 +607,7 @@ addEventListener('storage', () => {
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
   state.timer = load('shipTimer', state.timer);
   state.aux = Object.assign(defaultAux(), load('shipAux', state.aux));
+  checkAuxBudget();
   renderAll();
 });
 
@@ -576,7 +631,7 @@ const firebaseConfig = {
     document.getElementById('netlbl').textContent = 'CLOUD';
     // adopt cloud state on connect (so a fresh operator matches what's live)
     onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderPowerSubs(); } });
-    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); checkAuxBudget(); renderRoute(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
     onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = Object.assign(defaultAux(), d); renderRoute(); } });
