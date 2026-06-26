@@ -79,7 +79,7 @@
   .sp-a{ grid-column:2; grid-row:3; } .sp-p{ grid-column:1; grid-row:2; }
   .sp-mid{ grid-column:2; grid-row:2; border:0; color:var(--dim); font-size:8px; cursor:default; }
 
-  /* damageable-area toggles */
+  /* damageable-area toggles — grouped by category, the groups flow to fill width */
   .areas{ display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px 12px; align-items:start; }
   .area-group{ display:flex; flex-direction:column; gap:6px; }
   .area{ font:inherit; font-size:9px; letter-spacing:.5px; padding:8px 4px; cursor:pointer; border-radius:4px;
@@ -91,7 +91,7 @@
   .area.s2{ border-color:var(--red); color:var(--red); background:rgba(239,68,68,.16); }
   .cat{ font-size:8px; letter-spacing:2px; color:var(--dim); }
 
-  /* power routing */
+  /* power routing — system radios that share one central slider */
   .route-systems{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; }
   .route-opt{ display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px;
     background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:6px 9px; color:var(--dim); }
@@ -104,7 +104,8 @@
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
   .holo iframe{ width:100%; height:clamp(460px, 54vh, 600px); border:0; display:block; }
 
-  /* flight controls */
+  /* flight controls overlaid on the viewport's empty top-right (they directly
+     affect the ship). Operator-level, so they keep writing state as before. */
   .viewport-controls{ position:absolute; top:64px; right:258px; width:224px; z-index:6;
     background:rgba(4,13,4,.82); border:1px solid var(--edge); border-radius:6px;
     padding:8px 10px; display:flex; flex-direction:column; gap:5px; backdrop-filter:blur(2px);
@@ -116,7 +117,7 @@
   .viewport-controls .row .lbl{ font-size:8px; }
   .viewport-controls .row .lbl b{ font-size:8px; }
   .viewport-controls input[type=range]{ height:3px; }
-  @media (max-width:1024px){
+  @media (max-width:1024px){    /* narrow: drop the overlay into normal flow below the viewport */
     .viewport-controls{ position:static; inset:auto; width:auto; margin:8px; }
   }
 
@@ -125,43 +126,19 @@
     background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
   .btn-wide:hover{ background:#0a1a0a; }
 
-  /* locked / view-only mode */
+  /* locked / view-only mode (?display) — players can read but not operate */
+  /* player view (?display): only the ship views + damage dots + power routing */
   .lockbadge{ display:none; color:var(--g1); font-weight:bold; }
   body.player .lockbadge{ display:inline-block; }
   body.player .ctl-only{ display:none !important; }
-  body.player .block-title{ display:none; }
-  body.player .block:not(.power-block){ display:none; }
-  body.player .card{ display:none; }
-  body.player .boost-card{ display:flex; grid-column:1/-1; }
-  body.player .viewport-controls{ display:none; }
-
-  /* ============ SELF DESTRUCT EASTER EGG ============ */
-  .sd-btn {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    background: var(--red); color: #000; font-weight: bold; font-size: 20px;
-    padding: 18px 36px; border: 4px solid #fff; border-radius: 8px;
-    cursor: pointer; z-index: 50; display: none; box-shadow: 0 0 40px var(--red);
-    animation: sd-pulse 0.6s infinite alternate; letter-spacing: 2px;
-  }
-  @keyframes sd-pulse { 
-    from { opacity: 0.85; transform: translate(-50%, -50%) scale(0.95); } 
-    to { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 
-  }
-  
-  /* Lockout State Formatting */
-  .lockout-overlay {
-    position: fixed; inset: 0; background: rgba(239, 68, 68, 0.08);
-    pointer-events: none; display: none; z-index: 9999;
-  }
-  body.is-offline .lockout-overlay { display: block; }
-  body.is-offline .card:not(.power-block .card) { 
-    opacity: 0.3; pointer-events: none; filter: grayscale(1); 
-  }
-  body.is-offline #holo-frame { filter: sepia(1) hue-rotate(-50deg) saturate(3); }
+  body.player .block-title{ display:none; }          /* hide group headers... */
+  body.player .block:not(.power-block){ display:none; }  /* ...and every block except power */
+  body.player .card{ display:none; }                 /* hide every control card... */
+  body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except power routing */
+  body.player .viewport-controls{ display:none; }    /* players don't get the flight controls */
 </style>
 </head>
 <body>
-    <div class="lockout-overlay"></div>
     <div class="wrap">
       <header>
         <svg class="logo" viewBox="0 0 100 100" aria-label="STS">
@@ -187,9 +164,11 @@
         </div>
       </header>
     
+    
+      <!-- live holographic status panel (read-only mode also gets the damage dots) -->
       <div class="holo">
-        <button id="sd-btn" class="sd-btn">⚠ INITIATE SCUTTLE ⚠</button>
         <iframe id="holo-frame" title="Holographic ship status" loading="lazy"></iframe>
+        <!-- flight controls overlaid on the ship's viewport (they directly affect it) -->
         <div class="viewport-controls">
           <div class="vc-h">⬡ MAG-LEV COHESION</div>
           <div id="fan-rows"></div>
@@ -198,9 +177,11 @@
         </div>
       </div>
     
+      <!-- ============ POWER & BATTERY ============ -->
       <section class="block power-block">
         <h3 class="block-title">⚡ POWER &amp; BATTERY</h3>
         <div class="block-grid">
+          <!-- MAIN BATTERY (DM-controlled core reserve) -->
           <div class="card">
             <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
             <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
@@ -208,14 +189,16 @@
             <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
           </div>
 
+          <!-- POWER ROUTING (the players' control — route shared aux/battery reserve) -->
           <div class="card boost-card">
             <h2>POWER ROUTING <span class="v">AUX&nbsp;<b id="aux-rsv">50%</b> · BATT&nbsp;<b id="batt-rsv">25%</b></span></h2>
             <div id="route-systems" class="route-systems"></div>
             <div class="row" style="margin-top:4px"><div class="lbl"><span id="route-label">▸ ENGINES</span><b id="route-val">0%</b></div>
               <input type="range" min="0" max="75" step="1" value="0" id="sl-route"></div>
-            <div class="hint">Pick a system, then route reserve power to it. Aux (dynamic based on ship integrity) is spent first. Then, the 25% battery reserve kicks in.</div>
+            <div class="hint">Pick a system, then route reserve power to it. Aux - up to 50% is spent first. Then, the 25% battery reserve kicks in.</div>
           </div>
 
+          <!-- POWER ALLOCATION -->
           <div class="card">
             <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
             <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-eng"></div>
@@ -226,9 +209,11 @@
         </div>
       </section>
 
+      <!-- ============ FLIGHT ============ -->
       <section class="block">
         <h3 class="block-title">✈ FLIGHT</h3>
         <div class="block-grid compact">
+          <!-- IMPACT TIMER (fan + altitude controls live on the viewport overlay) -->
           <div class="card">
             <h2>IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
             <div class="timerset">
@@ -247,9 +232,11 @@
         </div>
       </section>
 
+      <!-- ============ DAMAGE & DEFENSE ============ -->
       <section class="block">
         <h3 class="block-title">⛨ DAMAGE &amp; DEFENSE</h3>
         <div class="block-grid">
+          <!-- HULL INTEGRITY -->
           <div class="card">
             <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
             <div class="seg" id="hull-seg">
@@ -260,6 +247,7 @@
             </div>
           </div>
 
+          <!-- SHIELD PANELS -->
           <div class="card">
             <h2>SHIELD PANELS <span class="v hint ctl-only">click to cycle N0·N1·N2</span></h2>
             <div class="shieldpad">
@@ -271,6 +259,7 @@
             </div>
           </div>
 
+          <!-- DAMAGE CONTROL -->
           <div class="card full">
             <h2>DAMAGE CONTROL <span class="v hint ctl-only">areas cycle ONLINE · DAMAGED · OFFLINE — subsystems toggle power on/off</span></h2>
             <div class="areas" id="area-grid"></div>
@@ -284,6 +273,8 @@
 //  Operator console — writes ship state to Firebase + localStorage + BroadcastChannel
 // ---------------------------------------------------------------------------
 const KEYS = ['eng', 'drones', 'weapons', 'shields'];
+// damageable areas (key, label, category) — each cycles ONLINE/DAMAGED/OFFLINE
+// the 4 lift fans use sliders (mag-lev cohesion: 100 nominal / 50 suboptimal / 0 offline)
 const FANS = [['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S']];
 const AREAS = [
   ['boostP', 'BOOSTER PORT', 'PROPULSION'], ['boostS', 'BOOSTER STBD', 'PROPULSION'],
@@ -294,82 +285,47 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['NOMINAL', 'SUBOPT', 'OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
+// player power routing: a shared 50% AUX reserve + 25% BATTERY reserve that
+// players route across the 4 main systems (a tracker — the DM applies the
+// in-game effect manually). aux spends first, then the battery reserve.
 const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
-const BASE_AUX = 50, BATT_MAX = 25; 
+const AUX_MAX = 50, BATT_MAX = 25, POOL = AUX_MAX + BATT_MAX;   // 75 total player-routable
 function defaultAux() { const o = {}; ROUTE.forEach(([k]) => o[k] = 0); return o; }
 
+// authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
   power:  load('shipPowerLevels', { eng: 25, drones: 25, weapons: 25, shields: 25, battery: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
   timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
   aux: load('shipAux', defaultAux()),
-  lockout: load('shipLockout', false)
 };
-
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
 state.aux = Object.assign(defaultAux(), state.aux || {});
 
 let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
-let fb = null;   
+let fb = null;   // { set, ref, db } once Firebase connects
 
 function pushKey(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
   if (bc) { try { bc.postMessage(Date.now()); } catch (e) {} }
   if (fb) { try { fb.set(fb.ref(fb.db, key), value); } catch (e) {} }
 }
-const savePower   = () => pushKey('shipPowerLevels', state.power);
-const saveDamage  = () => pushKey('shipDamageState', state.damage);
-const saveAux     = () => pushKey('shipAux', state.aux);
-const saveAlt     = () => pushKey('shipAltitude', { v: state.altitude });
-const saveTimer   = () => pushKey('shipTimer', state.timer);
-const saveLockout = () => pushKey('shipLockout', state.lockout);
+const savePower  = () => pushKey('shipPowerLevels', state.power);
+const saveDamage = () => pushKey('shipDamageState', state.damage);
+const saveAux    = () => pushKey('shipAux', state.aux);
+const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
+const saveTimer  = () => pushKey('shipTimer', state.timer);
 
-// Dynamic Aux Logic
-function getDynamicAuxMax() {
-  let deduction = 0;
-  for (let k in state.damage.areas) {
-    const st = state.damage.areas[k];
-    if (st === 1) deduction += 2;      
-    else if (st === 2) deduction += 5; 
-  }
-  state.damage.shieldPanels.forEach(st => {
-    if (st === 1) deduction += 2;
-    else if (st === 2) deduction += 5;
-  });
-  return Math.max(0, BASE_AUX - deduction); 
-}
-
-function checkAuxBudget() {
-  const dynamicPool = getDynamicAuxMax() + BATT_MAX;
-  let total = routeTotal();
-  let changed = false;
-  
-  while (total > dynamicPool) {
-    let maxK = ROUTE[0][0];
-    ROUTE.forEach(([k]) => { if ((state.aux[k] || 0) > (state.aux[maxK] || 0)) maxK = k; });
-    
-    if (state.aux[maxK] > 0) {
-      state.aux[maxK]--;
-      total--;
-      changed = true;
-    } else {
-      break; 
-    }
-  }
-  if (changed) saveAux();
-}
-
-// Power Allocation
+// ---- power allocation ----
 function clampBudget(changed) {
-  let v = state.power[changed];                       
+  let v = state.power[changed];                       // use the intended value (slider OR toggle)
   const others = KEYS.filter(k => k !== changed).reduce((a, k) => a + state.power[k], 0);
   if (v + others > 100) v = Math.max(0, 100 - others);
   state.power[changed] = v;
   document.getElementById('sl-' + changed).value = v;
 }
-
 function renderPower() {
   KEYS.forEach(k => { document.getElementById('sl-' + k).value = state.power[k];
                       document.getElementById('v-' + k).textContent = state.power[k] + '%'; });
@@ -379,20 +335,16 @@ function renderPower() {
   const bs = document.getElementById('sl-battery'); if (document.activeElement !== bs) bs.value = bv;
   const bvEl = document.getElementById('batt-v');
   bvEl.textContent = bv + '%'; bvEl.style.color = bv >= 75 ? '' : bv >= 35 ? 'var(--yellow)' : 'var(--red)';
-  
-  checkReboot();
-  checkEasterEgg();
 }
-
 document.getElementById('sl-battery').addEventListener('input', e => {
   state.power.battery = +e.target.value; renderPower(); savePower();
 });
 KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
-  state.power[k] = +document.getElementById('sl-' + k).value;   
+  state.power[k] = +document.getElementById('sl-' + k).value;   // adopt the slider, then clamp
   clampBudget(k); renderPower(); savePower();
 }));
 
-// Power Routing (Player Control)
+// ---- power routing (player control): central slider + radio, shared aux/battery reserve ----
 const routeSystems = document.getElementById('route-systems');
 let routeSel = 'eng';
 ROUTE.forEach(([k, label]) => {
@@ -402,44 +354,32 @@ ROUTE.forEach(([k, label]) => {
   routeSystems.appendChild(opt);
 });
 const routeTotal = () => ROUTE.reduce((a, [k]) => a + (state.aux[k] || 0), 0);
-
 document.getElementById('sl-route').addEventListener('input', e => {
   state.aux[routeSel] = +e.target.value; renderRoute(); saveAux();
 });
-
 function renderRoute() {
   const total = routeTotal();
-  const auxMax = getDynamicAuxMax();
-  const dynamicPool = auxMax + BATT_MAX;
-  
-  const auxRsv  = Math.max(0, auxMax - total);
-  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - auxMax));
-  
+  const auxRsv  = Math.max(0, AUX_MAX - total);
+  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - AUX_MAX));
   const ar = document.getElementById('aux-rsv');
-  ar.textContent = auxRsv + '%'; 
-  ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < (auxMax / 2) ? 'var(--yellow)' : '';
-  
+  ar.textContent = auxRsv + '%'; ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < 25 ? 'var(--yellow)' : '';
   const br = document.getElementById('batt-rsv');
-  br.textContent = battRsv + '%'; 
-  br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
-  
+  br.textContent = battRsv + '%'; br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
   ROUTE.forEach(([k]) => {
     const opt = routeSystems.querySelector(`.route-opt[data-k="${k}"]`);
     opt.querySelector('b').textContent = (state.aux[k] || 0) + '%';
     opt.classList.toggle('active', k === routeSel);
     opt.querySelector('input').checked = k === routeSel;
   });
-  
   const cur = state.aux[routeSel] || 0;
   document.getElementById('route-label').textContent = '▸ ' + ROUTE.find(r => r[0] === routeSel)[1];
   document.getElementById('route-val').textContent = cur + '%';
-  
   const sl = document.getElementById('sl-route');
-  sl.max = String(cur + Math.max(0, dynamicPool - total)); 
+  sl.max = String(cur + (POOL - total));            // can raise up to the remaining shared pool
   if (document.activeElement !== sl) sl.value = cur;
 }
 
-// Hull
+// ---- hull ----
 function renderHull() {
   document.getElementById('hull-v').textContent = state.damage.hull;
   document.querySelectorAll('#hull-seg button').forEach(b => {
@@ -455,7 +395,7 @@ document.querySelectorAll('#hull-seg button').forEach(b => b.addEventListener('c
   state.damage.hull = b.dataset.h; renderHull(); saveDamage();
 }));
 
-// Altitude
+// ---- altitude ----
 const altEl = document.getElementById('sl-alt');
 altEl.addEventListener('input', () => {
   state.altitude = +altEl.value;
@@ -464,14 +404,14 @@ altEl.addEventListener('input', () => {
 });
 function renderAlt() { altEl.value = state.altitude; document.getElementById('alt-v').textContent = state.altitude + '%'; }
 
-// Timer
+// ---- DM-controlled impact timer (set / start / stop / reset) ----
 const ttiM = document.getElementById('in-tti-m'), ttiS = document.getElementById('in-tti-s');
 const fmtT = sec => { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
-function timerLeft() {  
+function timerLeft() {   // live seconds remaining
   const t = state.timer;
   return Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : t.remaining);
 }
-function setDurationFromInputs() {   
+function setDurationFromInputs() {   // editing the fields sets + resets the timer to that length
   const dur = Math.max(1, (parseInt(ttiM.value) || 0) * 60 + (parseInt(ttiS.value) || 0));
   state.timer = { duration: dur, remaining: dur, running: false, endsAt: null };
   saveTimer(); renderTimer();
@@ -480,14 +420,14 @@ function setDurationFromInputs() {
 document.getElementById('tti-start').addEventListener('click', () => {
   const t = state.timer;
   if (t.running) return;
-  if (t.remaining <= 0) t.remaining = t.duration;     
+  if (t.remaining <= 0) t.remaining = t.duration;     // a finished timer starts over
   t.running = true; t.endsAt = Date.now() + t.remaining * 1000;
   saveTimer(); renderTimer();
 });
 document.getElementById('tti-stop').addEventListener('click', () => {
   const t = state.timer;
   if (!t.running) return;
-  t.remaining = timerLeft(); t.running = false; t.endsAt = null;   
+  t.remaining = timerLeft(); t.running = false; t.endsAt = null;   // freeze (pause)
   saveTimer(); renderTimer();
 });
 document.getElementById('tti-reset').addEventListener('click', () => {
@@ -502,17 +442,19 @@ function renderTimer() {
   document.getElementById('tti-v').textContent = fmtT(timerLeft());
   document.getElementById('tti-start').classList.toggle('on', t.running);
 }
-setInterval(() => {   
+setInterval(() => {   // live badge while the countdown runs
   if (!state.timer.running) return;
   document.getElementById('tti-v').textContent = fmtT(timerLeft());
   if (timerLeft() <= 0) { document.getElementById('tti-start').classList.remove('on'); }
 }, 500);
 
-// Damage Areas
+// ---- damageable areas (cycle ONLINE / DAMAGED / OFFLINE) ----
+// weapons + drones aren't damageable — they sit in the same list but just toggle
+// power on/off (ONLINE/OFFLINE), so clicking them cuts/restores their power.
 const POWER_SUBS = [['weapons', 'WEAPONS'], ['drones', 'DRONES']];
 const areaGrid = document.getElementById('area-grid');
 const catGroups = {};
-function catGroup(cat) {   
+function catGroup(cat) {   // one column per category (label + its buttons), groups flow to fill width
   if (!catGroups[cat]) {
     const g = document.createElement('div'); g.className = 'area-group';
     const h = document.createElement('div'); h.className = 'cat'; h.textContent = cat; g.appendChild(h);
@@ -523,20 +465,14 @@ function catGroup(cat) {
 AREAS.forEach(([k, label, cat]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.a = k;
   b.innerHTML = `${label}<span class="st"></span>`;
-  b.addEventListener('click', () => { 
-    state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; 
-    renderAreas(); 
-    saveDamage(); 
-    checkAuxBudget(); 
-    renderRoute(); 
-  });
+  b.addEventListener('click', () => { state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; renderAreas(); saveDamage(); });
   catGroup(cat).appendChild(b);
 });
 POWER_SUBS.forEach(([k, label]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.p = k;
   b.innerHTML = `${label}<span class="st"></span>`;
   b.addEventListener('click', () => {
-    state.power[k] = state.power[k] > 0 ? 0 : 25;   
+    state.power[k] = state.power[k] > 0 ? 0 : 25;   // not damageable — just cut/restore power
     clampBudget(k); renderPower(); renderPowerSubs(); savePower();
   });
   catGroup('SUBSYSTEMS').appendChild(b);
@@ -556,7 +492,7 @@ function renderPowerSubs() {
   });
 }
 
-// Lift Fans
+// ---- mag-lev cohesion: lift-fan sliders (snap 100 / 50 / 0 → area state 0 / 1 / 2) ----
 const fanGrid = document.getElementById('fan-rows');
 FANS.forEach(([k, label]) => {
   const div = document.createElement('div'); div.className = 'row';
@@ -564,11 +500,8 @@ FANS.forEach(([k, label]) => {
                 + `<input type="range" min="0" max="100" step="50" value="100" id="fs-${k}">`;
   fanGrid.appendChild(div);
   div.querySelector('input').addEventListener('input', e => {
-    state.damage.areas[k] = (100 - +e.target.value) / 50;   
-    renderFans(); 
-    saveDamage(); 
-    checkAuxBudget(); 
-    renderRoute();
+    state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
+    renderFans(); saveDamage();
   });
 });
 function renderFans() {
@@ -580,7 +513,7 @@ function renderFans() {
   });
 }
 
-// Shield Panels
+// ---- shield panels (cycle N0/N1/N2) ----
 const SP_CLASS = ['lit0', 'lit1', 'lit2'];
 function renderShields() {
   document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => {
@@ -591,77 +524,28 @@ function renderShields() {
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
-  renderShields(); 
-  saveDamage(); 
-  checkAuxBudget(); 
-  renderRoute();
+  renderShields(); saveDamage();
 }));
 
-// ---- SELF DESTRUCT EASTER EGG & LOCKOUT ----
-let sdTimer = null;
-
-function checkEasterEgg() {
-  if (state.lockout) return;
-  
-  // The secret combo: SHIELDS 25, ENGINES 5 ("Low"), DRONES 0
-  if (state.power.shields === 25 && state.power.eng === 5 && state.power.drones === 0) {
-    const btn = document.getElementById('sd-btn');
-    if (btn.style.display !== 'block') {
-      btn.style.display = 'block';
-      clearTimeout(sdTimer);
-      // Disappears after exactly 4 seconds
-      sdTimer = setTimeout(() => { btn.style.display = 'none'; }, 4000); 
-    }
-  } else {
-    document.getElementById('sd-btn').style.display = 'none';
-  }
-}
-
-// Execute Scuttle
-document.getElementById('sd-btn').addEventListener('click', () => {
-  document.getElementById('sd-btn').style.display = 'none';
-  state.lockout = true;
-  state.damage.hull = 'OFFLINE';
-  state.power.battery = 0;
-  state.power.eng = 0; state.power.drones = 0; state.power.weapons = 0; state.power.shields = 0;
-  
-  for (let k in state.damage.areas) state.damage.areas[k] = 2; // Everything offline
-  for (let i=0; i<4; i++) state.damage.shieldPanels[i] = 2;    // All shields popped
-  
-  savePower(); saveDamage(); saveLockout();
-  checkAuxBudget(); renderAll();
-});
-
-// Check for Hard Reboot (DM pushing all power back to 100/25/25/25/25)
-function checkReboot() {
-  if (state.lockout && state.power.battery === 100 && state.power.eng === 25 && state.power.drones === 25 && state.power.weapons === 25 && state.power.shields === 25) {
-    state.lockout = false;
-    state.damage.hull = 'NOMINAL';
-    for (let k in state.damage.areas) state.damage.areas[k] = 0;
-    for (let i=0; i<4; i++) state.damage.shieldPanels[i] = 0;
-    saveDamage(); saveLockout(); checkAuxBudget(); renderAll();
-  }
-}
-
-function renderAll() { 
-  document.body.classList.toggle('is-offline', state.lockout);
-  renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); 
-}
+function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
 renderAll();
 
-// Player View
+// ---- player view (?display): ship views + damage dots + the power-routing control ----
 const Q = new URLSearchParams(location.search);
-const PLAYER = Q.has('player-view') || Q.has('display');   
+const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
+// players see the operator-triggered damage dots but no state readouts (bare)
+// the DM's embedded display carries the system log (?log=1); players never do
 document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
+  // only the power-routing control (slider + system radios) is operable
   document.querySelectorAll('input, button').forEach(el => {
     if (el.id !== 'sl-route' && el.getAttribute('name') !== 'route') { el.disabled = true; el.tabIndex = -1; }
   });
 }
 
-// Local Sync
+// keep in sync if another local tab changes things
 addEventListener('storage', () => {
   state.power = load('shipPowerLevels', state.power);
   state.damage = load('shipDamageState', state.damage);
@@ -669,12 +553,10 @@ addEventListener('storage', () => {
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
   state.timer = load('shipTimer', state.timer);
   state.aux = Object.assign(defaultAux(), load('shipAux', state.aux));
-  state.lockout = load('shipLockout', false);
-  checkAuxBudget();
   renderAll();
 });
 
-// Firebase Sync
+// ---- Firebase (dynamic import; operator both writes and reads) ----
 const firebaseConfig = {
   apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
   authDomain: "shadowrun-ship-db.firebaseapp.com",
@@ -692,13 +574,12 @@ const firebaseConfig = {
     fb = { set, ref, db };
     document.getElementById('netdot').style.color = '#4ade80';
     document.getElementById('netlbl').textContent = 'CLOUD';
-    
+    // adopt cloud state on connect (so a fresh operator matches what's live)
     onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderPowerSubs(); } });
-    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); checkAuxBudget(); renderRoute(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
     onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = Object.assign(defaultAux(), d); renderRoute(); } });
-    onValue(ref(db, 'shipLockout'),     s => { const d = s.val(); if (d !== null) { state.lockout = d; renderAll(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
