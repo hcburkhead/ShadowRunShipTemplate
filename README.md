@@ -15,16 +15,33 @@ no build step; just open the files (or host on GitHub Pages).
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
 cross-device play.
 
+## Power model (three tiers, per system)
+Each system (engines / drones / weapons / shields) is fed in three tiers:
+- **Core power — 100%.** The main supply, **derived from ship integrity** (hull
+  sets the ceiling, the reactor weighs heavily, the rest of the ship trims the
+  top; a dead hull or reactor zeroes it). At 100% every system is fully fed and
+  **players do nothing**. As the ship takes damage, core power drops — restore it
+  by repairing the ship (DM challenges).
+- **Auxiliary — up to 50%.** A player-routed reserve. When core power is down,
+  players route aux into a system to bring it back to **sub-optimal** levels.
+  *Not* affected by ship integrity; the DM can damage the aux bank separately.
+- **Battery backup — up to 25%.** A fallback reserve that **unlocks once the aux
+  bank is damaged**. *Not* affected by ship integrity.
+
+It's a tracker — aux/battery routing is the players' control; the DM applies the
+in-game effect by hand.
+
 ## What the DM controls (operator.html)
-- **Power allocation** — engines / drones / weapons / shields, sharing a 100%
-  budget (auto-clamped).
-- **Main power (up to 175%)** — DM-set core reserve (100%) plus a shared **50%
-  aux** + **25% battery** reserve. Players **route** the aux/battery into the
-  four systems (a central slider + radio picker); aux spends first, then the
-  battery reserve. It's a tracker — the DM applies the in-game effect by hand.
+- **Core power** — read-only; it tracks ship integrity automatically.
+- **System power** — a per-system core throttle (0–100%), capped by the current
+  core level. Throttle or cut any system.
+- **Aux / battery routing** — players route per-system aux (50%) and battery
+  (25%); the DM can **damage the aux/battery banks** (independent of ship
+  integrity), which lowers their ceiling and unlocks the battery fallback.
 - **Damage control** — set each area (bridge, reactor, AI core, drone bay,
   weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus hull
-  integrity and the four directional shield panels.
+  integrity and the four directional shield panels. Hull + reactor + area damage
+  feed the core-power calculation.
 - **Altitude** — slider that raises/lowers the ship projection.
 - **Impact timer** — a set / start / stop / reset countdown (defaults to 10:00)
   shown top-right on the display; at 0:00 the ship "impacts" (resettable).
@@ -39,4 +56,5 @@ cross-device play.
 ## Views
 - `operator.html` — DM console.
 - `operator.html?player-view` — player view: ship views, damage dots, impact
-  timer, and the power-routing control only (no state readouts).
+  timer, and the per-system aux / battery routing only (no state readouts; the
+  battery sliders stay locked until the aux bank is damaged).

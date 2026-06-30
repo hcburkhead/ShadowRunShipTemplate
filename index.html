@@ -889,12 +889,12 @@ requestAnimationFrame(tick);
 // ===================================================================
 //  LIVE READOUTS — driven by the dashboard's localStorage state
 // ===================================================================
-function band(v) {                       // 0-25 power → status + colour
-  if (v === 0) return { label: 'OFFLINE',  c: '#ef4444' };
-  if (v <= 4)  return { label: 'CRITICAL', c: '#ef4444' };
-  if (v <= 10) return { label: 'LOW',      c: '#f97316' };
-  if (v <= 15) return { label: 'REDUCED',  c: '#f97316' };
-  if (v <= 20) return { label: 'PARTIAL',  c: '#facc15' };
+function band(v) {                       // effective system power 0-100% → status + colour
+  if (v <= 0)  return { label: 'OFFLINE',  c: '#ef4444' };
+  if (v < 25)  return { label: 'CRITICAL', c: '#ef4444' };
+  if (v < 50)  return { label: 'LOW',      c: '#f97316' };
+  if (v < 75)  return { label: 'SUB-OPT',  c: '#facc15' };
+  if (v < 100) return { label: 'PARTIAL',  c: '#facc15' };
   return         { label: 'NOMINAL',  c: '#4ade80' };
 }
 const HULL = {
@@ -904,6 +904,42 @@ const HULL = {
   OFFLINE:  { c: '#ef4444', sub: 'integrity field collapsed' },
 };
 function intColor(p) { return p > 66 ? '#4ade80' : p > 33 ? '#facc15' : '#ef4444'; }
+
+// CORE POWER derived from ship integrity (mirrors the operator console): the hull
+// sets the ceiling, the reactor weighs heavily, the rest of the ship trims the top.
+// A dead hull or reactor zeroes core power. AUX/BATTERY reserves are NOT included.
+const HULL_CORE = { NOMINAL: 100, DAMAGED: 60, CRITICAL: 30, OFFLINE: 0 };
+function coreFromIntegrity(dmg) {
+  const a = (dmg && dmg.areas) || {};
+  const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);
+  const reactor = ah(a.reactor);
+  const hull = (dmg && dmg.hull) || 'NOMINAL';
+  if (hull === 'OFFLINE' || reactor === 0) return 0;
+  const base = HULL_CORE[hull] != null ? HULL_CORE[hull] : 100;
+  const others = ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft','fanFP','fanFS','fanAP','fanAS'];
+  let sum = 0; others.forEach(k => sum += ah(a[k]));
+  const cond = sum / others.length;
+  return Math.max(0, Math.min(100, Math.round(base * (0.3 + 0.5 * reactor + 0.2 * cond))));
+}
+const AUX_MAX = 50, BATT_MAX = 25;
+// normalize the player reserve store into per-system {aux,batt} + bank damage
+function readAux() {
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem('shipAux') || '{}') || {}; } catch (e) {}
+  const auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
+  const battDmg = Math.max(0, Math.min(BATT_MAX, +raw.battDmg || 0));
+  const auxCap = Math.max(0, AUX_MAX - auxDmg), battCap = Math.max(0, BATT_MAX - battDmg);
+  const battLive = auxDmg > 0;
+  const sys = {};
+  ['eng', 'drones', 'weapons', 'shields'].forEach(k => {
+    const r = raw[k];
+    let av = 0, bv = 0;
+    if (typeof r === 'number') av = r;                       // legacy shared-pool number
+    else if (r && typeof r === 'object') { av = +r.aux || 0; bv = +r.batt || 0; }
+    sys[k] = { aux: Math.max(0, Math.min(auxCap, av)), batt: battLive ? Math.max(0, Math.min(battCap, bv)) : 0 };
+  });
+  return { sys, auxDmg, battDmg };
+}
 
 // build the 6 engine integrity bars once
 const ENG_IDS = ['E1','E2','E3','E4','B1','B2'];
@@ -927,13 +963,28 @@ function readState() {
                      : (Array.isArray(dmg.engines)  ? dmg.engines  : [100,100,100,100]);
   const boosters = a ? [A2V(a.boostP), A2V(a.boostS)]
                      : (Array.isArray(dmg.boosters) ? dmg.boosters : [100,100]);
+  // core power tracks ship integrity; each system's per-system throttle (0-100,
+  // legacy 0-25 rescaled) caps how much core it draws, then players' AUX/BATTERY
+  // reserves stack on top to restore a starved system to sub-optimal levels.
+  const core = coreFromIntegrity(dmg);
+  const thr = k => { let v = num(pw[k], 100); if (v > 0 && v <= 25) v = Math.round(v / 25 * 100); return Math.max(0, Math.min(100, v)); };
+  const aux = readAux();
+  const SYS = ['eng', 'drones', 'weapons', 'shields'];
+  const throttle = {}, effective = {};
+  SYS.forEach(k => {
+    throttle[k] = thr(k);
+    const r = aux.sys[k];
+    effective[k] = Math.min(125, Math.min(throttle[k], core) + r.aux + r.batt);
+  });
   return {
-    eng: num(pw.eng, 25), drones: num(pw.drones, 25),
-    weapons: num(pw.weapons, 25), shields: num(pw.shields, 25),
+    eng: effective.eng, drones: effective.drones,
+    weapons: effective.weapons, shields: effective.shields,
     hull: dmg.hull || 'NOMINAL',
     engines, boosters,
     aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
-    battery: Math.max(0, Math.min(100, num(pw.battery, 100))),   // DM-controlled main reserve
+    core, throttle, aux: aux.sys,
+    routedAux: SYS.reduce((t, k) => t + aux.sys[k].aux, 0),
+    routedBatt: SYS.reduce((t, k) => t + aux.sys[k].batt, 0),
     areas: a || {},
   };
 }
@@ -947,14 +998,13 @@ function setDot(id, c, flash) {
 // red when offline.
 const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
 const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
-function applyShield() {
-  let pw = {}, dmg = {};
-  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
+function applyShield(spIn) {
+  let dmg = {};
   try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
-  const sp = Number.isFinite(+pw.shields) ? +pw.shields : 25;
+  const sp = Number.isFinite(+spIn) ? +spIn : readState().shields;   // effective shield power 0-100
   const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
-  const offline = sp === 0;
-  const op = offline ? 0.5 : sp <= 4 ? 0.45 : sp <= 10 ? 0.6 : sp <= 20 ? 0.78 : 0.95;
+  const offline = sp <= 0;
+  const op = offline ? 0.5 : sp < 25 ? 0.45 : sp < 50 ? 0.6 : sp < 80 ? 0.78 : 0.95;
   const st = i => Math.max(0, Math.min(2, panels[i] | 0));
 
   shields.forEach(({ svg, arcs }) => {
@@ -1000,12 +1050,10 @@ const ROUTE_LABELS = { eng: 'ENGINES', drones: 'DRONES', weapons: 'WEAPONS', shi
 let logPrev = null;
 function logDiff(s) {
   if (!LOGVIEW) return;
-  let aux = {};
-  try { aux = JSON.parse(localStorage.getItem('shipAux') || '{}') || {}; } catch (e) {}
   const snap = { eng: s.eng, drones: s.drones, weapons: s.weapons, shields: s.shields,
-                 hull: s.hull, battery: s.battery, tRun: !!timerCfg.running, areas: {}, aux: {} };
+                 hull: s.hull, core: s.core, tRun: !!timerCfg.running, areas: {}, aux: {} };
   for (const k in AREA_LABELS) snap.areas[k] = Math.max(0, Math.min(2, (s.areas[k] || 0) | 0));
-  for (const k in ROUTE_LABELS) snap.aux[k] = Math.max(0, (aux[k] || 0) | 0);
+  for (const k in ROUTE_LABELS) { const r = (s.aux && s.aux[k]) || { aux: 0, batt: 0 }; snap.aux[k] = Math.max(0, (r.aux | 0) + (r.batt | 0)); }
   if (!logPrev) { logPrev = snap; logEvent('▸ uplink initialized — monitoring ship systems.', 'gain'); return; }
 
   for (const k of ['eng', 'drones', 'weapons', 'shields']) {     // power: log on status-band change
@@ -1029,14 +1077,14 @@ function logDiff(s) {
     logEvent((worse ? '⚠ ' : '● ') + 'HULL ' + snap.hull,
              snap.hull === 'NOMINAL' ? 'gain' : snap.hull === 'DAMAGED' ? 'warn' : 'drop');
   }
-  if (Math.abs(snap.battery - logPrev.battery) >= 8) {           // DM main reserve (skip tiny nudges)
-    const down = snap.battery < logPrev.battery;
-    logEvent((down ? '↓ ' : '↑ ') + 'MAIN RESERVE — ' + snap.battery + '%', down ? 'warn' : 'gain');
+  if (Math.abs(snap.core - logPrev.core) >= 8) {                 // core power tracking ship integrity
+    const down = snap.core < logPrev.core;
+    logEvent((down ? '↓ ' : '↑ ') + 'CORE POWER — ' + snap.core + '%', snap.core <= 0 ? 'drop' : down ? 'warn' : 'gain');
   }
   for (const k in ROUTE_LABELS) {                               // players routing aux/battery power to a system
     if (snap.aux[k] !== logPrev.aux[k]) {
       const up = snap.aux[k] > logPrev.aux[k];
-      logEvent((up ? '⚡ ' : '○ ') + ROUTE_LABELS[k] + ' power routed — ' + snap.aux[k] + '%', up ? 'gain' : 'warn');
+      logEvent((up ? '⚡ ' : '○ ') + ROUTE_LABELS[k] + ' reserve routed — ' + snap.aux[k] + '%', up ? 'gain' : 'warn');
     }
   }
   if (snap.tRun !== logPrev.tRun) {                             // DM started / stopped the impact timer
@@ -1066,23 +1114,22 @@ function render() {
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 
-  // MAIN POWER (up to 175%) = CORE 100% (DM reserve) + AUX 50% + BATTERY 25%.
-  // Aux/battery are the players' reserves; they deplete as power is routed to systems
-  // (aux spends first, then the battery reserve).
-  let aux = {};
-  try { aux = JSON.parse(localStorage.getItem('shipAux') || '{}') || {}; } catch (e) {}
-  const AUX_MAX = 50, BATT_MAX = 25;
-  const routed = ['eng', 'drones', 'weapons', 'shields'].reduce((t, k) => t + Math.max(0, +aux[k] || 0), 0);
-  const core = s.battery;                                       // 0..100, set by the operator
-  const auxRsv  = Math.max(0, AUX_MAX - routed);                // aux remaining
-  const battRsv = Math.max(0, BATT_MAX - Math.max(0, routed - AUX_MAX));   // battery used only after aux
-  const mainPower = Math.round(core + auxRsv + battRsv);        // power still in reserve (up to 175%)
-  document.getElementById('pseg-core').style.width = (core / 175 * 100) + '%';
-  document.getElementById('pseg-aux').style.width  = (auxRsv / 175 * 100) + '%';
-  document.getElementById('pseg-batt').style.width = (battRsv / 175 * 100) + '%';
+  // MAIN POWER — average system power across the 4 systems, split into its sources:
+  //   CORE  : main power delivered (each system's throttle, capped by ship-integrity core)
+  //   AUX   : players' 50% reserve routed to starved systems (sub-optimal restore)
+  //   BATT  : players' 25% fallback (only once the aux bank is damaged)
+  // Core tracks ship integrity; aux/battery are independent player reserves.
+  const SYS = ['eng', 'drones', 'weapons', 'shields'], NSYS = SYS.length;
+  const coreDep = SYS.reduce((t, k) => t + Math.min(s.throttle[k], s.core), 0);   // core actually delivered
+  const auxDep = s.routedAux, battDep = s.routedBatt;
+  const denom = NSYS * 100;                                     // 4 systems × 100% = nominal
+  const mainPower = Math.round((coreDep + auxDep + battDep) / NSYS);   // average system power %
+  document.getElementById('pseg-core').style.width = (coreDep / denom * 100) + '%';
+  document.getElementById('pseg-aux').style.width  = (auxDep / denom * 100) + '%';
+  document.getElementById('pseg-batt').style.width = (battDep / denom * 100) + '%';
   const pv = document.getElementById('pwr-val');
   pv.textContent = mainPower + '%';
-  pv.style.color = battRsv <= 0 ? '#ef4444' : auxRsv <= 0 ? '#facc15' : '';
+  pv.style.color = s.core <= 0 ? '#ef4444' : s.core < 50 ? '#facc15' : '';
 
   // engine structural integrity (4 props + 2 boosters)
   const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
@@ -1132,7 +1179,7 @@ function render() {
   applyAltitude();
   updateFans(s);                       // keep engineLift fed even mid-crash (flight model reads it)
   if (crashed) return;                 // crash latches every view red — don't repaint over it
-  applyShield();
+  applyShield(s.shields);              // effective shield power (core + reserves)
   updateMarkers(s);
   updateDrones(s);
 }
@@ -1163,8 +1210,9 @@ const firebaseConfig = {
       try { localStorage.setItem(path, JSON.stringify(d)); } catch (e) {}
       render();
     });
-    mirror('shipPowerLevels');     // power allocation, written by the operator
-    mirror('shipDamageState');     // hull / engine / shield / subsystem damage
+    mirror('shipPowerLevels');     // per-system core throttle, written by the operator
+    mirror('shipDamageState');     // hull / engine / shield / subsystem damage (drives core power)
+    mirror('shipAux');             // players' per-system aux + battery reserve routing
     mirror('shipAltitude');        // altitude → raises/lowers the projection
   } catch (e) {
     console.warn('[console] Firebase unavailable — using local state.', e);
