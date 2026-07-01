@@ -241,8 +241,8 @@
     </div>
 
     <div class="card">
-      <span class="h">MAIN POWER</span>
-      <span class="pwr-val" id="pwr-val">125%</span>
+      <span class="h">MAX POWER · redline 175%</span>
+      <span class="pwr-val" id="pwr-val">100%</span>
       <div class="pwr-bar">
         <div class="s" id="pseg-core" style="background:var(--g1)"></div>
         <div class="s" id="pseg-aux"  style="background:var(--g3)"></div>
@@ -498,7 +498,7 @@ let perspLift = null;    // group the perspective ship rides in (altitude + tilt
 // operator; the display counts it down (top-right) and "impacts" at 0:00. The
 // DM keeps full altitude control via the slider, and lift asymmetry still
 // banks/pitches the hull (kerning) independently of the timer. ----
-let cmdAlt = 100, curAlt = 100, crashed = false, flightInit = false;
+let cmdAlt = 100, curAlt = 100, crashed = false, crashCause = '', overloaded = false, flightInit = false;
 const engineLift = [1, 1, 1, 1];                    // per-fan lift = engine integrity / 100
 const fanBeamSign = [0, 0, 0, 0], fanLenSign = [0, 0, 0, 0];
 let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, curPitch = 0;
@@ -519,10 +519,12 @@ function applyAltitude() {                          // read the operator's comma
   cmdAlt = Math.max(0, Math.min(100, alt));
   if (!flightInit) { curAlt = cmdAlt; flightInit = true; }
 }
-function enterCrash() {
-  crashed = true;
+function enterCrash(cause) {
+  crashed = true; crashCause = cause || 'impact';
   if (persp && persp.controls) persp.controls.autoRotate = false;
   document.body.classList.add('crashed');
+  const banner = document.querySelector('.crash-banner');
+  if (banner) banner.textContent = crashCause === 'overload' ? '⚠ CORE OVERLOAD' : '⚠ IMPACT';
   // flood every view red — but stash each material's real colour first so the
   // operator can lift the ship back out of the crash by restoring its fans
   for (const v of views) v.scene.traverse(o => {
@@ -531,10 +533,12 @@ function enterCrash() {
       o.material.color.setHex(0xef4444);
     }
   });
-  logEvent('⚠ IMPACT — countdown reached zero', 'drop');
+  logEvent(crashCause === 'overload'
+    ? '☠ CORE OVERLOAD — reactor pushed past 175%, self-destruct'
+    : '⚠ IMPACT — countdown reached zero', 'drop');
 }
 function exitCrash() {
-  crashed = false;
+  crashed = false; crashCause = '';
   if (persp && persp.controls) persp.controls.autoRotate = true;
   document.body.classList.remove('crashed');
   for (const v of views) v.scene.traverse(o => {
@@ -557,8 +561,13 @@ function updateFlight(dt) {
   document.body.classList.toggle('tti-on', started && !crashed);
   const clk = document.getElementById('tti-clock');
   if (clk) clk.textContent = fmtClock(tl);
-  if (t.running && tl <= 0 && !crashed) enterCrash();   // ran out → impact
-  else if (!started && crashed) exitCrash();            // DM reset → clear impact
+  // self-destruct fires on EITHER the impact countdown reaching zero OR a reactor
+  // overload (ship power past the 175% redline via overdrive). It clears when both
+  // conditions are gone (DM resets the timer / players drop overdrive below redline).
+  const impactActive = started && tl <= 0;
+  const shouldCrash = impactActive || overloaded;
+  if (shouldCrash && !crashed) enterCrash(!impactActive && overloaded ? 'overload' : 'impact');
+  else if (!shouldCrash && crashed) exitCrash();
 
   // altitude: simply ride the operator's commanded altitude — no automatic drop
   curAlt += (cmdAlt - curAlt) * Math.min(1, dt * 1.5);
@@ -574,7 +583,7 @@ function updateFlight(dt) {
   perspLift.rotation[pitchAxis] = curPitch * pitchDir;
 
   const tag = document.getElementById('alt-tag');
-  if (tag) { tag.textContent = crashed ? 'IMPACT' : 'ALT ' + Math.round(curAlt) + '%';
+  if (tag) { tag.textContent = crashed ? (crashCause === 'overload' ? 'OVERLOAD' : 'IMPACT') : 'ALT ' + Math.round(curAlt) + '%';
     tag.style.color = crashed ? '#ef4444' : ''; }
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
@@ -925,17 +934,17 @@ function shieldPower(core, throttle, auxV, battV, panels) {
   const base = Math.max(0, hardCap - SHIELD_PANEL_COST * damaged);
   return Math.round(Math.max(0, Math.min(hardCap, base + (auxV | 0) + (battV | 0))));
 }
-const AUX_MAX = 50, BATT_MAX = 25;
+const AUX_MAX = 50, BATT_MAX = 25, MAXPWR_REDLINE = 175;
 // SHIP INTEGRITY is derived: the three power systems (reactor, aux, battery) work
 // together to keep the ship nominal, and each damaged system drags the overall
-// state down as things break. Aux/battery bank damage counts toward the state.
+// state down as things break. Aux bank damage counts; the battery can't be damaged.
 function shipIntegrity(dmg, auxInfo) {
   const a = (dmg && dmg.areas) || {};
-  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0, battDmg = auxInfo ? (auxInfo.battDmg | 0) : 0;
+  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0;
   const W = [
     [ahHealth(a.reactor), 3],                                 // core reactor
     [(AUX_MAX - auxDmg) / AUX_MAX, 2],                         // auxiliary system
-    [(BATT_MAX - battDmg) / BATT_MAX, 1],                      // battery system
+    [1, 1],                                                    // battery system (undamageable)
   ];
   ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ahHealth(a[k]), 1]));
   ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ahHealth(a[k]), 0.5]));
@@ -945,23 +954,31 @@ function shipIntegrity(dmg, auxInfo) {
   const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
   return { pct: Math.round(pct), level };
 }
-// normalize the player reserve store into per-system {aux,batt} + bank damage
+// normalize the player reserve store into per-system {aux,batt} + aux damage + overdrive.
+// battery is always available (can't be damaged); aux locks out only when fully damaged.
 function readAux() {
   let raw = {};
   try { raw = JSON.parse(localStorage.getItem('shipAux') || '{}') || {}; } catch (e) {}
   const auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
-  const battDmg = Math.max(0, Math.min(BATT_MAX, +raw.battDmg || 0));
-  const auxCap = Math.max(0, AUX_MAX - auxDmg), battCap = Math.max(0, BATT_MAX - battDmg);
-  const battLive = auxDmg > 0;
+  const auxCap = Math.max(0, AUX_MAX - auxDmg), battCap = BATT_MAX;
   const sys = {};
   ['eng', 'drones', 'weapons', 'shields'].forEach(k => {
     const r = raw[k];
     let av = 0, bv = 0;
     if (typeof r === 'number') av = r;                       // legacy shared-pool number
     else if (r && typeof r === 'object') { av = +r.aux || 0; bv = +r.batt || 0; }
-    sys[k] = { aux: Math.max(0, Math.min(auxCap, av)), batt: battLive ? Math.max(0, Math.min(battCap, bv)) : 0 };
+    sys[k] = { aux: Math.max(0, Math.min(auxCap, av)), batt: Math.max(0, Math.min(battCap, bv)) };
   });
-  return { sys, auxDmg, battDmg };
+  return { sys, auxDmg, overdrive: !!raw.overdrive };
+}
+// ship-wide MAX POWER = core + aux output + battery output; overdrive forces both
+// banks to 100%. Above the 175% redline the reactor overloads → self-destruct.
+function shipMaxPower(core, auxInfo) {
+  if (auxInfo && auxInfo.overdrive) return { total: core + 200, core, aux: 100, batt: 100, over: core + 200 > MAXPWR_REDLINE };
+  const SYS = ['eng','drones','weapons','shields'];
+  const avg = key => Math.round(SYS.reduce((t, k) => t + ((auxInfo && auxInfo.sys[k] && auxInfo.sys[k][key]) | 0), 0) / SYS.length);
+  const aux = avg('aux'), batt = avg('batt'), total = core + aux + batt;
+  return { total, core, aux, batt, over: total > MAXPWR_REDLINE };
 }
 
 // build the 6 engine integrity bars once
@@ -1010,7 +1027,8 @@ function readState() {
     hull: si.level, hullPct: si.pct,
     engines, boosters,
     aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
-    core, throttle, aux: aux.sys,
+    core, throttle, aux: aux.sys, overdrive: aux.overdrive,
+    maxPower: shipMaxPower(core, aux),
     routedAux: SYS.reduce((t, k) => t + aux.sys[k].aux, 0),
     routedBatt: SYS.reduce((t, k) => t + aux.sys[k].batt, 0),
     areas: a || {},
@@ -1142,22 +1160,17 @@ function render() {
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 
-  // MAIN POWER — average system power across the 4 systems, split into its sources:
-  //   CORE  : main power delivered (each system's throttle, capped by ship-integrity core)
-  //   AUX   : players' 50% reserve routed to starved systems (sub-optimal restore)
-  //   BATT  : players' 25% fallback (only once the aux bank is damaged)
-  // Core tracks ship integrity; aux/battery are independent player reserves.
-  const SYS = ['eng', 'drones', 'weapons', 'shields'], NSYS = SYS.length;
-  const coreDep = SYS.reduce((t, k) => t + Math.min(s.throttle[k], s.core), 0);   // core actually delivered
-  const auxDep = s.routedAux, battDep = s.routedBatt;
-  const denom = NSYS * 100;                                     // 4 systems × 100% = nominal
-  const mainPower = Math.round((coreDep + auxDep + battDep) / NSYS);   // average system power %
-  document.getElementById('pseg-core').style.width = (coreDep / denom * 100) + '%';
-  document.getElementById('pseg-aux').style.width  = (auxDep / denom * 100) + '%';
-  document.getElementById('pseg-batt').style.width = (battDep / denom * 100) + '%';
+  // MAIN POWER — ship-wide MAX POWER meter = CORE + AUX + BATTERY output. Safe max
+  // is 175% (CORE 100 + AUX 50 + BATT 25); OVERDRIVE forces both banks to 100% and
+  // drives it past the redline → reactor overload → self-destruct.
+  const mp = s.maxPower, denom = 300;                           // meter tops out at core100+aux100+batt100
+  overloaded = mp.over;                                         // updateFlight reads this to fire self-destruct
+  document.getElementById('pseg-core').style.width = (mp.core / denom * 100) + '%';
+  document.getElementById('pseg-aux').style.width  = (mp.aux / denom * 100) + '%';
+  document.getElementById('pseg-batt').style.width = (mp.batt / denom * 100) + '%';
   const pv = document.getElementById('pwr-val');
-  pv.textContent = mainPower + '%';
-  pv.style.color = s.core <= 0 ? '#ef4444' : s.core < 50 ? '#facc15' : '';
+  pv.textContent = mp.total + '%' + (mp.over ? ' ⚠' : '');
+  pv.style.color = mp.over ? '#ef4444' : mp.total >= MAXPWR_REDLINE ? '#f6a23c' : '';
 
   // engine structural integrity (4 props + 2 boosters)
   const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
