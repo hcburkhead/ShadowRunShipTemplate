@@ -913,6 +913,18 @@ function coreFromReactor(dmg) {
   const r = ((dmg && dmg.areas) || {}).reactor | 0;
   return r >= 2 ? 0 : r >= 1 ? 50 : 100;
 }
+// SHIELD POWER (mirrors the operator): main power sets the available ceiling (full
+// = 100%, damaged = 50%); each DAMAGED/OFFLINE panel costs 13%. Offline panels are
+// a hard loss until DM repair; damaged panels are compensated by routed reserves.
+const SHIELD_PANEL_COST = 13;
+function shieldPower(core, throttle, auxV, battV, panels) {
+  const avail = Math.min(Math.max(0, Math.min(100, throttle | 0)), core);
+  let offline = 0, damaged = 0;
+  (Array.isArray(panels) ? panels : [0,0,0,0]).forEach(v => { v = Math.max(0, Math.min(2, v | 0)); if (v === 2) offline++; else if (v === 1) damaged++; });
+  const hardCap = Math.max(0, avail - SHIELD_PANEL_COST * offline);
+  const base = Math.max(0, hardCap - SHIELD_PANEL_COST * damaged);
+  return Math.round(Math.max(0, Math.min(hardCap, base + (auxV | 0) + (battV | 0))));
+}
 const AUX_MAX = 50, BATT_MAX = 25;
 // SHIP INTEGRITY is derived: the three power systems (reactor, aux, battery) work
 // together to keep the ship nominal, and each damaged system drags the overall
@@ -987,6 +999,10 @@ function readState() {
     const r = aux.sys[k];
     effective[k] = Math.min(125, Math.min(throttle[k], core) + r.aux + r.batt);
   });
+  // shields are panel-limited: main power sets the ceiling, damaged/offline panels
+  // cost 13% each, and routed reserves compensate damaged panels up to the ceiling.
+  const rs = aux.sys.shields;
+  effective.shields = shieldPower(core, throttle.shields, rs.aux, rs.batt, dmg.shieldPanels);
   const si = shipIntegrity(dmg, aux);                          // derived overall ship state
   return {
     eng: effective.eng, drones: effective.drones,

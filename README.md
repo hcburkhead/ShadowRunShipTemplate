@@ -36,6 +36,13 @@ a nominal state; each feeds every system (engines / drones / weapons / shields):
 plus the rest of the ship (areas, lift fans, shield panels). As systems break, the
 overall state degrades **NOMINAL → DAMAGED → CRITICAL → OFFLINE** on its own.
 
+**Shields** are a special case. Available shield power follows core (main) power —
+full main = 100%, damaged main = 50%. Each of the four shield panels the DM marks
+**DAMAGED/OFFLINE costs 13%**. Players route **aux/battery to the shields system** to
+recover **damaged (yellow)** panels back up to the available ceiling (e.g. main
+damaged + one panel down = 37%; routing 13% brings it to 50%). **Offline (red)**
+panels are a hard loss until the DM repairs them — routed power can't recover them.
+
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
 
