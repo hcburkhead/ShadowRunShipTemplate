@@ -105,6 +105,12 @@
   .route-row .rr-sub .lbl{ font-size:9px; }
   input[type=range]:disabled{ opacity:.35; cursor:not-allowed; }
   .bankdmg{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--edge); display:flex; flex-direction:column; gap:6px; }
+  /* global lockout banner shown when the aux bank is fully damaged */
+  .reserve-lock{ font-size:10px; letter-spacing:1px; color:var(--red); background:rgba(239,68,68,.12);
+    border:1px solid var(--red); border-radius:4px; padding:7px 9px; text-align:center;
+    animation:lockpulse 1.4s ease-in-out infinite; }
+  .reserve-lock[hidden]{ display:none; }
+  @keyframes lockpulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
 
   /* embedded holographic status panel */
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -209,6 +215,7 @@
           <!-- AUX + BATTERY ROUTING (players route reserves per system; DM can damage the banks) -->
           <div class="card boost-card">
             <h2>AUX / BATTERY ROUTING <span class="v">AUX&nbsp;<b id="aux-cap">50%</b> · BATT&nbsp;<b id="batt-cap">25%</b></span></h2>
+            <div id="reserve-lock" class="reserve-lock" hidden>⚠ AUX BANK OFFLINE — auxiliary routing locked. Fall back to BATTERY and restore aux via the DM.</div>
             <div id="route-rows" class="route-rows"></div>
             <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. If AUX is damaged, BATTERY (up to 25%) takes over. Reserves are independent of ship integrity.</div>
             <div class="bankdmg ctl-only">
@@ -444,10 +451,12 @@ function renderRoute() {
   const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // bank ceiling after DM damage
   const battCap = Math.max(0, BATT_MAX - (state.aux.battDmg | 0));
   const battLive = (state.aux.auxDmg | 0) > 0;                       // battery unlocks once aux is damaged
+  const auxLive = auxCap > 0;                                        // aux locks out once the bank is fully damaged
   const ac = document.getElementById('aux-cap');
-  ac.textContent = auxCap + '%'; ac.style.color = auxCap <= 0 ? 'var(--red)' : auxCap < AUX_MAX ? 'var(--yellow)' : '';
+  ac.textContent = auxCap + '%' + (auxLive ? '' : ' ✖'); ac.style.color = auxCap <= 0 ? 'var(--red)' : auxCap < AUX_MAX ? 'var(--yellow)' : '';
   const bc2 = document.getElementById('batt-cap');
   bc2.textContent = battCap + '%' + (battLive ? '' : ' ⤺'); bc2.style.color = !battLive ? 'var(--dim)' : battCap <= 0 ? 'var(--red)' : '';
+  document.getElementById('reserve-lock').hidden = auxLive;         // global lockout banner when aux is offline
   document.getElementById('auxdmg-v').textContent = (state.aux.auxDmg | 0) + '%';
   document.getElementById('battdmg-v').textContent = (state.aux.battDmg | 0) + '%';
   ROUTE.forEach(([k]) => {
@@ -455,8 +464,9 @@ function renderRoute() {
     r.aux = Math.max(0, Math.min(auxCap, r.aux | 0));               // clamp to the (possibly damaged) ceilings
     r.batt = battLive ? Math.max(0, Math.min(battCap, r.batt | 0)) : 0;
     const as = document.getElementById('sl-aux-' + k);
-    as.max = auxCap; if (document.activeElement !== as) as.value = r.aux;
-    document.getElementById('av-' + k).textContent = r.aux + '%';
+    as.max = auxCap; as.disabled = !auxLive; if (document.activeElement !== as) as.value = r.aux;
+    const avEl = document.getElementById('av-' + k);
+    avEl.textContent = r.aux + '%'; avEl.style.color = auxLive ? '' : 'var(--dim)';
     const bs = document.getElementById('sl-batt-' + k);
     bs.max = battCap; bs.disabled = !battLive || battCap <= 0;
     if (document.activeElement !== bs) bs.value = r.batt;
