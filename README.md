@@ -25,7 +25,9 @@ a nominal state; each feeds every system (engines / drones / weapons / shields):
   reserves — restore the reactor via DM challenges.
 - **Auxiliary — up to 50%.** A separate reserve players route into a starved
   system to bring it back to **sub-optimal** levels when core power is down. The
-  DM can damage the aux bank; *not* drained by ship integrity.
+  DM can damage the aux bank; *not* drained by ship integrity. If the DM damages
+  it fully, aux **locks out** for players (a global "AUX BANK OFFLINE" banner) —
+  the signal to fall back to battery and restore aux via DM challenges.
 - **Battery backup — up to 25%.** A separate fallback reserve that **unlocks once
   the aux bank is damaged**. The DM can damage it too; *not* drained by ship
   integrity.
@@ -67,4 +69,5 @@ in-game effect by hand.
   main-power / integrity / subsystem readouts), plus the **three power controls
   players operate** — main-power system load, auxiliary routing, and battery
   routing. Everything else (damage control, integrity, flight, timer) is DM-only.
-  Battery sliders stay locked until the aux bank is damaged.
+  Battery sliders stay locked until the aux bank is damaged; aux sliders lock out
+  entirely (with a global offline banner) once the aux bank is fully damaged.
