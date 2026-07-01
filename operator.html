@@ -132,15 +132,17 @@
     background:var(--panel2); color:var(--g1); border:1px solid var(--g3); border-radius:4px; }
   .btn-wide:hover{ background:#0a1a0a; }
 
-  /* locked / view-only mode (?display) — players can read but not operate */
-  /* player view (?display): only the ship views + damage dots + power routing */
+  /* player view (?player-view): the ship views + damage dots, plus the three
+     power controls players operate — main-power (system) load, aux, and battery.
+     Everything else (damage control, integrity, flight, timer) is DM-only. */
   .lockbadge{ display:none; color:var(--g1); font-weight:bold; }
   body.player .lockbadge{ display:inline-block; }
   body.player .ctl-only{ display:none !important; }
   body.player .block-title{ display:none; }          /* hide group headers... */
   body.player .block:not(.power-block){ display:none; }  /* ...and every block except power */
   body.player .card{ display:none; }                 /* hide every control card... */
-  body.player .boost-card{ display:flex; grid-column:1/-1; }   /* ...except power routing */
+  body.player .power-block .card{ display:flex; }    /* ...except the three power cards */
+  body.player .boost-card{ grid-column:1/-1; }
   body.player .viewport-controls{ display:none; }    /* players don't get the flight controls */
 </style>
 </head>
@@ -625,11 +627,14 @@ document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' 
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
-  // only the per-system AUX/BATTERY routing sliders are operable (battery sliders
-  // stay gated by renderRoute — locked until the aux bank is damaged)
+  // players operate the three power controls — main-power system throttles plus
+  // the per-system AUX/BATTERY routing. Everything else is locked (DM-only).
+  // (battery sliders stay gated by renderRoute — locked until the aux bank is hit.)
+  const SYS_SLIDERS = KEYS.map(k => 'sl-' + k);   // sl-eng / sl-drones / sl-weapons / sl-shields
   document.querySelectorAll('input, button').forEach(el => {
-    const route = /^sl-aux-|^sl-batt-/.test(el.id || '');
-    if (!route) { el.disabled = true; el.tabIndex = -1; }
+    const id = el.id || '';
+    const operable = /^sl-aux-|^sl-batt-/.test(id) || SYS_SLIDERS.includes(id);
+    if (!operable) { el.disabled = true; el.tabIndex = -1; }
   });
   renderRoute();   // re-apply the battery lock after the blanket disable above
 }

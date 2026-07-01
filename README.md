@@ -62,6 +62,9 @@ in-game effect by hand.
 
 ## Views
 - `operator.html` — DM console.
-- `operator.html?player-view` — player view: ship views, damage dots, impact
-  timer, and the per-system aux / battery routing only (no state readouts; the
-  battery sliders stay locked until the aux bank is damaged).
+- `operator.html?player-view` — player view: the live ship display (blinking
+  yellow/red damage dots, the shield view showing which panel is under attack,
+  main-power / integrity / subsystem readouts), plus the **three power controls
+  players operate** — main-power system load, auxiliary routing, and battery
+  routing. Everything else (damage control, integrity, flight, timer) is DM-only.
+  Battery sliders stay locked until the aux bank is damaged.
