@@ -271,6 +271,7 @@
               <div class="sp sp-p" data-i="3">PORT</div>
               <div class="sp sp-a" data-i="2">AFT</div>
             </div>
+            <div class="hint ctl-only">Available shield power follows core power (full = 100%, damaged = 50%). Each DAMAGED/OFFLINE panel costs 13%; players route AUX/BATTERY to SHIELDS to recover DAMAGED (yellow) panels. OFFLINE (red) panels need DM repair.</div>
           </div>
 
           <!-- DAMAGE CONTROL -->
@@ -339,6 +340,21 @@ const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);            // area/fan health 0
 function coreFromReactor(dmg) {
   const r = ((dmg && dmg.areas) || {}).reactor | 0;
   return r >= 2 ? 0 : r >= 1 ? 50 : 100;
+}
+
+// SHIELD POWER is special: main (core) power sets the ceiling of available shield
+// power (full main = 100%, damaged main = 50%), then each damaged/offline shield
+// panel costs 13%. OFFLINE (red) panels are a hard loss until the DM repairs them;
+// DAMAGED (yellow) panels can be compensated by players routing shield reserves
+// (aux/battery) back up to the available ceiling.
+const SHIELD_PANEL_COST = 13;
+function shieldPower(core, throttle, auxV, battV, panels) {
+  const avail = Math.min(Math.max(0, Math.min(100, throttle | 0)), core);   // main-power ceiling for shields
+  let offline = 0, damaged = 0;
+  (Array.isArray(panels) ? panels : [0,0,0,0]).forEach(v => { v = Math.max(0, Math.min(2, v | 0)); if (v === 2) offline++; else if (v === 1) damaged++; });
+  const hardCap = Math.max(0, avail - SHIELD_PANEL_COST * offline);          // offline panels: not player-compensable
+  const base = Math.max(0, hardCap - SHIELD_PANEL_COST * damaged);           // yellow panels drop it (recoverable)
+  return Math.round(Math.max(0, Math.min(hardCap, base + (auxV | 0) + (battV | 0))));
 }
 
 // SHIP INTEGRITY is derived: the three power systems work together to keep the
@@ -473,7 +489,11 @@ function renderRoute() {
     const bvEl = document.getElementById('bv-' + k);
     bvEl.textContent = r.batt + '%'; bvEl.style.color = battLive ? '' : 'var(--dim)';
     const delivered = Math.min(Math.max(0, Math.min(100, state.power[k] | 0)), core);
-    const eff = Math.min(125, delivered + r.aux + r.batt);          // core (capped) + reserves
+    // shields are panel-limited (reserves compensate damaged panels up to the main-power
+    // ceiling); the other systems simply stack reserves on top of delivered core.
+    const eff = k === 'shields'
+      ? shieldPower(core, state.power.shields, r.aux, r.batt, state.damage.shieldPanels)
+      : Math.min(125, delivered + r.aux + r.batt);
     const effEl = document.getElementById('eff-' + k);
     effEl.textContent = eff + '%'; effEl.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
   });
@@ -622,7 +642,7 @@ function renderShields() {
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
-  renderShields(); renderHull(); saveDamage();
+  renderShields(); renderHull(); renderRoute(); saveDamage();   // panels affect shield power → EFF
 }));
 
 function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
