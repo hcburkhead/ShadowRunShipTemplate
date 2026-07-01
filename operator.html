@@ -111,6 +111,15 @@
     animation:lockpulse 1.4s ease-in-out infinite; }
   .reserve-lock[hidden]{ display:none; }
   @keyframes lockpulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+  /* ship-wide MAX POWER meter + overdrive */
+  .maxpwr{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--edge); display:flex; flex-direction:column; gap:6px; }
+  .maxpwr .mp-h{ font-size:10px; letter-spacing:2px; color:var(--g2); display:flex; align-items:baseline; gap:8px; }
+  .maxpwr .mp-h .v{ color:var(--glint); }
+  .maxpwr .mp-red{ margin-left:auto; font-size:8px; color:var(--dim); letter-spacing:1px; }
+  .overdrive-btn{ border-color:var(--amber); color:var(--amber); }
+  .overdrive-btn:hover{ background:rgba(246,162,60,.12); }
+  .overdrive-btn.on{ background:var(--red); border-color:var(--red); color:#160404; font-weight:bold;
+    animation:lockpulse 1s ease-in-out infinite; }
 
   /* embedded holographic status panel */
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -217,11 +226,19 @@
             <h2>AUX / BATTERY ROUTING <span class="v">AUX&nbsp;<b id="aux-cap">50%</b> · BATT&nbsp;<b id="batt-cap">25%</b></span></h2>
             <div id="reserve-lock" class="reserve-lock" hidden>⚠ AUX BANK OFFLINE — auxiliary routing locked. Fall back to BATTERY and restore aux via the DM.</div>
             <div id="route-rows" class="route-rows"></div>
-            <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. If AUX is damaged, BATTERY (up to 25%) takes over. Reserves are independent of ship integrity.</div>
+            <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. BATTERY (up to 25%) is always available and can't be damaged. Reserves are independent of ship integrity.</div>
+
+            <!-- ship-wide MAX POWER meter + OVERDRIVE (players can deliberately overload) -->
+            <div class="maxpwr">
+              <div class="mp-h">MAX POWER <span class="v" id="maxpwr-v">100%</span> <span class="mp-red">redline 175%</span></div>
+              <div class="corebar"><div class="corefill" id="maxpwr-fill"></div></div>
+              <button id="btn-overdrive" class="btn-wide overdrive-btn">⚠ OVERDRIVE — FORCE MAX POWER</button>
+              <div class="hint">Overdrive forces the AUX + BATTERY banks to 100% output. Pushing total ship power past the 175% redline overloads the reactor and triggers the SELF-DESTRUCT sequence.</div>
+            </div>
+
             <div class="bankdmg ctl-only">
               <div class="row"><div class="lbl"><span>⚠ AUX BANK DAMAGE</span><b id="auxdmg-v">0%</b></div><input type="range" min="0" max="50" value="0" id="sl-auxdmg"></div>
-              <div class="row"><div class="lbl"><span>⚠ BATTERY BANK DAMAGE</span><b id="battdmg-v">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-battdmg"></div>
-              <div class="hint">DM only — damage the reserve banks (not tied to ship integrity). Damaging AUX lowers its ceiling and unlocks BATTERY for players.</div>
+              <div class="hint">DM only — damage the AUX bank (not tied to ship integrity). Fully damaging it locks aux out for players. The battery bank can't be damaged.</div>
             </div>
           </div>
         </div>
@@ -304,14 +321,17 @@ function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k
 //   CORE 100%  : main power, derived from ship integrity (not hand-set). When the
 //                ship is whole it feeds every system fully; damage drops it.
 //   AUX  50%   : players route this to a system to restore it to sub-optimal levels
-//                when core power is down. Independent of ship integrity.
-//   BATT 25%   : fallback reserve — only usable once the AUX bank is damaged.
-// AUX/BATTERY are per-system reserves; the DM can damage the banks (auxDmg/battDmg)
-// independently of ship integrity. It's a tracker — the DM applies effects in-game.
+//                when core power is down. Independent of ship integrity; DM-damageable.
+//   BATT 25%   : always-available fallback reserve. Can't be damaged, only routed out.
+// AUX/BATTERY are per-system reserves; only the AUX bank is DM-damageable (auxDmg).
+// It's a tracker — the DM applies effects in-game.
 const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
 const AUX_MAX = 50, BATT_MAX = 25;          // per-system reserve ceilings
+// aux can be damaged (auxDmg); battery cannot. overdrive is the players' deliberate
+// overload boost — forcing both reserve banks to 100% output pushes ship power past
+// the 175% redline and triggers self-destruct.
 function defaultAux() {
-  const o = { auxDmg: 0, battDmg: 0 };
+  const o = { auxDmg: 0, overdrive: false };
   ROUTE.forEach(([k]) => o[k] = { aux: 0, batt: 0 });
   return o;
 }
@@ -320,13 +340,27 @@ function normAux(raw) {
   const o = defaultAux();
   if (!raw || typeof raw !== 'object') return o;
   o.auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
-  o.battDmg = Math.max(0, Math.min(BATT_MAX, +raw.battDmg || 0));
+  o.overdrive = !!raw.overdrive;
   ROUTE.forEach(([k]) => {
     const r = raw[k];
     if (typeof r === 'number') o[k] = { aux: Math.max(0, Math.min(AUX_MAX, r)), batt: 0 };
     else if (r && typeof r === 'object') o[k] = { aux: Math.max(0, +r.aux || 0), batt: Math.max(0, +r.batt || 0) };
   });
   return o;
+}
+// ship-wide MAX POWER meter = core + aux output + battery output. Normal safe max
+// is CORE 100 + AUX 50 + BATT 25 = 175%. OVERDRIVE forces both banks to 100% output,
+// driving the total past the redline (→ self-destruct). Aux/batt output are the
+// average routed across the systems, so the meter reads ship-wide.
+const MAXPWR_REDLINE = 175;
+function reserveOutputs(core, aux) {
+  if (aux && aux.overdrive) return { aux: 100, batt: 100 };
+  const avg = key => ROUTE.reduce((t, [k]) => t + ((aux && aux[k] && aux[k][key]) | 0), 0) / ROUTE.length;
+  return { aux: Math.round(avg('aux')), batt: Math.round(avg('batt')) };
+}
+function shipMaxPower(core, aux) {
+  const o = reserveOutputs(core, aux);
+  return { total: Math.round(core + o.aux + o.batt), core, aux: o.aux, batt: o.batt };
 }
 
 // The three power systems are separate physical systems:
@@ -359,15 +393,15 @@ function shieldPower(core, throttle, auxV, battV, panels) {
 
 // SHIP INTEGRITY is derived: the three power systems work together to keep the
 // ship nominal, and every damaged system drags the overall state down
-// (NOMINAL → DAMAGED → CRITICAL → OFFLINE) as things break. AUX/BATTERY bank
-// damage counts here (they're physical systems) even though it never drains core.
+// (NOMINAL → DAMAGED → CRITICAL → OFFLINE) as things break. AUX bank damage counts
+// here (it's a physical system); the battery can't be damaged, so it's always healthy.
 function shipIntegrity(dmg, auxInfo) {
   const a = (dmg && dmg.areas) || {};
-  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0, battDmg = auxInfo ? (auxInfo.battDmg | 0) : 0;
+  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0;
   const W = [
     [ah(a.reactor), 3],                                       // core reactor — the main power system
     [(AUX_MAX - auxDmg) / AUX_MAX, 2],                        // auxiliary system
-    [(BATT_MAX - battDmg) / BATT_MAX, 1],                     // battery system
+    [1, 1],                                                   // battery system (undamageable)
   ];
   ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ah(a[k]), 1]));
   ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ah(a[k]), 0.5]));
@@ -459,35 +493,32 @@ ROUTE.forEach(([k, label]) => {
 document.getElementById('sl-auxdmg').addEventListener('input', e => {
   state.aux.auxDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
 });
-document.getElementById('sl-battdmg').addEventListener('input', e => {
-  state.aux.battDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
+document.getElementById('btn-overdrive').addEventListener('click', () => {
+  state.aux.overdrive = !state.aux.overdrive; renderRoute(); saveAux();   // display recomputes ship power → self-destruct
 });
 function renderRoute() {
   const core = coreFromReactor(state.damage);
-  const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // bank ceiling after DM damage
-  const battCap = Math.max(0, BATT_MAX - (state.aux.battDmg | 0));
-  const battLive = (state.aux.auxDmg | 0) > 0;                       // battery unlocks once aux is damaged
+  const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // aux ceiling after DM damage
+  const battCap = BATT_MAX;                                          // battery can't be damaged
   const auxLive = auxCap > 0;                                        // aux locks out once the bank is fully damaged
   const ac = document.getElementById('aux-cap');
   ac.textContent = auxCap + '%' + (auxLive ? '' : ' ✖'); ac.style.color = auxCap <= 0 ? 'var(--red)' : auxCap < AUX_MAX ? 'var(--yellow)' : '';
   const bc2 = document.getElementById('batt-cap');
-  bc2.textContent = battCap + '%' + (battLive ? '' : ' ⤺'); bc2.style.color = !battLive ? 'var(--dim)' : battCap <= 0 ? 'var(--red)' : '';
+  bc2.textContent = battCap + '%'; bc2.style.color = '';
   document.getElementById('reserve-lock').hidden = auxLive;         // global lockout banner when aux is offline
   document.getElementById('auxdmg-v').textContent = (state.aux.auxDmg | 0) + '%';
-  document.getElementById('battdmg-v').textContent = (state.aux.battDmg | 0) + '%';
   ROUTE.forEach(([k]) => {
     const r = state.aux[k] || (state.aux[k] = { aux: 0, batt: 0 });
-    r.aux = Math.max(0, Math.min(auxCap, r.aux | 0));               // clamp to the (possibly damaged) ceilings
-    r.batt = battLive ? Math.max(0, Math.min(battCap, r.batt | 0)) : 0;
+    r.aux = Math.max(0, Math.min(auxCap, r.aux | 0));               // clamp aux to the (possibly damaged) ceiling
+    r.batt = Math.max(0, Math.min(battCap, r.batt | 0));            // battery always available up to its cap
     const as = document.getElementById('sl-aux-' + k);
     as.max = auxCap; as.disabled = !auxLive; if (document.activeElement !== as) as.value = r.aux;
     const avEl = document.getElementById('av-' + k);
     avEl.textContent = r.aux + '%'; avEl.style.color = auxLive ? '' : 'var(--dim)';
     const bs = document.getElementById('sl-batt-' + k);
-    bs.max = battCap; bs.disabled = !battLive || battCap <= 0;
+    bs.max = battCap; bs.disabled = false;                          // battery is always operable now
     if (document.activeElement !== bs) bs.value = r.batt;
-    const bvEl = document.getElementById('bv-' + k);
-    bvEl.textContent = r.batt + '%'; bvEl.style.color = battLive ? '' : 'var(--dim)';
+    document.getElementById('bv-' + k).textContent = r.batt + '%';
     const delivered = Math.min(Math.max(0, Math.min(100, state.power[k] | 0)), core);
     // shields are panel-limited (reserves compensate damaged panels up to the main-power
     // ceiling); the other systems simply stack reserves on top of delivered core.
@@ -497,12 +528,24 @@ function renderRoute() {
     const effEl = document.getElementById('eff-' + k);
     effEl.textContent = eff + '%'; effEl.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
   });
+  renderMaxPower(core);
+}
+// ship-wide MAX POWER meter + OVERDRIVE state (self-destruct happens on the display)
+function renderMaxPower(core) {
+  const mp = shipMaxPower(core, state.aux);
+  const over = mp.total > MAXPWR_REDLINE;
+  const v = document.getElementById('maxpwr-v');
+  v.textContent = mp.total + '%'; v.style.color = over ? 'var(--red)' : mp.total >= MAXPWR_REDLINE ? 'var(--amber)' : '';
+  const f = document.getElementById('maxpwr-fill');
+  f.style.width = Math.min(100, mp.total / 300 * 100) + '%';
+  f.style.background = over ? 'var(--red)' : mp.total >= 150 ? 'var(--amber)' : 'var(--g1)';
+  document.getElementById('btn-overdrive').classList.toggle('on', !!state.aux.overdrive);
 }
 
 // ---- ship integrity (derived from every system's health) ----
 const STATE_COLOR = { NOMINAL: 'var(--g1)', DAMAGED: 'var(--yellow)', CRITICAL: 'var(--red)', OFFLINE: 'var(--red)' };
 function renderHull() {
-  const si = shipIntegrity(state.damage, { auxDmg: state.aux.auxDmg | 0, battDmg: state.aux.battDmg | 0 });
+  const si = shipIntegrity(state.damage, { auxDmg: state.aux.auxDmg | 0 });
   state.damage.hull = si.level;                              // keep stored state in sync for the display + log
   const hv = document.getElementById('hull-v');
   hv.textContent = si.level + ' · ' + si.pct + '%'; hv.style.color = STATE_COLOR[si.level];
@@ -657,16 +700,16 @@ document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' 
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
-  // players operate the three power controls — main-power system throttles plus
-  // the per-system AUX/BATTERY routing. Everything else is locked (DM-only).
-  // (battery sliders stay gated by renderRoute — locked until the aux bank is hit.)
+  // players operate the power controls — main-power system throttles, the per-system
+  // AUX/BATTERY routing, and the OVERDRIVE button. Everything else is locked (DM-only).
+  // (aux sliders re-lock via renderRoute when the aux bank is fully damaged.)
   const SYS_SLIDERS = KEYS.map(k => 'sl-' + k);   // sl-eng / sl-drones / sl-weapons / sl-shields
   document.querySelectorAll('input, button').forEach(el => {
     const id = el.id || '';
-    const operable = /^sl-aux-|^sl-batt-/.test(id) || SYS_SLIDERS.includes(id);
+    const operable = /^sl-aux-|^sl-batt-/.test(id) || SYS_SLIDERS.includes(id) || id === 'btn-overdrive';
     if (!operable) { el.disabled = true; el.tabIndex = -1; }
   });
-  renderRoute();   // re-apply the battery lock after the blanket disable above
+  renderRoute();   // re-apply the aux lock after the blanket disable above
 }
 
 // keep in sync if another local tab changes things

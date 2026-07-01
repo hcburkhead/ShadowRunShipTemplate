@@ -28,13 +28,20 @@ a nominal state; each feeds every system (engines / drones / weapons / shields):
   DM can damage the aux bank; *not* drained by ship integrity. If the DM damages
   it fully, aux **locks out** for players (a global "AUX BANK OFFLINE" banner) —
   the signal to fall back to battery and restore aux via DM challenges.
-- **Battery backup — up to 25%.** A separate fallback reserve that **unlocks once
-  the aux bank is damaged**. The DM can damage it too; *not* drained by ship
-  integrity.
+- **Battery backup — up to 25%.** A separate always-available fallback reserve,
+  routed per system. It **can't be damaged** (only routed out / depleted); *not*
+  drained by ship integrity.
 
 **Ship integrity** is **derived** from the combined health of these three systems
 plus the rest of the ship (areas, lift fans, shield panels). As systems break, the
 overall state degrades **NOMINAL → DAMAGED → CRITICAL → OFFLINE** on its own.
+
+**Max power & self-destruct.** A ship-wide **MAX POWER** meter reads CORE + AUX +
+BATTERY; the safe maximum is **175%** (core 100 + aux 50 + battery 25). Players have
+an **OVERDRIVE** control that forces both reserve banks to 100% output — pushing the
+total past the 175% redline **overloads the reactor and triggers the self-destruct
+sequence** (the display floods red with a CORE OVERLOAD banner). Backing overdrive
+off drops it below the redline and clears the overload.
 
 **Shields** are a special case. Available shield power follows core (main) power —
 full main = 100%, damaged main = 50%. Each of the four shield panels the DM marks
@@ -57,7 +64,8 @@ in-game effect by hand.
 - **Damage control** — set each area (bridge, **reactor**, AI core, drone bay,
   weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus the four
   directional shield panels. The reactor drives core power; every system (plus
-  aux/battery bank damage) feeds the derived ship-integrity state.
+  aux-bank damage) feeds the derived ship-integrity state. Only the **aux** bank is
+  DM-damageable — the battery can't be damaged.
 - **Altitude** — slider that raises/lowers the ship projection.
 - **Impact timer** — a set / start / stop / reset countdown (defaults to 10:00)
   shown top-right on the display; at 0:00 the ship "impacts" (resettable).
@@ -74,7 +82,7 @@ in-game effect by hand.
 - `operator.html?player-view` — player view: the live ship display (blinking
   yellow/red damage dots, the shield view showing which panel is under attack,
   main-power / integrity / subsystem readouts), plus the **three power controls
-  players operate** — main-power system load, auxiliary routing, and battery
-  routing. Everything else (damage control, integrity, flight, timer) is DM-only.
-  Battery sliders stay locked until the aux bank is damaged; aux sliders lock out
-  entirely (with a global offline banner) once the aux bank is fully damaged.
+  players operate** — main-power system load, auxiliary routing, battery routing,
+  and the **OVERDRIVE** button. Everything else (damage control, integrity, flight,
+  timer) is DM-only. Battery is always available; aux sliders lock out entirely
+  (with a global offline banner) once the DM fully damages the aux bank.
