@@ -91,14 +91,20 @@
   .area.s2{ border-color:var(--red); color:var(--red); background:rgba(239,68,68,.16); }
   .cat{ font-size:8px; letter-spacing:2px; color:var(--dim); }
 
-  /* power routing — system radios that share one central slider */
-  .route-systems{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; }
-  .route-opt{ display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px;
-    background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:6px 9px; color:var(--dim); }
-  .route-opt span{ flex:1; }
-  .route-opt b{ color:var(--g1); font-weight:normal; }
-  .route-opt.active{ border-color:var(--g1); color:var(--g1); background:#0c2114; }
-  .route-opt input{ accent-color:var(--g1); }
+  /* core power — derived from ship integrity (read-only bar) */
+  .corebar{ height:12px; background:var(--panel2); border:1px solid var(--edge); border-radius:6px; overflow:hidden; }
+  .corefill{ height:100%; width:100%; background:var(--g1); transition:width .35s ease, background .35s ease; }
+
+  /* per-system aux + battery routing rows (players route the reserves) */
+  .route-rows{ display:flex; flex-direction:column; gap:9px; }
+  .route-row{ display:flex; flex-direction:column; gap:4px; padding-bottom:8px; border-bottom:1px solid var(--edge); }
+  .route-row:last-child{ border-bottom:0; padding-bottom:0; }
+  .route-row .rr-h{ font-size:10px; color:var(--g1); display:flex; justify-content:space-between; }
+  .route-row .rr-h b{ font-weight:normal; color:var(--glint); }
+  .route-row .rr-sub{ display:grid; grid-template-columns:1fr 1fr; gap:3px 14px; }
+  .route-row .rr-sub .lbl{ font-size:9px; }
+  input[type=range]:disabled{ opacity:.35; cursor:not-allowed; }
+  .bankdmg{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--edge); display:flex; flex-direction:column; gap:6px; }
 
   /* embedded holographic status panel */
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -177,34 +183,37 @@
         </div>
       </div>
     
-      <!-- ============ POWER & BATTERY ============ -->
+      <!-- ============ POWER & RESERVES ============ -->
       <section class="block power-block">
-        <h3 class="block-title">⚡ POWER &amp; BATTERY</h3>
+        <h3 class="block-title">⚡ POWER &amp; RESERVES</h3>
         <div class="block-grid">
-          <!-- MAIN BATTERY (DM-controlled core reserve) -->
+          <!-- CORE POWER (produced by the core reactor — its own system) -->
           <div class="card">
-            <h2>MAIN BATTERY <span class="v" id="batt-v">100%</span></h2>
-            <div class="row"><div class="lbl"><span>⚡ CORE RESERVE</span></div>
-              <input type="range" min="0" max="100" value="100" id="sl-battery"></div>
-            <div class="hint">the main battery the systems draw from — deplete it as systems are damaged, restore it as players recover power.</div>
+            <h2>CORE POWER <span class="v" id="core-v">100%</span></h2>
+            <div class="corebar"><div class="corefill" id="core-fill"></div></div>
+            <div class="hint" id="core-sub">Produced by the CORE REACTOR (own system). Reactor ONLINE = 100% and every system is fully fed — players do nothing. Reactor DAMAGED = 50%, OFFLINE = 0% — players fall back to AUX, then BATTERY. Restore the reactor via DM challenges.</div>
           </div>
 
-          <!-- POWER ROUTING (the players' control — route shared aux/battery reserve) -->
+          <!-- SYSTEM POWER (DM per-system core throttle, capped by core power) -->
+          <div class="card">
+            <h2>SYSTEM POWER <span class="v" id="pwr-total">CORE 100%</span></h2>
+            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-eng"></div>
+            <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-drones"></div>
+            <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
+            <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
+            <div class="hint">Each system draws from core power, capped by the current CORE %. Throttle or cut a system; it can't exceed core unless players add reserves.</div>
+          </div>
+
+          <!-- AUX + BATTERY ROUTING (players route reserves per system; DM can damage the banks) -->
           <div class="card boost-card">
-            <h2>POWER ROUTING <span class="v">AUX&nbsp;<b id="aux-rsv">50%</b> · BATT&nbsp;<b id="batt-rsv">25%</b></span></h2>
-            <div id="route-systems" class="route-systems"></div>
-            <div class="row" style="margin-top:4px"><div class="lbl"><span id="route-label">▸ ENGINES</span><b id="route-val">0%</b></div>
-              <input type="range" min="0" max="75" step="1" value="0" id="sl-route"></div>
-            <div class="hint">Pick a system, then route reserve power to it. Aux - up to 50% is spent first. Then, the 25% battery reserve kicks in.</div>
-          </div>
-
-          <!-- POWER ALLOCATION -->
-          <div class="card">
-            <h2>POWER ALLOCATION <span class="v" id="pwr-total">100% / 100%</span></h2>
-            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-eng"></div>
-            <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-drones"></div>
-            <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-weapons"></div>
-            <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">25%</b></div><input type="range" min="0" max="25" value="25" id="sl-shields"></div>
+            <h2>AUX / BATTERY ROUTING <span class="v">AUX&nbsp;<b id="aux-cap">50%</b> · BATT&nbsp;<b id="batt-cap">25%</b></span></h2>
+            <div id="route-rows" class="route-rows"></div>
+            <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. If AUX is damaged, BATTERY (up to 25%) takes over. Reserves are independent of ship integrity.</div>
+            <div class="bankdmg ctl-only">
+              <div class="row"><div class="lbl"><span>⚠ AUX BANK DAMAGE</span><b id="auxdmg-v">0%</b></div><input type="range" min="0" max="50" value="0" id="sl-auxdmg"></div>
+              <div class="row"><div class="lbl"><span>⚠ BATTERY BANK DAMAGE</span><b id="battdmg-v">0%</b></div><input type="range" min="0" max="25" value="0" id="sl-battdmg"></div>
+              <div class="hint">DM only — damage the reserve banks (not tied to ship integrity). Damaging AUX lowers its ceiling and unlocks BATTERY for players.</div>
+            </div>
           </div>
         </div>
       </section>
@@ -236,15 +245,11 @@
       <section class="block">
         <h3 class="block-title">⛨ DAMAGE &amp; DEFENSE</h3>
         <div class="block-grid">
-          <!-- HULL INTEGRITY -->
+          <!-- SHIP INTEGRITY (derived — reflects the combined health of every system) -->
           <div class="card">
-            <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
-            <div class="seg" id="hull-seg">
-              <button data-h="NOMINAL">NOMINAL</button>
-              <button data-h="DAMAGED">DAMAGED</button>
-              <button data-h="CRITICAL">CRITICAL</button>
-              <button data-h="OFFLINE">OFFLINE</button>
-            </div>
+            <h2>SHIP INTEGRITY <span class="v" id="hull-v">NOMINAL · 100%</span></h2>
+            <div class="corebar"><div class="corefill" id="hull-fill"></div></div>
+            <div class="hint">Auto-derived from the core reactor, aux &amp; battery systems, and the rest of the ship. As systems break the state degrades NOMINAL → DAMAGED → CRITICAL → OFFLINE. Damage systems below to change it.</div>
           </div>
 
           <!-- SHIELD PANELS -->
@@ -285,24 +290,86 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['NOMINAL', 'SUBOPT', 'OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
-// player power routing: a shared 50% AUX reserve + 25% BATTERY reserve that
-// players route across the 4 main systems (a tracker — the DM applies the
-// in-game effect manually). aux spends first, then the battery reserve.
+// power model — three tiers per system:
+//   CORE 100%  : main power, derived from ship integrity (not hand-set). When the
+//                ship is whole it feeds every system fully; damage drops it.
+//   AUX  50%   : players route this to a system to restore it to sub-optimal levels
+//                when core power is down. Independent of ship integrity.
+//   BATT 25%   : fallback reserve — only usable once the AUX bank is damaged.
+// AUX/BATTERY are per-system reserves; the DM can damage the banks (auxDmg/battDmg)
+// independently of ship integrity. It's a tracker — the DM applies effects in-game.
 const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
-const AUX_MAX = 50, BATT_MAX = 25, POOL = AUX_MAX + BATT_MAX;   // 75 total player-routable
-function defaultAux() { const o = {}; ROUTE.forEach(([k]) => o[k] = 0); return o; }
+const AUX_MAX = 50, BATT_MAX = 25;          // per-system reserve ceilings
+function defaultAux() {
+  const o = { auxDmg: 0, battDmg: 0 };
+  ROUTE.forEach(([k]) => o[k] = { aux: 0, batt: 0 });
+  return o;
+}
+// migrate the legacy shared-pool shape ({eng:Number,...}) → per-system {aux,batt}
+function normAux(raw) {
+  const o = defaultAux();
+  if (!raw || typeof raw !== 'object') return o;
+  o.auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
+  o.battDmg = Math.max(0, Math.min(BATT_MAX, +raw.battDmg || 0));
+  ROUTE.forEach(([k]) => {
+    const r = raw[k];
+    if (typeof r === 'number') o[k] = { aux: Math.max(0, Math.min(AUX_MAX, r)), batt: 0 };
+    else if (r && typeof r === 'object') o[k] = { aux: Math.max(0, +r.aux || 0), batt: Math.max(0, +r.batt || 0) };
+  });
+  return o;
+}
+
+// The three power systems are separate physical systems:
+//   CORE reactor — produces core (main) power. Its own system: reactor health
+//                  alone sets core power (ONLINE 100 / DAMAGED 50 / OFFLINE 0).
+//   AUX bank     — a separate reserve system players route (DM-damageable).
+//   BATTERY bank — a separate fallback reserve (DM-damageable).
+// CORE POWER comes straight off the reactor — when it's hit, players fall back
+// to AUX (then BATTERY). It is NOT tied to hull/structure.
+const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);            // area/fan health 0/0.5/1
+function coreFromReactor(dmg) {
+  const r = ((dmg && dmg.areas) || {}).reactor | 0;
+  return r >= 2 ? 0 : r >= 1 ? 50 : 100;
+}
+
+// SHIP INTEGRITY is derived: the three power systems work together to keep the
+// ship nominal, and every damaged system drags the overall state down
+// (NOMINAL → DAMAGED → CRITICAL → OFFLINE) as things break. AUX/BATTERY bank
+// damage counts here (they're physical systems) even though it never drains core.
+function shipIntegrity(dmg, auxInfo) {
+  const a = (dmg && dmg.areas) || {};
+  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0, battDmg = auxInfo ? (auxInfo.battDmg | 0) : 0;
+  const W = [
+    [ah(a.reactor), 3],                                       // core reactor — the main power system
+    [(AUX_MAX - auxDmg) / AUX_MAX, 2],                        // auxiliary system
+    [(BATT_MAX - battDmg) / BATT_MAX, 1],                     // battery system
+  ];
+  ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ah(a[k]), 1]));
+  ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ah(a[k]), 0.5]));
+  (Array.isArray(dmg && dmg.shieldPanels) ? dmg.shieldPanels : [0,0,0,0]).forEach(v => W.push([ah(v), 0.25]));
+  let num = 0, den = 0; W.forEach(([h, w]) => { num += Math.max(0, Math.min(1, h)) * w; den += w; });
+  const pct = den ? num / den * 100 : 100;
+  const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
+  return { pct: Math.round(pct), level };
+}
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
-  power:  load('shipPowerLevels', { eng: 25, drones: 25, weapons: 25, shields: 25, battery: 100 }),
+  power:  load('shipPowerLevels', { eng: 100, drones: 100, weapons: 100, shields: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
   timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
-  aux: load('shipAux', defaultAux()),
+  aux: normAux(load('shipAux', defaultAux())),
 };
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
-state.aux = Object.assign(defaultAux(), state.aux || {});
+// legacy throttle values were 0-25; rescale any old per-system setting to 0-100
+KEYS_INIT_FIX(state.power);
+function KEYS_INIT_FIX(p) { ['eng','drones','weapons','shields'].forEach(k => {
+  if (typeof p[k] !== 'number') p[k] = 100;
+  if (p[k] > 0 && p[k] <= 25) p[k] = Math.round(p[k] / 25 * 100);   // migrate old 0-25 scale
+  p[k] = Math.max(0, Math.min(100, p[k]));
+}); delete p.battery; }
 
 let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
 let fb = null;   // { set, ref, db } once Firebase connects
@@ -318,82 +385,98 @@ const saveAux    = () => pushKey('shipAux', state.aux);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 const saveTimer  = () => pushKey('shipTimer', state.timer);
 
-// ---- power allocation ----
-function clampBudget(changed) {
-  let v = state.power[changed];                       // use the intended value (slider OR toggle)
-  const others = KEYS.filter(k => k !== changed).reduce((a, k) => a + state.power[k], 0);
-  if (v + others > 100) v = Math.max(0, 100 - others);
-  state.power[changed] = v;
-  document.getElementById('sl-' + changed).value = v;
-}
+// ---- core power + per-system throttle ----
+// core power is derived from ship integrity; each system runs on core, capped by
+// its own throttle (and never above the current core level on core alone).
+function intColor(p) { return p > 66 ? '' : p > 33 ? 'var(--yellow)' : 'var(--red)'; }
 function renderPower() {
-  KEYS.forEach(k => { document.getElementById('sl-' + k).value = state.power[k];
-                      document.getElementById('v-' + k).textContent = state.power[k] + '%'; });
-  const total = KEYS.reduce((a, k) => a + state.power[k], 0);
-  document.getElementById('pwr-total').textContent = total + '% / 100%';
-  const bv = state.power.battery == null ? 100 : state.power.battery;
-  const bs = document.getElementById('sl-battery'); if (document.activeElement !== bs) bs.value = bv;
-  const bvEl = document.getElementById('batt-v');
-  bvEl.textContent = bv + '%'; bvEl.style.color = bv >= 75 ? '' : bv >= 35 ? 'var(--yellow)' : 'var(--red)';
+  const core = coreFromReactor(state.damage);
+  state.power.core = core;
+  const cf = document.getElementById('core-fill');
+  cf.style.width = core + '%';
+  cf.style.background = core > 66 ? 'var(--g1)' : core > 33 ? 'var(--yellow)' : 'var(--red)';
+  const cv = document.getElementById('core-v');
+  cv.textContent = core + '%'; cv.style.color = core > 66 ? '' : core > 33 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('pwr-total').textContent = 'CORE ' + core + '%';
+  KEYS.forEach(k => {
+    const thr = Math.max(0, Math.min(100, state.power[k] | 0));
+    const sl = document.getElementById('sl-' + k); if (document.activeElement !== sl) sl.value = thr;
+    const delivered = Math.min(thr, core);                       // core actually reaching the system
+    const vEl = document.getElementById('v-' + k);
+    vEl.textContent = delivered + '%'; vEl.style.color = intColor(delivered);
+  });
 }
-document.getElementById('sl-battery').addEventListener('input', e => {
-  state.power.battery = +e.target.value; renderPower(); savePower();
-});
 KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
-  state.power[k] = +document.getElementById('sl-' + k).value;   // adopt the slider, then clamp
-  clampBudget(k); renderPower(); savePower();
+  state.power[k] = +document.getElementById('sl-' + k).value;
+  renderPower(); renderRoute(); savePower();
 }));
 
-// ---- power routing (player control): central slider + radio, shared aux/battery reserve ----
-const routeSystems = document.getElementById('route-systems');
-let routeSel = 'eng';
+// ---- aux / battery routing (players): per-system reserves, DM-damageable banks ----
+const routeRows = document.getElementById('route-rows');
 ROUTE.forEach(([k, label]) => {
-  const opt = document.createElement('label'); opt.className = 'route-opt'; opt.dataset.k = k;
-  opt.innerHTML = `<input type="radio" name="route" value="${k}"><span>${label}</span><b>0%</b>`;
-  opt.querySelector('input').addEventListener('change', () => { routeSel = k; renderRoute(); });
-  routeSystems.appendChild(opt);
+  const row = document.createElement('div'); row.className = 'route-row'; row.dataset.k = k;
+  row.innerHTML =
+    `<div class="rr-h"><span>⬡ ${label}</span><b>EFF <span id="eff-${k}">100%</span></b></div>`
+  + `<div class="rr-sub">`
+  +   `<div class="row"><div class="lbl"><span>AUX</span><b id="av-${k}">0%</b></div>`
+  +     `<input type="range" min="0" max="50" step="1" value="0" id="sl-aux-${k}"></div>`
+  +   `<div class="row"><div class="lbl"><span>BATT</span><b id="bv-${k}">0%</b></div>`
+  +     `<input type="range" min="0" max="25" step="1" value="0" id="sl-batt-${k}"></div>`
+  + `</div>`;
+  routeRows.appendChild(row);
+  row.querySelector('#sl-aux-' + k).addEventListener('input', e => {
+    state.aux[k].aux = +e.target.value; renderRoute(); saveAux();
+  });
+  row.querySelector('#sl-batt-' + k).addEventListener('input', e => {
+    state.aux[k].batt = +e.target.value; renderRoute(); saveAux();
+  });
 });
-const routeTotal = () => ROUTE.reduce((a, [k]) => a + (state.aux[k] || 0), 0);
-document.getElementById('sl-route').addEventListener('input', e => {
-  state.aux[routeSel] = +e.target.value; renderRoute(); saveAux();
+document.getElementById('sl-auxdmg').addEventListener('input', e => {
+  state.aux.auxDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
+});
+document.getElementById('sl-battdmg').addEventListener('input', e => {
+  state.aux.battDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
 });
 function renderRoute() {
-  const total = routeTotal();
-  const auxRsv  = Math.max(0, AUX_MAX - total);
-  const battRsv = Math.max(0, BATT_MAX - Math.max(0, total - AUX_MAX));
-  const ar = document.getElementById('aux-rsv');
-  ar.textContent = auxRsv + '%'; ar.style.color = auxRsv <= 0 ? 'var(--red)' : auxRsv < 25 ? 'var(--yellow)' : '';
-  const br = document.getElementById('batt-rsv');
-  br.textContent = battRsv + '%'; br.style.color = battRsv <= 0 ? 'var(--red)' : battRsv < BATT_MAX ? 'var(--yellow)' : '';
+  const core = coreFromReactor(state.damage);
+  const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // bank ceiling after DM damage
+  const battCap = Math.max(0, BATT_MAX - (state.aux.battDmg | 0));
+  const battLive = (state.aux.auxDmg | 0) > 0;                       // battery unlocks once aux is damaged
+  const ac = document.getElementById('aux-cap');
+  ac.textContent = auxCap + '%'; ac.style.color = auxCap <= 0 ? 'var(--red)' : auxCap < AUX_MAX ? 'var(--yellow)' : '';
+  const bc2 = document.getElementById('batt-cap');
+  bc2.textContent = battCap + '%' + (battLive ? '' : ' ⤺'); bc2.style.color = !battLive ? 'var(--dim)' : battCap <= 0 ? 'var(--red)' : '';
+  document.getElementById('auxdmg-v').textContent = (state.aux.auxDmg | 0) + '%';
+  document.getElementById('battdmg-v').textContent = (state.aux.battDmg | 0) + '%';
   ROUTE.forEach(([k]) => {
-    const opt = routeSystems.querySelector(`.route-opt[data-k="${k}"]`);
-    opt.querySelector('b').textContent = (state.aux[k] || 0) + '%';
-    opt.classList.toggle('active', k === routeSel);
-    opt.querySelector('input').checked = k === routeSel;
+    const r = state.aux[k] || (state.aux[k] = { aux: 0, batt: 0 });
+    r.aux = Math.max(0, Math.min(auxCap, r.aux | 0));               // clamp to the (possibly damaged) ceilings
+    r.batt = battLive ? Math.max(0, Math.min(battCap, r.batt | 0)) : 0;
+    const as = document.getElementById('sl-aux-' + k);
+    as.max = auxCap; if (document.activeElement !== as) as.value = r.aux;
+    document.getElementById('av-' + k).textContent = r.aux + '%';
+    const bs = document.getElementById('sl-batt-' + k);
+    bs.max = battCap; bs.disabled = !battLive || battCap <= 0;
+    if (document.activeElement !== bs) bs.value = r.batt;
+    const bvEl = document.getElementById('bv-' + k);
+    bvEl.textContent = r.batt + '%'; bvEl.style.color = battLive ? '' : 'var(--dim)';
+    const delivered = Math.min(Math.max(0, Math.min(100, state.power[k] | 0)), core);
+    const eff = Math.min(125, delivered + r.aux + r.batt);          // core (capped) + reserves
+    const effEl = document.getElementById('eff-' + k);
+    effEl.textContent = eff + '%'; effEl.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
   });
-  const cur = state.aux[routeSel] || 0;
-  document.getElementById('route-label').textContent = '▸ ' + ROUTE.find(r => r[0] === routeSel)[1];
-  document.getElementById('route-val').textContent = cur + '%';
-  const sl = document.getElementById('sl-route');
-  sl.max = String(cur + (POOL - total));            // can raise up to the remaining shared pool
-  if (document.activeElement !== sl) sl.value = cur;
 }
 
-// ---- hull ----
+// ---- ship integrity (derived from every system's health) ----
+const STATE_COLOR = { NOMINAL: 'var(--g1)', DAMAGED: 'var(--yellow)', CRITICAL: 'var(--red)', OFFLINE: 'var(--red)' };
 function renderHull() {
-  document.getElementById('hull-v').textContent = state.damage.hull;
-  document.querySelectorAll('#hull-seg button').forEach(b => {
-    const on = b.dataset.h === state.damage.hull;
-    b.classList.toggle('on', on);
-    b.classList.toggle('s0', on && b.dataset.h === 'NOMINAL');
-    b.classList.toggle('warn', on && b.dataset.h === 'DAMAGED');
-    b.classList.toggle('s1', false);
-    b.classList.toggle('s2', on && (b.dataset.h === 'CRITICAL' || b.dataset.h === 'OFFLINE'));
-  });
+  const si = shipIntegrity(state.damage, { auxDmg: state.aux.auxDmg | 0, battDmg: state.aux.battDmg | 0 });
+  state.damage.hull = si.level;                              // keep stored state in sync for the display + log
+  const hv = document.getElementById('hull-v');
+  hv.textContent = si.level + ' · ' + si.pct + '%'; hv.style.color = STATE_COLOR[si.level];
+  const hf = document.getElementById('hull-fill');
+  hf.style.width = si.pct + '%'; hf.style.background = STATE_COLOR[si.level];
 }
-document.querySelectorAll('#hull-seg button').forEach(b => b.addEventListener('click', () => {
-  state.damage.hull = b.dataset.h; renderHull(); saveDamage();
-}));
 
 // ---- altitude ----
 const altEl = document.getElementById('sl-alt');
@@ -465,15 +548,18 @@ function catGroup(cat) {   // one column per category (label + its buttons), gro
 AREAS.forEach(([k, label, cat]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.a = k;
   b.innerHTML = `${label}<span class="st"></span>`;
-  b.addEventListener('click', () => { state.damage.areas[k] = (state.damage.areas[k] + 1) % 3; renderAreas(); saveDamage(); });
+  b.addEventListener('click', () => {
+    state.damage.areas[k] = (state.damage.areas[k] + 1) % 3;
+    renderAreas(); renderPower(); renderRoute(); renderHull(); saveDamage(); savePower();   // reactor → core power; every area → ship integrity
+  });
   catGroup(cat).appendChild(b);
 });
 POWER_SUBS.forEach(([k, label]) => {
   const b = document.createElement('button'); b.className = 'area'; b.dataset.p = k;
   b.innerHTML = `${label}<span class="st"></span>`;
   b.addEventListener('click', () => {
-    state.power[k] = state.power[k] > 0 ? 0 : 25;   // not damageable — just cut/restore power
-    clampBudget(k); renderPower(); renderPowerSubs(); savePower();
+    state.power[k] = state.power[k] > 0 ? 0 : 100;   // cut/restore the system's core feed
+    renderPower(); renderRoute(); renderPowerSubs(); savePower();
   });
   catGroup('SUBSYSTEMS').appendChild(b);
 });
@@ -501,7 +587,7 @@ FANS.forEach(([k, label]) => {
   fanGrid.appendChild(div);
   div.querySelector('input').addEventListener('input', e => {
     state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
-    renderFans(); saveDamage();
+    renderFans(); renderRoute(); renderHull(); saveDamage();   // fans feed ship integrity (not core power)
   });
 });
 function renderFans() {
@@ -524,7 +610,7 @@ function renderShields() {
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
-  renderShields(); saveDamage();
+  renderShields(); renderHull(); saveDamage();
 }));
 
 function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
@@ -539,10 +625,13 @@ document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' 
 if (PLAYER) {
   document.body.classList.add('player');
   document.getElementById('con-title').textContent = 'PLAYER VIEW';
-  // only the power-routing control (slider + system radios) is operable
+  // only the per-system AUX/BATTERY routing sliders are operable (battery sliders
+  // stay gated by renderRoute — locked until the aux bank is damaged)
   document.querySelectorAll('input, button').forEach(el => {
-    if (el.id !== 'sl-route' && el.getAttribute('name') !== 'route') { el.disabled = true; el.tabIndex = -1; }
+    const route = /^sl-aux-|^sl-batt-/.test(el.id || '');
+    if (!route) { el.disabled = true; el.tabIndex = -1; }
   });
+  renderRoute();   // re-apply the battery lock after the blanket disable above
 }
 
 // keep in sync if another local tab changes things
@@ -552,7 +641,7 @@ addEventListener('storage', () => {
   state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
   state.timer = load('shipTimer', state.timer);
-  state.aux = Object.assign(defaultAux(), load('shipAux', state.aux));
+  state.aux = normAux(load('shipAux', state.aux));
   renderAll();
 });
 
@@ -575,11 +664,11 @@ const firebaseConfig = {
     document.getElementById('netdot').style.color = '#4ade80';
     document.getElementById('netlbl').textContent = 'CLOUD';
     // adopt cloud state on connect (so a fresh operator matches what's live)
-    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); renderPower(); renderPowerSubs(); } });
-    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); } });
+    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); KEYS_INIT_FIX(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
-    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = Object.assign(defaultAux(), d); renderRoute(); } });
+    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = normAux(d); renderRoute(); renderHull(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
