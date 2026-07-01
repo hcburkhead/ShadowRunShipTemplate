@@ -235,7 +235,7 @@
 
   <div class="readouts">
     <div class="card">
-      <span class="h">HULL INTEGRITY</span>
+      <span class="h">SHIP INTEGRITY</span>
       <span class="hull-state" id="hull-state">NOMINAL</span>
       <span class="hull-sub" id="hull-sub">all sections green</span>
     </div>
@@ -905,23 +905,34 @@ const HULL = {
 };
 function intColor(p) { return p > 66 ? '#4ade80' : p > 33 ? '#facc15' : '#ef4444'; }
 
-// CORE POWER derived from ship integrity (mirrors the operator console): the hull
-// sets the ceiling, the reactor weighs heavily, the rest of the ship trims the top.
-// A dead hull or reactor zeroes core power. AUX/BATTERY reserves are NOT included.
-const HULL_CORE = { NOMINAL: 100, DAMAGED: 60, CRITICAL: 30, OFFLINE: 0 };
-function coreFromIntegrity(dmg) {
-  const a = (dmg && dmg.areas) || {};
-  const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);
-  const reactor = ah(a.reactor);
-  const hull = (dmg && dmg.hull) || 'NOMINAL';
-  if (hull === 'OFFLINE' || reactor === 0) return 0;
-  const base = HULL_CORE[hull] != null ? HULL_CORE[hull] : 100;
-  const others = ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft','fanFP','fanFS','fanAP','fanAS'];
-  let sum = 0; others.forEach(k => sum += ah(a[k]));
-  const cond = sum / others.length;
-  return Math.max(0, Math.min(100, Math.round(base * (0.3 + 0.5 * reactor + 0.2 * cond))));
+// CORE POWER comes straight off the core reactor (its own physical system) — it is
+// NOT tied to hull/structure (mirrors the operator console). Reactor ONLINE = 100%,
+// DAMAGED = 50%, OFFLINE = 0%; when it drops players fall back to AUX, then BATTERY.
+const ahHealth = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);       // system health 0/0.5/1
+function coreFromReactor(dmg) {
+  const r = ((dmg && dmg.areas) || {}).reactor | 0;
+  return r >= 2 ? 0 : r >= 1 ? 50 : 100;
 }
 const AUX_MAX = 50, BATT_MAX = 25;
+// SHIP INTEGRITY is derived: the three power systems (reactor, aux, battery) work
+// together to keep the ship nominal, and each damaged system drags the overall
+// state down as things break. Aux/battery bank damage counts toward the state.
+function shipIntegrity(dmg, auxInfo) {
+  const a = (dmg && dmg.areas) || {};
+  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0, battDmg = auxInfo ? (auxInfo.battDmg | 0) : 0;
+  const W = [
+    [ahHealth(a.reactor), 3],                                 // core reactor
+    [(AUX_MAX - auxDmg) / AUX_MAX, 2],                         // auxiliary system
+    [(BATT_MAX - battDmg) / BATT_MAX, 1],                      // battery system
+  ];
+  ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ahHealth(a[k]), 1]));
+  ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ahHealth(a[k]), 0.5]));
+  (Array.isArray(dmg && dmg.shieldPanels) ? dmg.shieldPanels : [0,0,0,0]).forEach(v => W.push([ahHealth(v), 0.25]));
+  let num = 0, den = 0; W.forEach(([h, w]) => { num += Math.max(0, Math.min(1, h)) * w; den += w; });
+  const pct = den ? num / den * 100 : 100;
+  const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
+  return { pct: Math.round(pct), level };
+}
 // normalize the player reserve store into per-system {aux,batt} + bank damage
 function readAux() {
   let raw = {};
@@ -963,10 +974,10 @@ function readState() {
                      : (Array.isArray(dmg.engines)  ? dmg.engines  : [100,100,100,100]);
   const boosters = a ? [A2V(a.boostP), A2V(a.boostS)]
                      : (Array.isArray(dmg.boosters) ? dmg.boosters : [100,100]);
-  // core power tracks ship integrity; each system's per-system throttle (0-100,
+  // core power comes off the reactor; each system's per-system throttle (0-100,
   // legacy 0-25 rescaled) caps how much core it draws, then players' AUX/BATTERY
   // reserves stack on top to restore a starved system to sub-optimal levels.
-  const core = coreFromIntegrity(dmg);
+  const core = coreFromReactor(dmg);
   const thr = k => { let v = num(pw[k], 100); if (v > 0 && v <= 25) v = Math.round(v / 25 * 100); return Math.max(0, Math.min(100, v)); };
   const aux = readAux();
   const SYS = ['eng', 'drones', 'weapons', 'shields'];
@@ -976,10 +987,11 @@ function readState() {
     const r = aux.sys[k];
     effective[k] = Math.min(125, Math.min(throttle[k], core) + r.aux + r.batt);
   });
+  const si = shipIntegrity(dmg, aux);                          // derived overall ship state
   return {
     eng: effective.eng, drones: effective.drones,
     weapons: effective.weapons, shields: effective.shields,
-    hull: dmg.hull || 'NOMINAL',
+    hull: si.level, hullPct: si.pct,
     engines, boosters,
     aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
     core, throttle, aux: aux.sys,
@@ -1072,12 +1084,12 @@ function logDiff(s) {
                st === 2 ? 'drop' : st === 1 ? 'warn' : 'gain');
     }
   }
-  if (snap.hull !== logPrev.hull) {                              // hull integrity
+  if (snap.hull !== logPrev.hull) {                              // derived ship integrity level
     const worse = (HULL_RANK[snap.hull] || 0) > (HULL_RANK[logPrev.hull] || 0);
-    logEvent((worse ? '⚠ ' : '● ') + 'HULL ' + snap.hull,
+    logEvent((worse ? '⚠ ' : '● ') + 'SHIP INTEGRITY ' + snap.hull,
              snap.hull === 'NOMINAL' ? 'gain' : snap.hull === 'DAMAGED' ? 'warn' : 'drop');
   }
-  if (Math.abs(snap.core - logPrev.core) >= 8) {                 // core power tracking ship integrity
+  if (Math.abs(snap.core - logPrev.core) >= 8) {                 // core power from the reactor
     const down = snap.core < logPrev.core;
     logEvent((down ? '↓ ' : '↑ ') + 'CORE POWER — ' + snap.core + '%', snap.core <= 0 ? 'drop' : down ? 'warn' : 'gain');
   }
@@ -1105,12 +1117,12 @@ function render() {
   readTimer();
   logDiff(s);
 
-  // hull
+  // ship integrity (derived overall state)
   const h = HULL[s.hull] || HULL.NOMINAL;
   const hs = document.getElementById('hull-state');
   hs.textContent = s.hull; hs.style.color = h.c;
   hs.classList.toggle('flash', s.hull === 'DAMAGED');   // yellow blinks; critical/offline stay solid
-  document.getElementById('hull-sub').textContent = h.sub;
+  document.getElementById('hull-sub').textContent = s.hullPct + '% — ' + h.sub;
   document.getElementById('op-hull').textContent = s.hull;
   document.getElementById('op-hull').style.color = h.c;
 

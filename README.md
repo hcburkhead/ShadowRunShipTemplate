@@ -15,33 +15,40 @@ no build step; just open the files (or host on GitHub Pages).
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
 cross-device play.
 
-## Power model (three tiers, per system)
-Each system (engines / drones / weapons / shields) is fed in three tiers:
-- **Core power — 100%.** The main supply, **derived from ship integrity** (hull
-  sets the ceiling, the reactor weighs heavily, the rest of the ship trims the
-  top; a dead hull or reactor zeroes it). At 100% every system is fully fed and
-  **players do nothing**. As the ship takes damage, core power drops — restore it
-  by repairing the ship (DM challenges).
-- **Auxiliary — up to 50%.** A player-routed reserve. When core power is down,
-  players route aux into a system to bring it back to **sub-optimal** levels.
-  *Not* affected by ship integrity; the DM can damage the aux bank separately.
-- **Battery backup — up to 25%.** A fallback reserve that **unlocks once the aux
-  bank is damaged**. *Not* affected by ship integrity.
+## Power model — three separate physical systems
+The ship runs on three independent power systems that work together to keep it in
+a nominal state; each feeds every system (engines / drones / weapons / shields):
+- **Core reactor — 100%.** Its own physical system. Core (main) power comes
+  straight off the reactor: **ONLINE = 100%**, **DAMAGED = 50%**, **OFFLINE = 0%**.
+  At 100% every system is fully fed and **players do nothing**. If the reactor is
+  hit (by the DM or players), core power drops and players fall back to the
+  reserves — restore the reactor via DM challenges.
+- **Auxiliary — up to 50%.** A separate reserve players route into a starved
+  system to bring it back to **sub-optimal** levels when core power is down. The
+  DM can damage the aux bank; *not* drained by ship integrity.
+- **Battery backup — up to 25%.** A separate fallback reserve that **unlocks once
+  the aux bank is damaged**. The DM can damage it too; *not* drained by ship
+  integrity.
+
+**Ship integrity** is **derived** from the combined health of these three systems
+plus the rest of the ship (areas, lift fans, shield panels). As systems break, the
+overall state degrades **NOMINAL → DAMAGED → CRITICAL → OFFLINE** on its own.
 
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
 
 ## What the DM controls (operator.html)
-- **Core power** — read-only; it tracks ship integrity automatically.
+- **Core power** — read-only; it reflects the core reactor's state.
 - **System power** — a per-system core throttle (0–100%), capped by the current
   core level. Throttle or cut any system.
 - **Aux / battery routing** — players route per-system aux (50%) and battery
   (25%); the DM can **damage the aux/battery banks** (independent of ship
   integrity), which lowers their ceiling and unlocks the battery fallback.
-- **Damage control** — set each area (bridge, reactor, AI core, drone bay,
-  weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus hull
-  integrity and the four directional shield panels. Hull + reactor + area damage
-  feed the core-power calculation.
+- **Ship integrity** — read-only, derived from every system's health.
+- **Damage control** — set each area (bridge, **reactor**, AI core, drone bay,
+  weapons, boosters, lift fans) to ONLINE / DAMAGED / OFFLINE, plus the four
+  directional shield panels. The reactor drives core power; every system (plus
+  aux/battery bank damage) feeds the derived ship-integrity state.
 - **Altitude** — slider that raises/lowers the ship projection.
 - **Impact timer** — a set / start / stop / reset countdown (defaults to 10:00)
   shown top-right on the display; at 0:00 the ship "impacts" (resettable).

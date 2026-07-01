@@ -187,11 +187,11 @@
       <section class="block power-block">
         <h3 class="block-title">⚡ POWER &amp; RESERVES</h3>
         <div class="block-grid">
-          <!-- CORE POWER (derived from ship integrity — repair the ship to restore it) -->
+          <!-- CORE POWER (produced by the core reactor — its own system) -->
           <div class="card">
             <h2>CORE POWER <span class="v" id="core-v">100%</span></h2>
             <div class="corebar"><div class="corefill" id="core-fill"></div></div>
-            <div class="hint" id="core-sub">Main power tracks ship integrity. At 100% every system is fully fed — players do nothing. Damage the hull / reactor to drop it; repair (DM challenges) to restore it.</div>
+            <div class="hint" id="core-sub">Produced by the CORE REACTOR (own system). Reactor ONLINE = 100% and every system is fully fed — players do nothing. Reactor DAMAGED = 50%, OFFLINE = 0% — players fall back to AUX, then BATTERY. Restore the reactor via DM challenges.</div>
           </div>
 
           <!-- SYSTEM POWER (DM per-system core throttle, capped by core power) -->
@@ -245,15 +245,11 @@
       <section class="block">
         <h3 class="block-title">⛨ DAMAGE &amp; DEFENSE</h3>
         <div class="block-grid">
-          <!-- HULL INTEGRITY -->
+          <!-- SHIP INTEGRITY (derived — reflects the combined health of every system) -->
           <div class="card">
-            <h2>HULL INTEGRITY <span class="v" id="hull-v">NOMINAL</span></h2>
-            <div class="seg" id="hull-seg">
-              <button data-h="NOMINAL">NOMINAL</button>
-              <button data-h="DAMAGED">DAMAGED</button>
-              <button data-h="CRITICAL">CRITICAL</button>
-              <button data-h="OFFLINE">OFFLINE</button>
-            </div>
+            <h2>SHIP INTEGRITY <span class="v" id="hull-v">NOMINAL · 100%</span></h2>
+            <div class="corebar"><div class="corefill" id="hull-fill"></div></div>
+            <div class="hint">Auto-derived from the core reactor, aux &amp; battery systems, and the rest of the ship. As systems break the state degrades NOMINAL → DAMAGED → CRITICAL → OFFLINE. Damage systems below to change it.</div>
           </div>
 
           <!-- SHIELD PANELS -->
@@ -323,22 +319,38 @@ function normAux(raw) {
   return o;
 }
 
-// CORE POWER derived from ship integrity: the hull sets the ceiling, the reactor
-// weighs heavily, and the rest of the ship's condition trims the top. A dead hull
-// or dead reactor zeroes core power. AUX/BATTERY are deliberately NOT included.
-const HULL_CORE = { NOMINAL: 100, DAMAGED: 60, CRITICAL: 30, OFFLINE: 0 };
-function coreFromIntegrity(dmg) {
+// The three power systems are separate physical systems:
+//   CORE reactor — produces core (main) power. Its own system: reactor health
+//                  alone sets core power (ONLINE 100 / DAMAGED 50 / OFFLINE 0).
+//   AUX bank     — a separate reserve system players route (DM-damageable).
+//   BATTERY bank — a separate fallback reserve (DM-damageable).
+// CORE POWER comes straight off the reactor — when it's hit, players fall back
+// to AUX (then BATTERY). It is NOT tied to hull/structure.
+const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);            // area/fan health 0/0.5/1
+function coreFromReactor(dmg) {
+  const r = ((dmg && dmg.areas) || {}).reactor | 0;
+  return r >= 2 ? 0 : r >= 1 ? 50 : 100;
+}
+
+// SHIP INTEGRITY is derived: the three power systems work together to keep the
+// ship nominal, and every damaged system drags the overall state down
+// (NOMINAL → DAMAGED → CRITICAL → OFFLINE) as things break. AUX/BATTERY bank
+// damage counts here (they're physical systems) even though it never drains core.
+function shipIntegrity(dmg, auxInfo) {
   const a = (dmg && dmg.areas) || {};
-  const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);          // area/fan health 0/0.5/1
-  const reactor = ah(a.reactor);
-  const hull = dmg && dmg.hull || 'NOMINAL';
-  if (hull === 'OFFLINE' || reactor === 0) return 0;        // hard offline
-  const base = HULL_CORE[hull] != null ? HULL_CORE[hull] : 100;
-  const others = ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft','fanFP','fanFS','fanAP','fanAS'];
-  let sum = 0; others.forEach(k => sum += ah(a[k]));
-  const cond = sum / others.length;                          // 0..1 overall ship condition
-  const factor = 0.3 + 0.5 * reactor + 0.2 * cond;           // 0.3..1.0
-  return Math.max(0, Math.min(100, Math.round(base * factor)));
+  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0, battDmg = auxInfo ? (auxInfo.battDmg | 0) : 0;
+  const W = [
+    [ah(a.reactor), 3],                                       // core reactor — the main power system
+    [(AUX_MAX - auxDmg) / AUX_MAX, 2],                        // auxiliary system
+    [(BATT_MAX - battDmg) / BATT_MAX, 1],                     // battery system
+  ];
+  ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ah(a[k]), 1]));
+  ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ah(a[k]), 0.5]));
+  (Array.isArray(dmg && dmg.shieldPanels) ? dmg.shieldPanels : [0,0,0,0]).forEach(v => W.push([ah(v), 0.25]));
+  let num = 0, den = 0; W.forEach(([h, w]) => { num += Math.max(0, Math.min(1, h)) * w; den += w; });
+  const pct = den ? num / den * 100 : 100;
+  const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
+  return { pct: Math.round(pct), level };
 }
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
@@ -378,7 +390,7 @@ const saveTimer  = () => pushKey('shipTimer', state.timer);
 // its own throttle (and never above the current core level on core alone).
 function intColor(p) { return p > 66 ? '' : p > 33 ? 'var(--yellow)' : 'var(--red)'; }
 function renderPower() {
-  const core = coreFromIntegrity(state.damage);
+  const core = coreFromReactor(state.damage);
   state.power.core = core;
   const cf = document.getElementById('core-fill');
   cf.style.width = core + '%';
@@ -420,13 +432,13 @@ ROUTE.forEach(([k, label]) => {
   });
 });
 document.getElementById('sl-auxdmg').addEventListener('input', e => {
-  state.aux.auxDmg = +e.target.value; renderRoute(); saveAux();
+  state.aux.auxDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
 });
 document.getElementById('sl-battdmg').addEventListener('input', e => {
-  state.aux.battDmg = +e.target.value; renderRoute(); saveAux();
+  state.aux.battDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
 });
 function renderRoute() {
-  const core = coreFromIntegrity(state.damage);
+  const core = coreFromReactor(state.damage);
   const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // bank ceiling after DM damage
   const battCap = Math.max(0, BATT_MAX - (state.aux.battDmg | 0));
   const battLive = (state.aux.auxDmg | 0) > 0;                       // battery unlocks once aux is damaged
@@ -455,21 +467,16 @@ function renderRoute() {
   });
 }
 
-// ---- hull ----
+// ---- ship integrity (derived from every system's health) ----
+const STATE_COLOR = { NOMINAL: 'var(--g1)', DAMAGED: 'var(--yellow)', CRITICAL: 'var(--red)', OFFLINE: 'var(--red)' };
 function renderHull() {
-  document.getElementById('hull-v').textContent = state.damage.hull;
-  document.querySelectorAll('#hull-seg button').forEach(b => {
-    const on = b.dataset.h === state.damage.hull;
-    b.classList.toggle('on', on);
-    b.classList.toggle('s0', on && b.dataset.h === 'NOMINAL');
-    b.classList.toggle('warn', on && b.dataset.h === 'DAMAGED');
-    b.classList.toggle('s1', false);
-    b.classList.toggle('s2', on && (b.dataset.h === 'CRITICAL' || b.dataset.h === 'OFFLINE'));
-  });
+  const si = shipIntegrity(state.damage, { auxDmg: state.aux.auxDmg | 0, battDmg: state.aux.battDmg | 0 });
+  state.damage.hull = si.level;                              // keep stored state in sync for the display + log
+  const hv = document.getElementById('hull-v');
+  hv.textContent = si.level + ' · ' + si.pct + '%'; hv.style.color = STATE_COLOR[si.level];
+  const hf = document.getElementById('hull-fill');
+  hf.style.width = si.pct + '%'; hf.style.background = STATE_COLOR[si.level];
 }
-document.querySelectorAll('#hull-seg button').forEach(b => b.addEventListener('click', () => {
-  state.damage.hull = b.dataset.h; renderHull(); renderPower(); renderRoute(); saveDamage(); savePower();
-}));
 
 // ---- altitude ----
 const altEl = document.getElementById('sl-alt');
@@ -543,7 +550,7 @@ AREAS.forEach(([k, label, cat]) => {
   b.innerHTML = `${label}<span class="st"></span>`;
   b.addEventListener('click', () => {
     state.damage.areas[k] = (state.damage.areas[k] + 1) % 3;
-    renderAreas(); renderPower(); renderRoute(); saveDamage(); savePower();   // areas (esp. reactor) feed core power
+    renderAreas(); renderPower(); renderRoute(); renderHull(); saveDamage(); savePower();   // reactor → core power; every area → ship integrity
   });
   catGroup(cat).appendChild(b);
 });
@@ -580,7 +587,7 @@ FANS.forEach(([k, label]) => {
   fanGrid.appendChild(div);
   div.querySelector('input').addEventListener('input', e => {
     state.damage.areas[k] = (100 - +e.target.value) / 50;   // 100→0 online, 50→1 dmg, 0→2 offline
-    renderFans(); renderPower(); renderRoute(); saveDamage(); savePower();   // fan damage trims core power
+    renderFans(); renderRoute(); renderHull(); saveDamage();   // fans feed ship integrity (not core power)
   });
 });
 function renderFans() {
@@ -603,7 +610,7 @@ function renderShields() {
 document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
-  renderShields(); saveDamage();
+  renderShields(); renderHull(); saveDamage();
 }));
 
 function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
@@ -661,7 +668,7 @@ const firebaseConfig = {
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
-    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = normAux(d); renderRoute(); } });
+    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = normAux(d); renderRoute(); renderHull(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
