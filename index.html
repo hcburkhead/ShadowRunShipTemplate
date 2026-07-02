@@ -106,6 +106,8 @@
   .tti-lbl{ display:block; font-size:8px; letter-spacing:2px; color:var(--red); }
   .tti-clock{ display:block; font:700 24px/1 'Courier New',monospace; color:var(--red);
     text-shadow:0 0 12px rgba(239,68,68,.85); }
+  /* over the red crash flood, brighten the countdown so it stays readable */
+  body.crashed .tti-lbl, body.crashed .tti-clock{ color:#fecaca; }
   @keyframes ttiPulse{ 0%,100%{opacity:1} 50%{opacity:.5} }
 
   .main{ grid-area:main; }
@@ -569,7 +571,10 @@ function updateFlight(dt) {
   const t = timerCfg;
   const tl = Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : (t.remaining || 0));
   const started = t.running || (t.remaining || 0) < (t.duration || 0) - 0.01;
-  document.body.classList.toggle('tti-on', started && !crashed);
+  // keep the countdown visible over a CORE OVERLOAD crash (the DM may be
+  // counting down to something else); hide it only when the crash IS the
+  // timer's own event — the banner already announces that
+  document.body.classList.toggle('tti-on', started && (!crashed || crashCause === 'overload'));
   const clk = $('tti-clock');
   if (clk) clk.textContent = fmtClock(tl);
   // self-destruct fires on EITHER the impact countdown reaching zero OR a reactor
