@@ -111,6 +111,12 @@ export function fmtClock(sec) {
   return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
 }
 
+// the "oh sh*t!" timer's event label (IMPACT, CORE MELTDOWN, HULL BREACH, …):
+// DM-entered free text, so normalize it the same way everywhere — uppercase,
+// bounded, markup-safe (it ends up in the display banner and the system log)
+export const normTimerLabel = l =>
+  String(l ?? '').toUpperCase().replace(/[<>&]/g, '').trim().slice(0, 24) || 'IMPACT';
+
 // safe localStorage JSON read
 export function readJSON(key, fallback = null) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }

@@ -51,6 +51,9 @@
   .timerset{ display:flex; align-items:center; gap:6px; }
   .timerset input[type=number]{ width:58px; font:inherit; font-size:15px; text-align:center;
     background:var(--panel2); color:var(--g1); border:1px solid var(--edge); border-radius:4px; padding:5px 4px; }
+  #in-tti-label{ width:100%; font:inherit; font-size:12px; letter-spacing:2px; text-transform:uppercase;
+    background:var(--panel2); color:var(--g1); border:1px solid var(--edge); border-radius:4px; padding:6px 8px; }
+  #in-tti-label:focus{ outline:none; border-color:var(--g3); }
   .timerset .tcolon{ color:var(--g1); font-size:15px; font-weight:bold; }
   .timerset .tunit{ font-size:8px; color:var(--dim); letter-spacing:2px; margin-left:4px; }
   #tti-ctl button.on{ background:var(--g1); border-color:var(--g1); color:#03130a; font-weight:bold; }
@@ -250,9 +253,15 @@
       <section class="block">
         <h3 class="block-title">✈ FLIGHT</h3>
         <div class="block-grid compact">
-          <!-- IMPACT TIMER (fan + altitude controls live on the viewport overlay) -->
+          <!-- "OH SH*T!" TIMER — general-purpose countdown to any catastrophe
+               (fan + altitude controls live on the viewport overlay) -->
           <div class="card">
-            <h2>IMPACT TIMER <span class="v" id="tti-v">10:00</span></h2>
+            <h2>OH SH*T! TIMER <span class="v" id="tti-v">10:00</span></h2>
+            <div class="row">
+              <div class="lbl"><span>EVENT</span></div>
+              <input type="text" id="in-tti-label" maxlength="24" value="IMPACT"
+                     aria-label="event label" autocomplete="off" spellcheck="false">
+            </div>
             <div class="timerset">
               <input type="number" min="0" max="99" step="1" value="10" id="in-tti-m" aria-label="minutes">
               <span class="tcolon">:</span>
@@ -264,7 +273,9 @@
               <button id="tti-stop">❚❚ STOP</button>
               <button id="tti-reset">↺ RESET</button>
             </div>
-            <div class="hint">set a duration, then start / stop / reset the impact countdown on the display.</div>
+            <div class="hint">name the event (IMPACT, CORE MELTDOWN, HULL BREACH…), set a duration, then
+              start / stop / reset. Players see the countdown top-right on the display; at 0:00 it floods
+              red with the event banner until you reset.</div>
           </div>
         </div>
       </section>
@@ -310,7 +321,7 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         firebaseDb } from './ship-model.js';
+         normTimerLabel, firebaseDb } from './ship-model.js';
 
 // element ids are static — resolve each at most once
 const domCache = {};
@@ -341,7 +352,7 @@ const state = {
   power:  load('shipPowerLevels', { eng: 100, drones: 100, weapons: 100, shields: 100 }),
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
-  timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
+  timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null, label: 'IMPACT' }),
   aux: normAux(load('shipAux', {})),
 };
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
@@ -500,18 +511,24 @@ altEl.addEventListener('input', () => {
 });
 function renderAlt() { altEl.value = state.altitude; $('alt-v').textContent = state.altitude + '%'; }
 
-// ---- DM-controlled impact timer (set / start / stop / reset) ----
-const ttiM = $('in-tti-m'), ttiS = $('in-tti-s');
+// ---- DM-controlled "oh sh*t!" timer (label / set / start / stop / reset) ----
+// a general-purpose countdown to any catastrophe: the EVENT label names it
+// (IMPACT, CORE MELTDOWN, …) and drives the display's countdown + 0:00 banner
+const ttiM = $('in-tti-m'), ttiS = $('in-tti-s'), ttiLbl = $('in-tti-label');
 function timerLeft() {   // live seconds remaining
   const t = state.timer;
   return Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : t.remaining);
 }
 function setDurationFromInputs() {   // editing the fields sets + resets the timer to that length
   const dur = Math.max(1, (parseInt(ttiM.value) || 0) * 60 + (parseInt(ttiS.value) || 0));
-  state.timer = { duration: dur, remaining: dur, running: false, endsAt: null };
+  state.timer = { duration: dur, remaining: dur, running: false, endsAt: null, label: normTimerLabel(ttiLbl.value) };
   saveTimer(); renderTimer();
 }
 [ttiM, ttiS].forEach(el => el.addEventListener('change', setDurationFromInputs));
+ttiLbl.addEventListener('change', () => {   // rename the event (works mid-countdown too)
+  state.timer.label = normTimerLabel(ttiLbl.value);
+  saveTimer(); renderTimer();
+});
 $('tti-start').addEventListener('click', () => {
   const t = state.timer;
   if (t.running) return;
@@ -534,6 +551,7 @@ function renderTimer() {
   const t = state.timer;
   if (document.activeElement !== ttiM) ttiM.value = Math.floor(t.duration / 60);
   if (document.activeElement !== ttiS) ttiS.value = t.duration % 60;
+  if (document.activeElement !== ttiLbl) ttiLbl.value = normTimerLabel(t.label);
   $('tti-v').textContent = fmtT(timerLeft());
   $('tti-start').classList.toggle('on', t.running);
 }
