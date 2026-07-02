@@ -10,6 +10,9 @@ no build step; just open the files (or host on GitHub Pages).
 - `index.html` — the holographic display: a perspective view + four profile
   views (dorsal / port / fore / aft), driven by shared state.
 - `holo.html` — standalone holo view.
+- `ship-model.js` — the shared power/damage model (pure functions + sync
+  constants); both `operator.html` and `index.html` import it, so the math
+  lives in one place.
 - `Helicarrier.fbx` — the ship model. `sts.png` — logo. `vendor/` — Three.js.
 
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
