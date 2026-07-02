@@ -98,8 +98,8 @@
     animation:crashPulse 1.1s ease-in-out infinite; }
   @keyframes crashPulse{ 0%,100%{opacity:1} 50%{opacity:.45} }
 
-  /* TIME TO IMPACT countdown — top-right of the perspective view, shown only
-     while more than two lift fans are down (players' cue to restore engines) */
+  /* "OH SH*T!" countdown — top-right of the perspective view (players see it
+     too); the DM sets the event label + duration from the operator console */
   .tti{ position:absolute; top:24px; right:10px; z-index:4; display:none; text-align:right;
     pointer-events:none; }
   body.tti-on .tti{ display:block; animation:ttiPulse 1s ease-in-out infinite; }
@@ -195,7 +195,7 @@
   <div class="frame main">
     <div class="vlabel">PERSPECTIVE</div><div class="tag" id="alt-tag">EDGES ONLY</div>
     <div class="tti" id="tti">
-      <span class="tti-lbl">&#9888; TIME TO IMPACT</span>
+      <span class="tti-lbl" id="tti-lbl">&#9888; TIME TO IMPACT</span>
       <span class="tti-clock" id="tti-clock">10:00</span>
     </div>
     <canvas id="cv-persp"></canvas>
@@ -280,7 +280,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
-         readJSON, firebaseDb } from './ship-model.js';
+         normTimerLabel, readJSON, firebaseDb } from './ship-model.js';
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const PARAMS = new URLSearchParams(location.search);
@@ -510,11 +510,16 @@ let cmdAlt = 100, curAlt = 100, crashed = false, crashCause = '', overloaded = f
 const engineLift = [1, 1, 1, 1];                    // per-fan lift = engine integrity / 100
 const fanBeamSign = [0, 0, 0, 0], fanLenSign = [0, 0, 0, 0];
 let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, curPitch = 0;
-// DM-controlled impact timer, mirrored from the operator via the shipTimer key
-let timerCfg = { duration: 600, remaining: 600, running: false, endsAt: null };
+// DM-controlled "oh sh*t!" timer, mirrored from the operator via the shipTimer
+// key. The DM names the event (IMPACT, CORE MELTDOWN, …); the label drives the
+// countdown header, the crash banner at 0:00, and the log lines.
+let timerCfg = { duration: 600, remaining: 600, running: false, endsAt: null, label: 'IMPACT' };
+const timerLabel = () => normTimerLabel(timerCfg.label);
 function readTimer() {
   const d = readJSON('shipTimer');
   if (d && typeof d.duration === 'number') timerCfg = d;
+  const lbl = $('tti-lbl');
+  if (lbl) lbl.textContent = '⚠ TIME TO ' + timerLabel();
 }
 
 function applyAltitude() {                          // read the operator's commanded altitude (0-100)
@@ -527,7 +532,8 @@ function enterCrash(cause) {
   if (persp && persp.controls) persp.controls.autoRotate = false;
   document.body.classList.add('crashed');
   const banner = document.querySelector('.crash-banner');
-  if (banner) banner.textContent = crashCause === 'overload' ? '⚠ CORE OVERLOAD' : '⚠ IMPACT';
+  const evt = crashCause === 'overload' ? 'CORE OVERLOAD' : timerLabel();
+  if (banner) banner.textContent = '⚠ ' + evt;
   // flood every view red — but stash each material's real colour first so the
   // operator can lift the ship back out of the crash by restoring its fans
   for (const v of views) v.scene.traverse(o => {
@@ -538,7 +544,7 @@ function enterCrash(cause) {
   });
   logEvent(crashCause === 'overload'
     ? '☠ CORE OVERLOAD — reactor pushed past 175%, self-destruct'
-    : '⚠ IMPACT — countdown reached zero', 'drop');
+    : '⚠ ' + evt + ' — countdown reached zero', 'drop');
   bumpStatic();
 }
 function exitCrash() {
@@ -551,14 +557,15 @@ function exitCrash() {
       o.material.userData._crashOC = undefined;
     }
   });
-  logEvent('▸ impact cleared — hull stable', 'gain');
+  logEvent('▸ alert cleared — ship stable', 'gain');
   render(true);   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
   if (!perspLift) return;
 
-  // IMPACT TIMER: driven entirely by the DM (set/start/stop/reset). The display
-  // shows it once started, "impacts" at 0:00, and clears when the DM resets it.
+  // "OH SH*T!" TIMER: driven entirely by the DM (label/set/start/stop/reset).
+  // The display shows the countdown once started, floods red with the event
+  // banner at 0:00, and clears when the DM resets it.
   const t = timerCfg;
   const tl = Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : (t.remaining || 0));
   const started = t.running || (t.remaining || 0) < (t.duration || 0) - 0.01;
@@ -587,7 +594,7 @@ function updateFlight(dt) {
   perspLift.rotation[pitchAxis] = curPitch * pitchDir;
 
   const tag = $('alt-tag');
-  if (tag) { tag.textContent = crashed ? (crashCause === 'overload' ? 'OVERLOAD' : 'IMPACT') : 'ALT ' + Math.round(curAlt) + '%';
+  if (tag) { tag.textContent = crashed ? (crashCause === 'overload' ? 'OVERLOAD' : timerLabel()) : 'ALT ' + Math.round(curAlt) + '%';
     tag.style.color = crashed ? '#ef4444' : ''; }
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
@@ -1084,8 +1091,9 @@ function logDiff(s) {
       logEvent((up ? '⚡ ' : '○ ') + ROUTE_LABELS[k] + ' reserve routed — ' + snap.aux[k] + '%', up ? 'gain' : 'warn');
     }
   }
-  if (snap.tRun !== logPrev.tRun) {                             // DM started / stopped the impact timer
-    logEvent(snap.tRun ? '▶ impact timer started (' + fmtClock(timerCfg.remaining) + ')' : '❚❚ impact timer stopped',
+  if (snap.tRun !== logPrev.tRun) {                             // DM started / stopped the countdown
+    logEvent(snap.tRun ? '▶ ' + timerLabel() + ' countdown started (' + fmtClock(timerCfg.remaining) + ')'
+                       : '❚❚ ' + timerLabel() + ' countdown stopped',
              snap.tRun ? 'warn' : '');
   }
   logPrev = snap;

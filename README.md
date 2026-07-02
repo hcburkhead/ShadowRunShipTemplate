@@ -79,8 +79,11 @@ in-game effect by hand.
   aux-bank damage) feeds the derived ship-integrity state. Only the **aux** bank is
   DM-damageable — the battery can't be damaged.
 - **Altitude** — slider that raises/lowers the ship projection.
-- **Impact timer** — a set / start / stop / reset countdown (defaults to 10:00)
-  shown top-right on the display; at 0:00 the ship "impacts" (resettable).
+- **"Oh sh*t!" timer** — a general-purpose set / start / stop / reset countdown
+  (defaults to 10:00) to any catastrophe. The DM names the event (IMPACT, CORE
+  MELTDOWN, HULL BREACH, …); the countdown shows top-right on the display —
+  players see it too — and at 0:00 the display floods red with the event banner
+  until the DM resets it.
 
 ## On the display (index.html)
 - Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
