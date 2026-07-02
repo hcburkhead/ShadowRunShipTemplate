@@ -90,6 +90,11 @@ export function normalizeAux(raw) {
 // reads as the average routed across the four systems, so the meter is
 // ship-wide. OVERDRIVE forces both banks to 100% output; a total past the
 // 175% redline flags an overload (→ self-destruct on the display).
+// the reactor can only be overloaded while it is producing FULL core power —
+// a damaged (50%) or offline (0%) reactor doesn't have enough output to push
+// the ship past the redline, so the self-destruct can't trigger.
+export const canOverload = core => core >= 100;
+
 export function shipMaxPower(core, aux) {
   let a = 100, b = 100;
   if (!(aux && aux.overdrive)) {
@@ -98,7 +103,7 @@ export function shipMaxPower(core, aux) {
     a = avg('aux'); b = avg('batt');
   }
   const total = core + a + b;
-  return { total, core, aux: a, batt: b, over: total > MAXPWR_REDLINE };
+  return { total, core, aux: a, batt: b, over: total > MAXPWR_REDLINE && canOverload(core) };
 }
 
 export function fmtClock(sec) {
