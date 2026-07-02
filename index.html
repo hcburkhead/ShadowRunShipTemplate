@@ -561,11 +561,11 @@ function exitCrash() {
   render(true);   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
-  if (!perspLift) return;
-
   // "OH SH*T!" TIMER: driven entirely by the DM (label/set/start/stop/reset).
   // The display shows the countdown once started, floods red with the event
-  // banner at 0:00, and clears when the DM resets it.
+  // banner at 0:00, and clears when the DM resets it. This runs BEFORE the
+  // model-loaded gate below so the countdown shows even while (or if) the
+  // 3D model is still loading.
   const t = timerCfg;
   const tl = Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : (t.remaining || 0));
   const started = t.running || (t.remaining || 0) < (t.duration || 0) - 0.01;
@@ -579,6 +579,8 @@ function updateFlight(dt) {
   const shouldCrash = impactActive || overloaded;
   if (shouldCrash && !crashed) enterCrash(!impactActive && overloaded ? 'overload' : 'impact');
   else if (!shouldCrash && crashed) exitCrash();
+
+  if (!perspLift) return;   // altitude + kerning need the loaded model
 
   // altitude: simply ride the operator's commanded altitude — no automatic drop
   curAlt += (cmdAlt - curAlt) * Math.min(1, dt * 1.5);

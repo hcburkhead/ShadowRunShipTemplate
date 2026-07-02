@@ -692,12 +692,20 @@ addEventListener('storage', () => {
     fb = { set, ref, db };
     $('netdot').style.color = '#4ade80';
     $('netlbl').textContent = 'CLOUD';
+    // write cloud state through to localStorage (+ broadcast) so the embedded
+    // display stays in sync even if its own Firebase connection fails — the
+    // display polls/listens to local storage regardless. Never writes back to
+    // Firebase, so there is no echo loop.
+    const mirrorLocal = (key, value) => {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+      if (bc) { try { bc.postMessage(Date.now()); } catch (e) {} }
+    };
     // adopt cloud state on connect (so a fresh operator matches what's live)
-    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); normPower(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
-    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
-    onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
-    onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
-    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { state.aux = normAux(d); renderRoute(); renderHull(); } });
+    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { mirrorLocal('shipPowerLevels', d); state.power = Object.assign(state.power, d); normPower(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
+    onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { mirrorLocal('shipDamageState', d); state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
+    onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { mirrorLocal('shipAltitude', d); state.altitude = d.v; renderAlt(); } });
+    onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { mirrorLocal('shipTimer', d); state.timer = d; renderTimer(); } });
+    onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { mirrorLocal('shipAux', d); state.aux = normAux(d); renderRoute(); renderHull(); } });
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
