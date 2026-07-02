@@ -972,13 +972,21 @@ function readAux() {
   return { sys, auxDmg, overdrive: !!raw.overdrive };
 }
 // ship-wide MAX POWER = core + aux output + battery output; overdrive forces both
-// banks to 100%. Above the 175% redline the reactor overloads → self-destruct.
+// banks to 100%. Overload/self-destruct requires FULL core power (100%) — a damaged
+// or offline reactor can't produce enough to overload — and the overdrive is only
+// reachable once both reserve banks are pushed to 100%.
 function shipMaxPower(core, auxInfo) {
-  if (auxInfo && auxInfo.overdrive) return { total: core + 200, core, aux: 100, batt: 100, over: core + 200 > MAXPWR_REDLINE };
   const SYS = ['eng','drones','weapons','shields'];
-  const avg = key => Math.round(SYS.reduce((t, k) => t + ((auxInfo && auxInfo.sys[k] && auxInfo.sys[k][key]) | 0), 0) / SYS.length);
-  const aux = avg('aux'), batt = avg('batt'), total = core + aux + batt;
-  return { total, core, aux, batt, over: total > MAXPWR_REDLINE };
+  const avgOf = key => SYS.reduce((t, k) => t + ((auxInfo && auxInfo.sys && auxInfo.sys[k] && auxInfo.sys[k][key]) | 0), 0) / SYS.length;
+  const avgAux = avgOf('aux'), avgBatt = avgOf('batt');
+  const revealed = avgAux >= AUX_MAX && avgBatt >= BATT_MAX;   // both banks maxed out
+  const overdrive = !!(auxInfo && auxInfo.overdrive);
+  const aux = overdrive ? 100 : Math.round(avgAux);
+  const batt = overdrive ? 100 : Math.round(avgBatt);
+  const total = Math.round(core + aux + batt);
+  const canOverload = core === 100;                            // reactor at full power
+  const armed = overdrive && revealed && canOverload && total > MAXPWR_REDLINE;
+  return { total, core, aux, batt, over: total > MAXPWR_REDLINE, revealed, canOverload, armed };
 }
 
 // build the 6 engine integrity bars once
@@ -1164,13 +1172,15 @@ function render() {
   // is 175% (CORE 100 + AUX 50 + BATT 25); OVERDRIVE forces both banks to 100% and
   // drives it past the redline → reactor overload → self-destruct.
   const mp = s.maxPower, denom = 300;                           // meter tops out at core100+aux100+batt100
-  overloaded = mp.over;                                         // updateFlight reads this to fire self-destruct
+  overloaded = mp.armed;                                        // only fires at FULL core power (self-destruct flag)
   document.getElementById('pseg-core').style.width = (mp.core / denom * 100) + '%';
   document.getElementById('pseg-aux').style.width  = (mp.aux / denom * 100) + '%';
   document.getElementById('pseg-batt').style.width = (mp.batt / denom * 100) + '%';
   const pv = document.getElementById('pwr-val');
-  pv.textContent = mp.total + '%' + (mp.over ? ' ⚠' : '');
-  pv.style.color = mp.over ? '#ef4444' : mp.total >= MAXPWR_REDLINE ? '#f6a23c' : '';
+  // armed (full core, over redline) reads red; over-redline but core too low to
+  // overload reads amber (a spike the reactor can't turn into a detonation)
+  pv.textContent = mp.total + '%' + (mp.armed ? ' ☠' : mp.over ? ' ⚠' : '');
+  pv.style.color = mp.armed ? '#ef4444' : mp.over || mp.total >= MAXPWR_REDLINE ? '#f6a23c' : '';
 
   // engine structural integrity (4 props + 2 boosters)
   const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];

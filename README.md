@@ -37,11 +37,18 @@ plus the rest of the ship (areas, lift fans, shield panels). As systems break, t
 overall state degrades **NOMINAL → DAMAGED → CRITICAL → OFFLINE** on its own.
 
 **Max power & self-destruct.** A ship-wide **MAX POWER** meter reads CORE + AUX +
-BATTERY; the safe maximum is **175%** (core 100 + aux 50 + battery 25). Players have
-an **OVERDRIVE** control that forces both reserve banks to 100% output — pushing the
-total past the 175% redline **overloads the reactor and triggers the self-destruct
-sequence** (the display floods red with a CORE OVERLOAD banner). Backing overdrive
-off drops it below the redline and clears the overload.
+BATTERY; the safe maximum is **175%** (core 100 + aux 50 + battery 25). A hidden
+**OVERDRIVE** ("boost override") control forces both reserve banks to 100% output,
+pushing the total past the redline. It's deliberately obscure:
+- The overdrive button stays **hidden until players push both aux and battery to
+  100%** (every system maxed) — so stumbling into it isn't obvious.
+- Overload requires a **reactor at full power (core = 100%)**. If core is damaged
+  (50%) or offline (0%) there isn't enough power to overload — a flag reads
+  *INSUFFICIENT CORE* and nothing detonates.
+
+When armed (core 100% + overdrive), the reactor overloads and the **self-destruct
+sequence** fires — the display floods red with a CORE OVERLOAD banner. Backing
+overdrive off, or dropping the reserves, clears it.
 
 **Shields** are a special case. Available shield power follows core (main) power —
 full main = 100%, damaged main = 50%. Each of the four shield panels the DM marks

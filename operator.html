@@ -120,6 +120,11 @@
   .overdrive-btn:hover{ background:rgba(246,162,60,.12); }
   .overdrive-btn.on{ background:var(--red); border-color:var(--red); color:#160404; font-weight:bold;
     animation:lockpulse 1s ease-in-out infinite; }
+  .overdrive-btn[hidden]{ display:none; }
+  .overdrive-flag{ font-size:9px; letter-spacing:1px; text-align:center; padding:4px 6px; border-radius:4px; }
+  .overdrive-flag[hidden]{ display:none; }
+  .overdrive-flag.armed{ color:var(--red); border:1px solid var(--red); background:rgba(239,68,68,.12); }
+  .overdrive-flag.blocked{ color:var(--dim); border:1px solid var(--edge); }
 
   /* embedded holographic status panel */
   .holo{ position:relative; width:100%; border:1px solid var(--edge); border-radius:8px; overflow:hidden; background:#020a05; }
@@ -228,12 +233,13 @@
             <div id="route-rows" class="route-rows"></div>
             <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. BATTERY (up to 25%) is always available and can't be damaged. Reserves are independent of ship integrity.</div>
 
-            <!-- ship-wide MAX POWER meter + OVERDRIVE (players can deliberately overload) -->
+            <!-- ship-wide MAX POWER meter + hidden OVERDRIVE (revealed only when both
+                 reserve banks are pushed to 100%; overloads only at full core power) -->
             <div class="maxpwr">
               <div class="mp-h">MAX POWER <span class="v" id="maxpwr-v">100%</span> <span class="mp-red">redline 175%</span></div>
               <div class="corebar"><div class="corefill" id="maxpwr-fill"></div></div>
-              <button id="btn-overdrive" class="btn-wide overdrive-btn">⚠ OVERDRIVE — FORCE MAX POWER</button>
-              <div class="hint">Overdrive forces the AUX + BATTERY banks to 100% output. Pushing total ship power past the 175% redline overloads the reactor and triggers the SELF-DESTRUCT sequence.</div>
+              <button id="btn-overdrive" class="btn-wide overdrive-btn" hidden>⚠ OVERDRIVE — FORCE MAX POWER</button>
+              <div id="overdrive-flag" class="overdrive-flag" hidden></div>
             </div>
 
             <div class="bankdmg ctl-only">
@@ -353,14 +359,20 @@ function normAux(raw) {
 // driving the total past the redline (→ self-destruct). Aux/batt output are the
 // average routed across the systems, so the meter reads ship-wide.
 const MAXPWR_REDLINE = 175;
-function reserveOutputs(core, aux) {
-  if (aux && aux.overdrive) return { aux: 100, batt: 100 };
-  const avg = key => ROUTE.reduce((t, [k]) => t + ((aux && aux[k] && aux[k][key]) | 0), 0) / ROUTE.length;
-  return { aux: Math.round(avg('aux')), batt: Math.round(avg('batt')) };
-}
 function shipMaxPower(core, aux) {
-  const o = reserveOutputs(core, aux);
-  return { total: Math.round(core + o.aux + o.batt), core, aux: o.aux, batt: o.batt };
+  const avg = key => ROUTE.reduce((t, [k]) => t + ((aux && aux[k] && aux[k][key]) | 0), 0) / ROUTE.length;
+  const avgAux = avg('aux'), avgBatt = avg('batt');
+  // "boost override" only unlocks once both reserve banks are pushed to 100% output
+  const revealed = avgAux >= AUX_MAX && avgBatt >= BATT_MAX;
+  const overdrive = !!(aux && aux.overdrive);
+  const auxOut = overdrive ? 100 : Math.round(avgAux);
+  const battOut = overdrive ? 100 : Math.round(avgBatt);
+  const total = Math.round(core + auxOut + battOut);
+  // the reactor can only be overloaded at FULL core power — a damaged/offline
+  // reactor simply can't produce enough to blow (this is the self-destruct flag)
+  const canOverload = core === 100;
+  const armed = overdrive && revealed && canOverload && total > MAXPWR_REDLINE;
+  return { total, core, aux: auxOut, batt: battOut, over: total > MAXPWR_REDLINE, revealed, canOverload, armed };
 }
 
 // The three power systems are separate physical systems:
@@ -530,8 +542,11 @@ function renderRoute() {
   });
   renderMaxPower(core);
 }
-// ship-wide MAX POWER meter + OVERDRIVE state (self-destruct happens on the display)
+// ship-wide MAX POWER meter + hidden OVERDRIVE (self-destruct happens on the display)
 function renderMaxPower(core) {
+  // the boost override only unlocks once both reserve banks are at 100%; if the
+  // reserves fall back below that, hide it again and cancel any pending overdrive
+  if (!shipMaxPower(core, state.aux).revealed && state.aux.overdrive) { state.aux.overdrive = false; saveAux(); }
   const mp = shipMaxPower(core, state.aux);
   const over = mp.total > MAXPWR_REDLINE;
   const v = document.getElementById('maxpwr-v');
@@ -539,7 +554,17 @@ function renderMaxPower(core) {
   const f = document.getElementById('maxpwr-fill');
   f.style.width = Math.min(100, mp.total / 300 * 100) + '%';
   f.style.background = over ? 'var(--red)' : mp.total >= 150 ? 'var(--amber)' : 'var(--g1)';
-  document.getElementById('btn-overdrive').classList.toggle('on', !!state.aux.overdrive);
+  const btn = document.getElementById('btn-overdrive');
+  btn.hidden = !mp.revealed;                                   // stays hidden until both banks hit 100%
+  btn.classList.toggle('on', !!state.aux.overdrive);
+  const flag = document.getElementById('overdrive-flag');
+  if (state.aux.overdrive) {                                   // once engaged, report whether it will blow
+    flag.hidden = false;
+    flag.className = 'overdrive-flag ' + (mp.canOverload ? 'armed' : 'blocked');
+    flag.textContent = mp.canOverload
+      ? '☠ CORE OVERLOAD ARMED — SELF-DESTRUCT'
+      : '⚠ INSUFFICIENT CORE — reactor below 100%, cannot overload';
+  } else { flag.hidden = true; }
 }
 
 // ---- ship integrity (derived from every system's health) ----
