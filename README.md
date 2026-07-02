@@ -44,7 +44,16 @@ BATTERY; the safe maximum is **175%** (core 100 + aux 50 + battery 25). Players 
 an **OVERDRIVE** control that forces both reserve banks to 100% output — pushing the
 total past the 175% redline **overloads the reactor and triggers the self-destruct
 sequence** (the display floods red with a CORE OVERLOAD banner). Backing overdrive
-off drops it below the redline and clears the overload.
+off drops it below the redline and clears the overload. Two gates keep it hidden
+and honest:
+- The OVERDRIVE button **stays hidden** until the players fully commit both
+  reserve banks (every system's AUX at 50% and BATTERY at 25%) — the overload
+  isn't advertised up front.
+- The reactor can only be overloaded at **full core power**. If the core is at
+  50% (reactor damaged) or 0% (reactor offline), there isn't enough output to
+  push past the redline — an amber **insufficient core power** flag shows on the
+  MAX POWER panel and the self-destruct cannot trigger (an active overload also
+  clears if the core drops mid-overdrive).
 
 **Shields** are a special case. Available shield power follows core (main) power —
 full main = 100%, damaged main = 50%. Each of the four shield panels the DM marks
@@ -86,6 +95,7 @@ in-game effect by hand.
   yellow/red damage dots, the shield view showing which panel is under attack,
   main-power / integrity / subsystem readouts), plus the **three power controls
   players operate** — main-power system load, auxiliary routing, battery routing,
-  and the **OVERDRIVE** button. Everything else (damage control, integrity, flight,
+  and the **OVERDRIVE** button (hidden until both reserve banks are routed to
+  full). Everything else (damage control, integrity, flight,
   timer) is DM-only. Battery is always available; aux sliders lock out entirely
   (with a global offline banner) once the DM fully damages the aux bank.
