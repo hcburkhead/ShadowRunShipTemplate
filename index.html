@@ -278,9 +278,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
+import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
+         shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
+         readJSON, firebaseDb } from './ship-model.js';
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
-const MODEL_URL = new URLSearchParams(location.search).get('model') || 'Helicarrier.fbx';
+const PARAMS = new URLSearchParams(location.search);
+const MODEL_URL = PARAMS.get('model') || 'Helicarrier.fbx';
+// element ids are static — resolve each at most once
+const domCache = {};
+const $ = id => domCache[id] ?? (domCache[id] = document.getElementById(id));
 
 // ---- wireframe + fit helpers (shared approach with holo.html) ----
 function wireframeOf(root, threshold = 24) {
@@ -417,6 +424,7 @@ function buildFanBlades(x, y, z, r) {
   const g = new THREE.Group();
   const upper = bladeSet(0.7, 1), lower = bladeSet(-0.7, -1);   // counter-rotating pair, centred in the duct
   g.add(upper, lower); g.userData.sets = [upper, lower];
+  g.userData.mats = [upper.children[0].material, lower.children[0].material];   // recoloured per fan state
   g.position.set(x, y, z);
   return g;
 }
@@ -505,18 +513,13 @@ let rollAxis = 'z', pitchAxis = 'x', rollDir = -1, pitchDir = 1, curRoll = 0, cu
 // DM-controlled impact timer, mirrored from the operator via the shipTimer key
 let timerCfg = { duration: 600, remaining: 600, running: false, endsAt: null };
 function readTimer() {
-  try { const d = JSON.parse(localStorage.getItem('shipTimer') || 'null');
-    if (d && typeof d.duration === 'number') timerCfg = d; } catch (e) {}
-}
-function fmtClock(sec) {
-  sec = Math.max(0, Math.ceil(sec));
-  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  const d = readJSON('shipTimer');
+  if (d && typeof d.duration === 'number') timerCfg = d;
 }
 
 function applyAltitude() {                          // read the operator's commanded altitude (0-100)
-  let alt = 100;
-  try { const d = JSON.parse(localStorage.getItem('shipAltitude') || 'null'); if (d && typeof d.v === 'number') alt = d.v; } catch (e) {}
-  cmdAlt = Math.max(0, Math.min(100, alt));
+  const d = readJSON('shipAltitude');
+  cmdAlt = clamp(d && typeof d.v === 'number' ? d.v : 100, 0, 100);
   if (!flightInit) { curAlt = cmdAlt; flightInit = true; }
 }
 function enterCrash(cause) {
@@ -536,6 +539,7 @@ function enterCrash(cause) {
   logEvent(crashCause === 'overload'
     ? '☠ CORE OVERLOAD — reactor pushed past 175%, self-destruct'
     : '⚠ IMPACT — countdown reached zero', 'drop');
+  bumpStatic();
 }
 function exitCrash() {
   crashed = false; crashCause = '';
@@ -548,7 +552,7 @@ function exitCrash() {
     }
   });
   logEvent('▸ impact cleared — hull stable', 'gain');
-  render();   // repaint state-driven colours (fans/drones/shields/dots) for current state
+  render(true);   // repaint state-driven colours (fans/drones/shields/dots) for current state
 }
 function updateFlight(dt) {
   if (!perspLift) return;
@@ -559,7 +563,7 @@ function updateFlight(dt) {
   const tl = Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : (t.remaining || 0));
   const started = t.running || (t.remaining || 0) < (t.duration || 0) - 0.01;
   document.body.classList.toggle('tti-on', started && !crashed);
-  const clk = document.getElementById('tti-clock');
+  const clk = $('tti-clock');
   if (clk) clk.textContent = fmtClock(tl);
   // self-destruct fires on EITHER the impact countdown reaching zero OR a reactor
   // overload (ship power past the 175% redline via overdrive). It clears when both
@@ -582,16 +586,16 @@ function updateFlight(dt) {
   perspLift.rotation[rollAxis] = curRoll * rollDir;
   perspLift.rotation[pitchAxis] = curPitch * pitchDir;
 
-  const tag = document.getElementById('alt-tag');
+  const tag = $('alt-tag');
   if (tag) { tag.textContent = crashed ? (crashCause === 'overload' ? 'OVERLOAD' : 'IMPACT') : 'ALT ' + Math.round(curAlt) + '%';
     tag.style.color = crashed ? '#ef4444' : ''; }
 }
 const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
 // ---- operator-triggered damage dots (read-only / player view only, ?dots) ----
-const DOTS = new URLSearchParams(location.search).has('dots');
-if (new URLSearchParams(location.search).has('bare')) document.body.classList.add('bare');  // player view: hide state readouts
-const LOGVIEW = new URLSearchParams(location.search).has('log');                              // DM view only: left-rail system log
+const DOTS = PARAMS.has('dots');
+if (PARAMS.has('bare')) document.body.classList.add('bare');  // player view: hide state readouts
+const LOGVIEW = PARAMS.has('log');                            // DM view only: left-rail system log
 if (LOGVIEW) document.body.classList.add('logview');
 let damageMarkers = [];
 let droneSwarms = [];    // procedural drones inside the hull (perspective + dorsal)
@@ -624,7 +628,7 @@ function updateFans(s) {
   if (crashed) return;                 // crash paints everything red — leave blades alone
   for (const { g, idx } of fanGroups) {
     const v = s.engines[idx] || 0, col = v > 66 ? 0xbef9d2 : v > 33 ? 0xfacc15 : 0xef4444;
-    g.traverse(o => { if (o.material) o.material.color.setHex(col); });   // colour both blade sets
+    for (const m of g.userData.mats) m.color.setHex(col);   // colour both blade sets
   }
 }
 function updateDrones(s) {
@@ -652,12 +656,14 @@ function addMarker(parent, x, y, z, evalFn) {
   damageMarkers.push({ mesh, eval: evalFn });
 }
 function updateMarkers(s) {
+  liveDots = false;
   if (!DOTS) return;
   for (const m of damageMarkers) {
     const r = m.eval(s);
     m.mesh.visible = !!(r && r.show);
     if (r && r.show) { m.mesh.material.color.setHex(r.color); m.mesh.userData.baseOp = r.op || 0.9;
-      m.mesh.userData.blink = r.color !== 0xef4444; }   // yellow (damaged) blinks; red (offline) stays solid
+      m.mesh.userData.blink = r.color !== 0xef4444;   // yellow (damaged) blinks; red (offline) stays solid
+      if (m.mesh.userData.blink) liveDots = true; }   // blinking dots keep the static views animating
   }
 }
 const dotEngine = i => s => { const v = s.engines[i]; return v > 66 ? { show: false } : { show: true, color: v > 33 ? 0xfacc15 : 0xef4444 }; };
@@ -684,6 +690,12 @@ const port = orthoView('cv-port', 'side');   // side profile
 const fore = orthoView('cv-fore', 'fore');   // bow end-on
 const aft  = orthoView('cv-aft',  'aft');    // stern end-on
 [persp, top, port, fore, aft].forEach(v => v && views.push(v));
+// port/fore/aft have no continuous animation (persp orbits, top spins fans/drones);
+// re-render them only for a few frames after something changes, or while a
+// blinking damage dot is visible
+[port, fore, aft].forEach(v => { if (v) v.isStatic = true; });
+let staticFrames = 3, liveDots = false;
+function bumpStatic() { staticFrames = 3; }
 
 // detect the hull's long axis + which end is the bow: the FRONT has a single
 // central intake that hangs deep on the centreline, the REAR has two side
@@ -736,6 +748,7 @@ function configureOrthos(model, axes) {
 function resize(v) {
   const w = v.canvas.clientWidth, h = v.canvas.clientHeight;
   if (!w || !h) return;
+  bumpStatic();
   v.renderer.setSize(w, h, false);
   const a = w / h;
   if (v.cam.isPerspectiveCamera) {
@@ -888,10 +901,12 @@ function tick() {
     if (w && h && (w !== v._w || h !== v._h)) { v._w = w; v._h = h; resize(v); }
   }
   if (shieldRing) {                                  // gentle breathing on the floor ring
-    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 700);
+    const pulse = 0.7 + 0.3 * Math.sin(now / 700);
     for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
   }
-  views.forEach(v => v.renderer.render(v.scene, v.cam));
+  const renderStatic = liveDots || staticFrames > 0;   // static views idle between changes
+  if (staticFrames > 0) staticFrames--;
+  for (const v of views) if (renderStatic || !v.isStatic) v.renderer.render(v.scene, v.cam);
 }
 requestAnimationFrame(tick);
 
@@ -914,72 +929,8 @@ const HULL = {
 };
 function intColor(p) { return p > 66 ? '#4ade80' : p > 33 ? '#facc15' : '#ef4444'; }
 
-// CORE POWER comes straight off the core reactor (its own physical system) — it is
-// NOT tied to hull/structure (mirrors the operator console). Reactor ONLINE = 100%,
-// DAMAGED = 50%, OFFLINE = 0%; when it drops players fall back to AUX, then BATTERY.
-const ahHealth = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);       // system health 0/0.5/1
-function coreFromReactor(dmg) {
-  const r = ((dmg && dmg.areas) || {}).reactor | 0;
-  return r >= 2 ? 0 : r >= 1 ? 50 : 100;
-}
-// SHIELD POWER (mirrors the operator): main power sets the available ceiling (full
-// = 100%, damaged = 50%); each DAMAGED/OFFLINE panel costs 13%. Offline panels are
-// a hard loss until DM repair; damaged panels are compensated by routed reserves.
-const SHIELD_PANEL_COST = 13;
-function shieldPower(core, throttle, auxV, battV, panels) {
-  const avail = Math.min(Math.max(0, Math.min(100, throttle | 0)), core);
-  let offline = 0, damaged = 0;
-  (Array.isArray(panels) ? panels : [0,0,0,0]).forEach(v => { v = Math.max(0, Math.min(2, v | 0)); if (v === 2) offline++; else if (v === 1) damaged++; });
-  const hardCap = Math.max(0, avail - SHIELD_PANEL_COST * offline);
-  const base = Math.max(0, hardCap - SHIELD_PANEL_COST * damaged);
-  return Math.round(Math.max(0, Math.min(hardCap, base + (auxV | 0) + (battV | 0))));
-}
-const AUX_MAX = 50, BATT_MAX = 25, MAXPWR_REDLINE = 175;
-// SHIP INTEGRITY is derived: the three power systems (reactor, aux, battery) work
-// together to keep the ship nominal, and each damaged system drags the overall
-// state down as things break. Aux bank damage counts; the battery can't be damaged.
-function shipIntegrity(dmg, auxInfo) {
-  const a = (dmg && dmg.areas) || {};
-  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0;
-  const W = [
-    [ahHealth(a.reactor), 3],                                 // core reactor
-    [(AUX_MAX - auxDmg) / AUX_MAX, 2],                         // auxiliary system
-    [1, 1],                                                    // battery system (undamageable)
-  ];
-  ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ahHealth(a[k]), 1]));
-  ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ahHealth(a[k]), 0.5]));
-  (Array.isArray(dmg && dmg.shieldPanels) ? dmg.shieldPanels : [0,0,0,0]).forEach(v => W.push([ahHealth(v), 0.25]));
-  let num = 0, den = 0; W.forEach(([h, w]) => { num += Math.max(0, Math.min(1, h)) * w; den += w; });
-  const pct = den ? num / den * 100 : 100;
-  const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
-  return { pct: Math.round(pct), level };
-}
-// normalize the player reserve store into per-system {aux,batt} + aux damage + overdrive.
-// battery is always available (can't be damaged); aux locks out only when fully damaged.
-function readAux() {
-  let raw = {};
-  try { raw = JSON.parse(localStorage.getItem('shipAux') || '{}') || {}; } catch (e) {}
-  const auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
-  const auxCap = Math.max(0, AUX_MAX - auxDmg), battCap = BATT_MAX;
-  const sys = {};
-  ['eng', 'drones', 'weapons', 'shields'].forEach(k => {
-    const r = raw[k];
-    let av = 0, bv = 0;
-    if (typeof r === 'number') av = r;                       // legacy shared-pool number
-    else if (r && typeof r === 'object') { av = +r.aux || 0; bv = +r.batt || 0; }
-    sys[k] = { aux: Math.max(0, Math.min(auxCap, av)), batt: Math.max(0, Math.min(battCap, bv)) };
-  });
-  return { sys, auxDmg, overdrive: !!raw.overdrive };
-}
-// ship-wide MAX POWER = core + aux output + battery output; overdrive forces both
-// banks to 100%. Above the 175% redline the reactor overloads → self-destruct.
-function shipMaxPower(core, auxInfo) {
-  if (auxInfo && auxInfo.overdrive) return { total: core + 200, core, aux: 100, batt: 100, over: core + 200 > MAXPWR_REDLINE };
-  const SYS = ['eng','drones','weapons','shields'];
-  const avg = key => Math.round(SYS.reduce((t, k) => t + ((auxInfo && auxInfo.sys[k] && auxInfo.sys[k][key]) | 0), 0) / SYS.length);
-  const aux = avg('aux'), batt = avg('batt'), total = core + aux + batt;
-  return { total, core, aux, batt, over: total > MAXPWR_REDLINE };
-}
+// The power model (core-from-reactor, shield power, ship integrity, reserves,
+// max power) lives in ship-model.js, shared verbatim with the operator console.
 
 // build the 6 engine integrity bars once
 const ENG_IDS = ['E1','E2','E3','E4','B1','B2'];
@@ -993,10 +944,8 @@ ENG_IDS.forEach(id => {
 
 const A2V = s => s >= 2 ? 0 : s >= 1 ? 50 : 100;   // area state (0/1/2) → integrity %
 function readState() {
-  let pw = {}, dmg = {};
-  try { pw  = JSON.parse(localStorage.getItem('shipPowerLevels') || '{}') || {}; } catch (e) {}
-  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
-  const num = (v, d) => Number.isFinite(+v) ? +v : d;
+  const pw  = readJSON('shipPowerLevels', {}) || {};
+  const dmg = readJSON('shipDamageState', {}) || {};
   const a = dmg.areas;
   // engines / boosters / AI derived from the area damage map (all DM-controlled)
   const engines  = a ? [A2V(a.fanFP), A2V(a.fanFS), A2V(a.fanAP), A2V(a.fanAS)]
@@ -1007,18 +956,18 @@ function readState() {
   // legacy 0-25 rescaled) caps how much core it draws, then players' AUX/BATTERY
   // reserves stack on top to restore a starved system to sub-optimal levels.
   const core = coreFromReactor(dmg);
-  const thr = k => { let v = num(pw[k], 100); if (v > 0 && v <= 25) v = Math.round(v / 25 * 100); return Math.max(0, Math.min(100, v)); };
-  const aux = readAux();
-  const SYS = ['eng', 'drones', 'weapons', 'shields'];
+  const aux = normalizeAux(readJSON('shipAux', {}));
   const throttle = {}, effective = {};
-  SYS.forEach(k => {
-    throttle[k] = thr(k);
-    const r = aux.sys[k];
+  let routedAux = 0, routedBatt = 0;
+  SYS_KEYS.forEach(k => {
+    throttle[k] = normThrottle(pw[k]);
+    const r = aux[k];
     effective[k] = Math.min(125, Math.min(throttle[k], core) + r.aux + r.batt);
+    routedAux += r.aux; routedBatt += r.batt;
   });
   // shields are panel-limited: main power sets the ceiling, damaged/offline panels
   // cost 13% each, and routed reserves compensate damaged panels up to the ceiling.
-  const rs = aux.sys.shields;
+  const rs = aux.shields;
   effective.shields = shieldPower(core, throttle.shields, rs.aux, rs.batt, dmg.shieldPanels);
   const si = shipIntegrity(dmg, aux);                          // derived overall ship state
   return {
@@ -1026,16 +975,16 @@ function readState() {
     weapons: effective.weapons, shields: effective.shields,
     hull: si.level, hullPct: si.pct,
     engines, boosters,
-    aiCore: a ? Math.max(0, Math.min(2, (a.aiCore || 0) | 0)) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
-    core, throttle, aux: aux.sys, overdrive: aux.overdrive,
+    aiCore: a ? clamp((a.aiCore || 0) | 0, 0, 2) : (dmg.aiCore ? 1 : 0),  // 0 online / 1 damaged / 2 offline
+    core, throttle, aux, overdrive: aux.overdrive,
     maxPower: shipMaxPower(core, aux),
-    routedAux: SYS.reduce((t, k) => t + aux.sys[k].aux, 0),
-    routedBatt: SYS.reduce((t, k) => t + aux.sys[k].batt, 0),
+    routedAux, routedBatt,
     areas: a || {},
+    panels: Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0],
   };
 }
 function setDot(id, c, flash) {
-  const d = document.getElementById(id);
+  const d = $(id);
   d.style.color = c; d.classList.toggle('flash', !!flash);
 }
 
@@ -1044,11 +993,13 @@ function setDot(id, c, flash) {
 // red when offline.
 const SHIELD_COL = { 0: '#4ade80', 1: '#facc15', 2: '#ef4444' };
 const SHIELD_HEX = { 0: 0x4ade80, 1: 0xfacc15, 2: 0xef4444 };
-function applyShield(spIn) {
-  let dmg = {};
-  try { dmg = JSON.parse(localStorage.getItem('shipDamageState') || '{}') || {}; } catch (e) {}
+function applyShield(spIn, panelsIn) {
+  let panels = panelsIn;
+  if (!Array.isArray(panels)) {
+    const dmg = readJSON('shipDamageState', {}) || {};
+    panels = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
+  }
   const sp = Number.isFinite(+spIn) ? +spIn : readState().shields;   // effective shield power 0-100
-  const panels  = Array.isArray(dmg.shieldPanels) ? dmg.shieldPanels : [0, 0, 0, 0];
   const offline = sp <= 0;
   const op = offline ? 0.5 : sp < 25 ? 0.45 : sp < 50 ? 0.6 : sp < 80 ? 0.78 : 0.95;
   const st = i => Math.max(0, Math.min(2, panels[i] | 0));
@@ -1074,7 +1025,7 @@ function logTs() {
 }
 function logEvent(msg, type) {
   if (!LOGVIEW) return;
-  const el = document.getElementById('log-entries');
+  const el = $('log-entries');
   if (!el) return;
   const r = document.createElement('div');
   r.className = 'log-entry';
@@ -1139,122 +1090,117 @@ function logDiff(s) {
   }
   logPrev = snap;
 }
-const logClearBtn = document.getElementById('log-clear');
+const logClearBtn = $('log-clear');
 if (logClearBtn) logClearBtn.addEventListener('click', () => {
-  const el = document.getElementById('log-entries');
+  const el = $('log-entries');
   if (el) el.innerHTML = '';
   logEvent('— log cleared.', '');
 });
 
-function render() {
-  const s = readState();
+let lastRaw = null;
+function render(force) {
+  // dirty check: the whole readout pipeline is driven by these stored keys, so
+  // when none of them changed (most poll ticks) there is nothing to repaint
+  const raw = SYNC_KEYS.map(k => localStorage.getItem(k)).join('\u0000');
+  if (!force && raw === lastRaw) return;
+  lastRaw = raw;
+
   readTimer();
+  const s = readState();
   logDiff(s);
 
   // ship integrity (derived overall state)
   const h = HULL[s.hull] || HULL.NOMINAL;
-  const hs = document.getElementById('hull-state');
+  const hs = $('hull-state');
   hs.textContent = s.hull; hs.style.color = h.c;
   hs.classList.toggle('flash', s.hull === 'DAMAGED');   // yellow blinks; critical/offline stay solid
-  document.getElementById('hull-sub').textContent = s.hullPct + '% — ' + h.sub;
-  document.getElementById('op-hull').textContent = s.hull;
-  document.getElementById('op-hull').style.color = h.c;
+  $('hull-sub').textContent = s.hullPct + '% — ' + h.sub;
+  $('op-hull').textContent = s.hull;
+  $('op-hull').style.color = h.c;
 
   // MAIN POWER — ship-wide MAX POWER meter = CORE + AUX + BATTERY output. Safe max
   // is 175% (CORE 100 + AUX 50 + BATT 25); OVERDRIVE forces both banks to 100% and
   // drives it past the redline → reactor overload → self-destruct.
   const mp = s.maxPower, denom = 300;                           // meter tops out at core100+aux100+batt100
   overloaded = mp.over;                                         // updateFlight reads this to fire self-destruct
-  document.getElementById('pseg-core').style.width = (mp.core / denom * 100) + '%';
-  document.getElementById('pseg-aux').style.width  = (mp.aux / denom * 100) + '%';
-  document.getElementById('pseg-batt').style.width = (mp.batt / denom * 100) + '%';
-  const pv = document.getElementById('pwr-val');
+  $('pseg-core').style.width = (mp.core / denom * 100) + '%';
+  $('pseg-aux').style.width  = (mp.aux / denom * 100) + '%';
+  $('pseg-batt').style.width = (mp.batt / denom * 100) + '%';
+  const pv = $('pwr-val');
   pv.textContent = mp.total + '%' + (mp.over ? ' ⚠' : '');
   pv.style.color = mp.over ? '#ef4444' : mp.total >= MAXPWR_REDLINE ? '#f6a23c' : '';
 
   // engine structural integrity (4 props + 2 boosters)
   const vals = [...s.engines.slice(0, 4), ...s.boosters.slice(0, 2)];
   ENG_IDS.forEach((id, i) => {
-    const p = Math.max(0, Math.min(100, Number.isFinite(+vals[i]) ? +vals[i] : 100));
-    document.getElementById('engv-' + id).textContent = p;
-    const f = document.getElementById('engf-' + id);
+    const p = clamp(Number.isFinite(+vals[i]) ? +vals[i] : 100, 0, 100);
+    $('engv-' + id).textContent = p;
+    const f = $('engf-' + id);
     f.style.width = p + '%'; f.style.background = intColor(p);
   });
 
   // subsystems
   const shd = band(s.shields), drn = band(s.drones), eng = band(s.eng);
   const wpnOn = s.weapons > 0, wpn = band(s.weapons);
+  const wpnLabel = wpnOn ? 'ONLINE' : 'OFFLINE', wpnColor = wpnOn ? wpn.c : '#ef4444';
   setDot('d-shd', shd.c, false);   // critical power shows solid red, no blink
-  document.getElementById('s-shd').textContent = shd.label;
-  document.getElementById('s-shd').style.color = shd.c;
+  $('s-shd').textContent = shd.label;
+  $('s-shd').style.color = shd.c;
 
-  setDot('d-wpn', wpnOn ? wpn.c : '#ef4444', false);
-  document.getElementById('s-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
-  document.getElementById('s-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
+  setDot('d-wpn', wpnColor, false);
+  $('s-wpn').textContent = wpnLabel;
+  $('s-wpn').style.color = wpnColor;
 
   setDot('d-drn', drn.c, false);   // critical power shows solid red, no blink
-  document.getElementById('s-drn').textContent = drn.label;
-  document.getElementById('s-drn').style.color = drn.c;
+  $('s-drn').textContent = drn.label;
+  $('s-drn').style.color = drn.c;
 
   // AI core: ONLINE (green) / DAMAGED (yellow) / OFFLINE (red)
   const aiLabel = s.aiCore >= 2 ? 'OFFLINE' : s.aiCore >= 1 ? 'DAMAGED' : 'ONLINE';
   const aiColor = s.aiCore >= 2 ? '#ef4444' : s.aiCore >= 1 ? '#facc15' : '#4ade80';
   setDot('d-ai', aiColor, s.aiCore === 1);   // blink only while damaged; offline stays solid red
-  document.getElementById('s-ai').textContent = aiLabel;
-  document.getElementById('s-ai').style.color = aiColor;
+  $('s-ai').textContent = aiLabel;
+  $('s-ai').style.color = aiColor;
 
   // ortho overlay readouts
-  document.getElementById('ot-eng').textContent = eng.label;
-  document.getElementById('ot-eng').style.color = eng.c;
-  document.getElementById('op-shd').textContent = shd.label;
-  document.getElementById('op-shd').style.color = shd.c;
-  document.getElementById('of-wpn').textContent = wpnOn ? 'ONLINE' : 'OFFLINE';
-  document.getElementById('of-wpn').style.color = wpnOn ? wpn.c : '#ef4444';
-  document.getElementById('of-ai').textContent = aiLabel;
-  document.getElementById('of-ai').style.color = aiColor;
-  document.getElementById('oa-drn').textContent = drn.label;
-  document.getElementById('oa-drn').style.color = drn.c;
-  document.getElementById('oa-hull').textContent = s.hull;
-  document.getElementById('oa-hull').style.color = h.c;
+  $('ot-eng').textContent = eng.label;
+  $('ot-eng').style.color = eng.c;
+  $('op-shd').textContent = shd.label;
+  $('op-shd').style.color = shd.c;
+  $('of-wpn').textContent = wpnLabel;
+  $('of-wpn').style.color = wpnColor;
+  $('of-ai').textContent = aiLabel;
+  $('of-ai').style.color = aiColor;
+  $('oa-drn').textContent = drn.label;
+  $('oa-drn').style.color = drn.c;
+  $('oa-hull').textContent = s.hull;
+  $('oa-hull').style.color = h.c;
 
   applyAltitude();
   updateFans(s);                       // keep engineLift fed even mid-crash (flight model reads it)
+  bumpStatic();                        // state changed → repaint the static profile views
   if (crashed) return;                 // crash latches every view red — don't repaint over it
-  applyShield(s.shields);              // effective shield power (core + reserves)
+  applyShield(s.shields, s.panels);    // effective shield power (core + reserves)
   updateMarkers(s);
   updateDrones(s);
 }
-render();
-addEventListener('storage', render);
-let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); bc.onmessage = render; } catch (e) {}
-setInterval(render, 1500);   // catch same-tab updates / damage-state edits
+render(true);
+addEventListener('storage', () => render());
+let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); bc.onmessage = () => render(); } catch (e) {}
+setInterval(render, 1500);   // catch same-tab updates / damage-state edits (no-op when unchanged)
 
 // ---- Firebase real-time sync ----
 // Mirrors the operator's cloud state into local storage so the display reflects
 // it live across devices. Loaded dynamically so the console still works offline.
-const firebaseConfig = {
-  apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
-  authDomain: "shadowrun-ship-db.firebaseapp.com",
-  databaseURL: "https://shadowrun-ship-db-default-rtdb.firebaseio.com",
-  projectId: "shadowrun-ship-db",
-  storageBucket: "shadowrun-ship-db.firebasestorage.app",
-  messagingSenderId: "584465229092",
-  appId: "1:584465229092:web:d17e05b242a6c99c8c3fb1"
-};
 (async () => {
   try {
-    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js");
-    const { getDatabase, ref, onValue } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js");
-    const db = getDatabase(initializeApp(firebaseConfig));
-    const mirror = (path) => onValue(ref(db, path), snap => {
+    const { db, ref, onValue } = await firebaseDb();
+    // mirror every synced key (power, damage, reserves, altitude, impact timer)
+    SYNC_KEYS.forEach(path => onValue(ref(db, path), snap => {
       const d = snap.val(); if (!d) return;
       try { localStorage.setItem(path, JSON.stringify(d)); } catch (e) {}
       render();
-    });
-    mirror('shipPowerLevels');     // per-system core throttle, written by the operator
-    mirror('shipDamageState');     // hull / engine / shield / subsystem damage (drives core power)
-    mirror('shipAux');             // players' per-system aux + battery reserve routing
-    mirror('shipAltitude');        // altitude → raises/lowers the projection
+    }));
   } catch (e) {
     console.warn('[console] Firebase unavailable — using local state.', e);
   }

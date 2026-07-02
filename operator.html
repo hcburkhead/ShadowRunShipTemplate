@@ -303,8 +303,16 @@
 <script type="module">
 // ---------------------------------------------------------------------------
 //  Operator console — writes ship state to Firebase + localStorage + BroadcastChannel
+//  The power/damage model itself lives in ship-model.js (shared with the display).
 // ---------------------------------------------------------------------------
-const KEYS = ['eng', 'drones', 'weapons', 'shields'];
+import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
+         coreFromReactor, normThrottle, shieldPower, shipIntegrity,
+         normalizeAux as normAux, shipMaxPower, fmtClock as fmtT,
+         firebaseDb } from './ship-model.js';
+
+// element ids are static — resolve each at most once
+const domCache = {};
+const $ = id => domCache[id] ?? (domCache[id] = document.getElementById(id));
 // damageable areas (key, label, category) — each cycles ONLINE/DAMAGED/OFFLINE
 // the 4 lift fans use sliders (mag-lev cohesion: 100 nominal / 50 suboptimal / 0 offline)
 const FANS = [['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S']];
@@ -317,100 +325,14 @@ const A_STATE = ['ONLINE', 'DAMAGED', 'OFFLINE'];
 const MLC = ['NOMINAL', 'SUBOPT', 'OFFLINE'];
 function defaultAreas() { const o = {}; [...FANS, ...AREAS].forEach(([k]) => o[k] = 0); return o; }
 
-// power model — three tiers per system:
-//   CORE 100%  : main power, derived from ship integrity (not hand-set). When the
-//                ship is whole it feeds every system fully; damage drops it.
+// power model — three tiers per system (see ship-model.js for the shared math):
+//   CORE 100%  : main power, straight off the core reactor (not hand-set).
 //   AUX  50%   : players route this to a system to restore it to sub-optimal levels
 //                when core power is down. Independent of ship integrity; DM-damageable.
 //   BATT 25%   : always-available fallback reserve. Can't be damaged, only routed out.
 // AUX/BATTERY are per-system reserves; only the AUX bank is DM-damageable (auxDmg).
 // It's a tracker — the DM applies effects in-game.
 const ROUTE = [['eng', 'ENGINES'], ['drones', 'DRONES'], ['weapons', 'WEAPONS'], ['shields', 'SHIELDS']];
-const AUX_MAX = 50, BATT_MAX = 25;          // per-system reserve ceilings
-// aux can be damaged (auxDmg); battery cannot. overdrive is the players' deliberate
-// overload boost — forcing both reserve banks to 100% output pushes ship power past
-// the 175% redline and triggers self-destruct.
-function defaultAux() {
-  const o = { auxDmg: 0, overdrive: false };
-  ROUTE.forEach(([k]) => o[k] = { aux: 0, batt: 0 });
-  return o;
-}
-// migrate the legacy shared-pool shape ({eng:Number,...}) → per-system {aux,batt}
-function normAux(raw) {
-  const o = defaultAux();
-  if (!raw || typeof raw !== 'object') return o;
-  o.auxDmg = Math.max(0, Math.min(AUX_MAX, +raw.auxDmg || 0));
-  o.overdrive = !!raw.overdrive;
-  ROUTE.forEach(([k]) => {
-    const r = raw[k];
-    if (typeof r === 'number') o[k] = { aux: Math.max(0, Math.min(AUX_MAX, r)), batt: 0 };
-    else if (r && typeof r === 'object') o[k] = { aux: Math.max(0, +r.aux || 0), batt: Math.max(0, +r.batt || 0) };
-  });
-  return o;
-}
-// ship-wide MAX POWER meter = core + aux output + battery output. Normal safe max
-// is CORE 100 + AUX 50 + BATT 25 = 175%. OVERDRIVE forces both banks to 100% output,
-// driving the total past the redline (→ self-destruct). Aux/batt output are the
-// average routed across the systems, so the meter reads ship-wide.
-const MAXPWR_REDLINE = 175;
-function reserveOutputs(core, aux) {
-  if (aux && aux.overdrive) return { aux: 100, batt: 100 };
-  const avg = key => ROUTE.reduce((t, [k]) => t + ((aux && aux[k] && aux[k][key]) | 0), 0) / ROUTE.length;
-  return { aux: Math.round(avg('aux')), batt: Math.round(avg('batt')) };
-}
-function shipMaxPower(core, aux) {
-  const o = reserveOutputs(core, aux);
-  return { total: Math.round(core + o.aux + o.batt), core, aux: o.aux, batt: o.batt };
-}
-
-// The three power systems are separate physical systems:
-//   CORE reactor — produces core (main) power. Its own system: reactor health
-//                  alone sets core power (ONLINE 100 / DAMAGED 50 / OFFLINE 0).
-//   AUX bank     — a separate reserve system players route (DM-damageable).
-//   BATTERY bank — a separate fallback reserve (DM-damageable).
-// CORE POWER comes straight off the reactor — when it's hit, players fall back
-// to AUX (then BATTERY). It is NOT tied to hull/structure.
-const ah = s => (s >= 2 ? 0 : s >= 1 ? 0.5 : 1);            // area/fan health 0/0.5/1
-function coreFromReactor(dmg) {
-  const r = ((dmg && dmg.areas) || {}).reactor | 0;
-  return r >= 2 ? 0 : r >= 1 ? 50 : 100;
-}
-
-// SHIELD POWER is special: main (core) power sets the ceiling of available shield
-// power (full main = 100%, damaged main = 50%), then each damaged/offline shield
-// panel costs 13%. OFFLINE (red) panels are a hard loss until the DM repairs them;
-// DAMAGED (yellow) panels can be compensated by players routing shield reserves
-// (aux/battery) back up to the available ceiling.
-const SHIELD_PANEL_COST = 13;
-function shieldPower(core, throttle, auxV, battV, panels) {
-  const avail = Math.min(Math.max(0, Math.min(100, throttle | 0)), core);   // main-power ceiling for shields
-  let offline = 0, damaged = 0;
-  (Array.isArray(panels) ? panels : [0,0,0,0]).forEach(v => { v = Math.max(0, Math.min(2, v | 0)); if (v === 2) offline++; else if (v === 1) damaged++; });
-  const hardCap = Math.max(0, avail - SHIELD_PANEL_COST * offline);          // offline panels: not player-compensable
-  const base = Math.max(0, hardCap - SHIELD_PANEL_COST * damaged);           // yellow panels drop it (recoverable)
-  return Math.round(Math.max(0, Math.min(hardCap, base + (auxV | 0) + (battV | 0))));
-}
-
-// SHIP INTEGRITY is derived: the three power systems work together to keep the
-// ship nominal, and every damaged system drags the overall state down
-// (NOMINAL → DAMAGED → CRITICAL → OFFLINE) as things break. AUX bank damage counts
-// here (it's a physical system); the battery can't be damaged, so it's always healthy.
-function shipIntegrity(dmg, auxInfo) {
-  const a = (dmg && dmg.areas) || {};
-  const auxDmg = auxInfo ? (auxInfo.auxDmg | 0) : 0;
-  const W = [
-    [ah(a.reactor), 3],                                       // core reactor — the main power system
-    [(AUX_MAX - auxDmg) / AUX_MAX, 2],                        // auxiliary system
-    [1, 1],                                                   // battery system (undamageable)
-  ];
-  ['boostP','boostS','bridge','aiCore','droneBay','wpnFwd','wpnAft'].forEach(k => W.push([ah(a[k]), 1]));
-  ['fanFP','fanFS','fanAP','fanAS'].forEach(k => W.push([ah(a[k]), 0.5]));
-  (Array.isArray(dmg && dmg.shieldPanels) ? dmg.shieldPanels : [0,0,0,0]).forEach(v => W.push([ah(v), 0.25]));
-  let num = 0, den = 0; W.forEach(([h, w]) => { num += Math.max(0, Math.min(1, h)) * w; den += w; });
-  const pct = den ? num / den * 100 : 100;
-  const level = pct >= 85 ? 'NOMINAL' : pct >= 50 ? 'DAMAGED' : pct >= 20 ? 'CRITICAL' : 'OFFLINE';
-  return { pct: Math.round(pct), level };
-}
 
 // authoritative local state (seeded from storage, overwritten by cloud on connect)
 const state = {
@@ -418,17 +340,13 @@ const state = {
   damage: load('shipDamageState', { hull: 'NOMINAL', shieldPanels: [0,0,0,0], areas: defaultAreas() }),
   altitude: load('shipAltitude', { v: 100 }).v,
   timer: load('shipTimer', { duration: 600, remaining: 600, running: false, endsAt: null }),
-  aux: normAux(load('shipAux', defaultAux())),
+  aux: normAux(load('shipAux', {})),
 };
 function load(k, def) { try { return Object.assign({}, def, JSON.parse(localStorage.getItem(k) || 'null') || {}); } catch (e) { return def; } }
 state.damage.areas = Object.assign(defaultAreas(), state.damage.areas || {});
-// legacy throttle values were 0-25; rescale any old per-system setting to 0-100
-KEYS_INIT_FIX(state.power);
-function KEYS_INIT_FIX(p) { ['eng','drones','weapons','shields'].forEach(k => {
-  if (typeof p[k] !== 'number') p[k] = 100;
-  if (p[k] > 0 && p[k] <= 25) p[k] = Math.round(p[k] / 25 * 100);   // migrate old 0-25 scale
-  p[k] = Math.max(0, Math.min(100, p[k]));
-}); delete p.battery; }
+// normalize throttles (rescales legacy 0-25 values) + drop the retired battery key
+normPower(state.power);
+function normPower(p) { KEYS.forEach(k => p[k] = normThrottle(p[k])); delete p.battery; }
 
 let bc = null; try { bc = new BroadcastChannel('shipPowerSync'); } catch (e) {}
 let fb = null;   // { set, ref, db } once Firebase connects
@@ -451,27 +369,28 @@ function intColor(p) { return p > 66 ? '' : p > 33 ? 'var(--yellow)' : 'var(--re
 function renderPower() {
   const core = coreFromReactor(state.damage);
   state.power.core = core;
-  const cf = document.getElementById('core-fill');
+  const cf = $('core-fill');
   cf.style.width = core + '%';
   cf.style.background = core > 66 ? 'var(--g1)' : core > 33 ? 'var(--yellow)' : 'var(--red)';
-  const cv = document.getElementById('core-v');
+  const cv = $('core-v');
   cv.textContent = core + '%'; cv.style.color = core > 66 ? '' : core > 33 ? 'var(--yellow)' : 'var(--red)';
-  document.getElementById('pwr-total').textContent = 'CORE ' + core + '%';
+  $('pwr-total').textContent = 'CORE ' + core + '%';
   KEYS.forEach(k => {
-    const thr = Math.max(0, Math.min(100, state.power[k] | 0));
-    const sl = document.getElementById('sl-' + k); if (document.activeElement !== sl) sl.value = thr;
+    const thr = clamp(state.power[k] | 0, 0, 100);
+    const sl = $('sl-' + k); if (document.activeElement !== sl) sl.value = thr;
     const delivered = Math.min(thr, core);                       // core actually reaching the system
-    const vEl = document.getElementById('v-' + k);
+    const vEl = $('v-' + k);
     vEl.textContent = delivered + '%'; vEl.style.color = intColor(delivered);
   });
 }
-KEYS.forEach(k => document.getElementById('sl-' + k).addEventListener('input', () => {
-  state.power[k] = +document.getElementById('sl-' + k).value;
+KEYS.forEach(k => $('sl-' + k).addEventListener('input', () => {
+  state.power[k] = +$('sl-' + k).value;
   renderPower(); renderRoute(); savePower();
 }));
 
 // ---- aux / battery routing (players): per-system reserves, DM-damageable banks ----
-const routeRows = document.getElementById('route-rows');
+const routeRows = $('route-rows');
+const routeEls = {};   // per-system element refs, resolved once at build time
 ROUTE.forEach(([k, label]) => {
   const row = document.createElement('div'); row.className = 'route-row'; row.dataset.k = k;
   row.innerHTML =
@@ -483,17 +402,22 @@ ROUTE.forEach(([k, label]) => {
   +     `<input type="range" min="0" max="25" step="1" value="0" id="sl-batt-${k}"></div>`
   + `</div>`;
   routeRows.appendChild(row);
-  row.querySelector('#sl-aux-' + k).addEventListener('input', e => {
+  const els = routeEls[k] = {
+    eff: row.querySelector('#eff-' + k),
+    auxV: row.querySelector('#av-' + k),   auxSl: row.querySelector('#sl-aux-' + k),
+    battV: row.querySelector('#bv-' + k),  battSl: row.querySelector('#sl-batt-' + k),
+  };
+  els.auxSl.addEventListener('input', e => {
     state.aux[k].aux = +e.target.value; renderRoute(); saveAux();
   });
-  row.querySelector('#sl-batt-' + k).addEventListener('input', e => {
+  els.battSl.addEventListener('input', e => {
     state.aux[k].batt = +e.target.value; renderRoute(); saveAux();
   });
 });
-document.getElementById('sl-auxdmg').addEventListener('input', e => {
+$('sl-auxdmg').addEventListener('input', e => {
   state.aux.auxDmg = +e.target.value; renderRoute(); renderHull(); saveAux(); saveDamage();
 });
-document.getElementById('btn-overdrive').addEventListener('click', () => {
+$('btn-overdrive').addEventListener('click', () => {
   state.aux.overdrive = !state.aux.overdrive; renderRoute(); saveAux();   // display recomputes ship power → self-destruct
 });
 function renderRoute() {
@@ -501,70 +425,66 @@ function renderRoute() {
   const auxCap  = Math.max(0, AUX_MAX - (state.aux.auxDmg | 0));     // aux ceiling after DM damage
   const battCap = BATT_MAX;                                          // battery can't be damaged
   const auxLive = auxCap > 0;                                        // aux locks out once the bank is fully damaged
-  const ac = document.getElementById('aux-cap');
+  const ac = $('aux-cap');
   ac.textContent = auxCap + '%' + (auxLive ? '' : ' ✖'); ac.style.color = auxCap <= 0 ? 'var(--red)' : auxCap < AUX_MAX ? 'var(--yellow)' : '';
-  const bc2 = document.getElementById('batt-cap');
-  bc2.textContent = battCap + '%'; bc2.style.color = '';
-  document.getElementById('reserve-lock').hidden = auxLive;         // global lockout banner when aux is offline
-  document.getElementById('auxdmg-v').textContent = (state.aux.auxDmg | 0) + '%';
+  const bcEl = $('batt-cap');
+  bcEl.textContent = battCap + '%'; bcEl.style.color = '';
+  $('reserve-lock').hidden = auxLive;         // global lockout banner when aux is offline
+  $('auxdmg-v').textContent = (state.aux.auxDmg | 0) + '%';
   ROUTE.forEach(([k]) => {
     const r = state.aux[k] || (state.aux[k] = { aux: 0, batt: 0 });
-    r.aux = Math.max(0, Math.min(auxCap, r.aux | 0));               // clamp aux to the (possibly damaged) ceiling
-    r.batt = Math.max(0, Math.min(battCap, r.batt | 0));            // battery always available up to its cap
-    const as = document.getElementById('sl-aux-' + k);
-    as.max = auxCap; as.disabled = !auxLive; if (document.activeElement !== as) as.value = r.aux;
-    const avEl = document.getElementById('av-' + k);
-    avEl.textContent = r.aux + '%'; avEl.style.color = auxLive ? '' : 'var(--dim)';
-    const bs = document.getElementById('sl-batt-' + k);
-    bs.max = battCap; bs.disabled = false;                          // battery is always operable now
-    if (document.activeElement !== bs) bs.value = r.batt;
-    document.getElementById('bv-' + k).textContent = r.batt + '%';
-    const delivered = Math.min(Math.max(0, Math.min(100, state.power[k] | 0)), core);
+    r.aux = clamp(r.aux | 0, 0, auxCap);               // clamp aux to the (possibly damaged) ceiling
+    r.batt = clamp(r.batt | 0, 0, battCap);            // battery always available up to its cap
+    const els = routeEls[k];
+    els.auxSl.max = auxCap; els.auxSl.disabled = !auxLive;
+    if (document.activeElement !== els.auxSl) els.auxSl.value = r.aux;
+    els.auxV.textContent = r.aux + '%'; els.auxV.style.color = auxLive ? '' : 'var(--dim)';
+    els.battSl.max = battCap; els.battSl.disabled = false;          // battery is always operable
+    if (document.activeElement !== els.battSl) els.battSl.value = r.batt;
+    els.battV.textContent = r.batt + '%';
+    const delivered = Math.min(clamp(state.power[k] | 0, 0, 100), core);
     // shields are panel-limited (reserves compensate damaged panels up to the main-power
     // ceiling); the other systems simply stack reserves on top of delivered core.
     const eff = k === 'shields'
       ? shieldPower(core, state.power.shields, r.aux, r.batt, state.damage.shieldPanels)
       : Math.min(125, delivered + r.aux + r.batt);
-    const effEl = document.getElementById('eff-' + k);
-    effEl.textContent = eff + '%'; effEl.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
+    els.eff.textContent = eff + '%'; els.eff.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
   });
   renderMaxPower(core);
 }
 // ship-wide MAX POWER meter + OVERDRIVE state (self-destruct happens on the display)
 function renderMaxPower(core) {
   const mp = shipMaxPower(core, state.aux);
-  const over = mp.total > MAXPWR_REDLINE;
-  const v = document.getElementById('maxpwr-v');
-  v.textContent = mp.total + '%'; v.style.color = over ? 'var(--red)' : mp.total >= MAXPWR_REDLINE ? 'var(--amber)' : '';
-  const f = document.getElementById('maxpwr-fill');
+  const v = $('maxpwr-v');
+  v.textContent = mp.total + '%'; v.style.color = mp.over ? 'var(--red)' : mp.total >= MAXPWR_REDLINE ? 'var(--amber)' : '';
+  const f = $('maxpwr-fill');
   f.style.width = Math.min(100, mp.total / 300 * 100) + '%';
-  f.style.background = over ? 'var(--red)' : mp.total >= 150 ? 'var(--amber)' : 'var(--g1)';
-  document.getElementById('btn-overdrive').classList.toggle('on', !!state.aux.overdrive);
+  f.style.background = mp.over ? 'var(--red)' : mp.total >= 150 ? 'var(--amber)' : 'var(--g1)';
+  $('btn-overdrive').classList.toggle('on', !!state.aux.overdrive);
 }
 
 // ---- ship integrity (derived from every system's health) ----
 const STATE_COLOR = { NOMINAL: 'var(--g1)', DAMAGED: 'var(--yellow)', CRITICAL: 'var(--red)', OFFLINE: 'var(--red)' };
 function renderHull() {
-  const si = shipIntegrity(state.damage, { auxDmg: state.aux.auxDmg | 0 });
+  const si = shipIntegrity(state.damage, state.aux);
   state.damage.hull = si.level;                              // keep stored state in sync for the display + log
-  const hv = document.getElementById('hull-v');
+  const hv = $('hull-v');
   hv.textContent = si.level + ' · ' + si.pct + '%'; hv.style.color = STATE_COLOR[si.level];
-  const hf = document.getElementById('hull-fill');
+  const hf = $('hull-fill');
   hf.style.width = si.pct + '%'; hf.style.background = STATE_COLOR[si.level];
 }
 
 // ---- altitude ----
-const altEl = document.getElementById('sl-alt');
+const altEl = $('sl-alt');
 altEl.addEventListener('input', () => {
   state.altitude = +altEl.value;
-  document.getElementById('alt-v').textContent = state.altitude + '%';
+  $('alt-v').textContent = state.altitude + '%';
   saveAlt();
 });
-function renderAlt() { altEl.value = state.altitude; document.getElementById('alt-v').textContent = state.altitude + '%'; }
+function renderAlt() { altEl.value = state.altitude; $('alt-v').textContent = state.altitude + '%'; }
 
 // ---- DM-controlled impact timer (set / start / stop / reset) ----
-const ttiM = document.getElementById('in-tti-m'), ttiS = document.getElementById('in-tti-s');
-const fmtT = sec => { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+const ttiM = $('in-tti-m'), ttiS = $('in-tti-s');
 function timerLeft() {   // live seconds remaining
   const t = state.timer;
   return Math.max(0, t.running && t.endsAt ? (t.endsAt - Date.now()) / 1000 : t.remaining);
@@ -575,20 +495,20 @@ function setDurationFromInputs() {   // editing the fields sets + resets the tim
   saveTimer(); renderTimer();
 }
 [ttiM, ttiS].forEach(el => el.addEventListener('change', setDurationFromInputs));
-document.getElementById('tti-start').addEventListener('click', () => {
+$('tti-start').addEventListener('click', () => {
   const t = state.timer;
   if (t.running) return;
   if (t.remaining <= 0) t.remaining = t.duration;     // a finished timer starts over
   t.running = true; t.endsAt = Date.now() + t.remaining * 1000;
   saveTimer(); renderTimer();
 });
-document.getElementById('tti-stop').addEventListener('click', () => {
+$('tti-stop').addEventListener('click', () => {
   const t = state.timer;
   if (!t.running) return;
   t.remaining = timerLeft(); t.running = false; t.endsAt = null;   // freeze (pause)
   saveTimer(); renderTimer();
 });
-document.getElementById('tti-reset').addEventListener('click', () => {
+$('tti-reset').addEventListener('click', () => {
   const t = state.timer;
   t.running = false; t.endsAt = null; t.remaining = t.duration;
   saveTimer(); renderTimer();
@@ -597,20 +517,21 @@ function renderTimer() {
   const t = state.timer;
   if (document.activeElement !== ttiM) ttiM.value = Math.floor(t.duration / 60);
   if (document.activeElement !== ttiS) ttiS.value = t.duration % 60;
-  document.getElementById('tti-v').textContent = fmtT(timerLeft());
-  document.getElementById('tti-start').classList.toggle('on', t.running);
+  $('tti-v').textContent = fmtT(timerLeft());
+  $('tti-start').classList.toggle('on', t.running);
 }
 setInterval(() => {   // live badge while the countdown runs
   if (!state.timer.running) return;
-  document.getElementById('tti-v').textContent = fmtT(timerLeft());
-  if (timerLeft() <= 0) { document.getElementById('tti-start').classList.remove('on'); }
+  const left = timerLeft();
+  $('tti-v').textContent = fmtT(left);
+  if (left <= 0) $('tti-start').classList.remove('on');
 }, 500);
 
 // ---- damageable areas (cycle ONLINE / DAMAGED / OFFLINE) ----
 // weapons + drones aren't damageable — they sit in the same list but just toggle
 // power on/off (ONLINE/OFFLINE), so clicking them cuts/restores their power.
 const POWER_SUBS = [['weapons', 'WEAPONS'], ['drones', 'DRONES']];
-const areaGrid = document.getElementById('area-grid');
+const areaGrid = $('area-grid');
 const catGroups = {};
 function catGroup(cat) {   // one column per category (label + its buttons), groups flow to fill width
   if (!catGroups[cat]) {
@@ -620,41 +541,46 @@ function catGroup(cat) {   // one column per category (label + its buttons), gro
   }
   return catGroups[cat];
 }
-AREAS.forEach(([k, label, cat]) => {
-  const b = document.createElement('button'); b.className = 'area'; b.dataset.a = k;
+function areaButton(label, cat, onClick) {
+  const b = document.createElement('button'); b.className = 'area';
   b.innerHTML = `${label}<span class="st"></span>`;
-  b.addEventListener('click', () => {
+  b._st = b.querySelector('.st');
+  b.addEventListener('click', onClick);
+  catGroup(cat).appendChild(b);
+  return b;
+}
+const setAreaBtn = (b, st, label) => {
+  b.classList.remove('s0', 's1', 's2'); b.classList.add('s' + st);
+  b._st.textContent = label;
+};
+const areaBtns = {}, subBtns = {};
+AREAS.forEach(([k, label, cat]) => {
+  areaBtns[k] = areaButton(label, cat, () => {
     state.damage.areas[k] = (state.damage.areas[k] + 1) % 3;
     renderAreas(); renderPower(); renderRoute(); renderHull(); saveDamage(); savePower();   // reactor → core power; every area → ship integrity
   });
-  catGroup(cat).appendChild(b);
 });
 POWER_SUBS.forEach(([k, label]) => {
-  const b = document.createElement('button'); b.className = 'area'; b.dataset.p = k;
-  b.innerHTML = `${label}<span class="st"></span>`;
-  b.addEventListener('click', () => {
+  subBtns[k] = areaButton(label, 'SUBSYSTEMS', () => {
     state.power[k] = state.power[k] > 0 ? 0 : 100;   // cut/restore the system's core feed
     renderPower(); renderRoute(); renderPowerSubs(); savePower();
   });
-  catGroup('SUBSYSTEMS').appendChild(b);
 });
 function renderAreas() {
   AREAS.forEach(([k]) => {
-    const st = state.damage.areas[k] | 0, b = areaGrid.querySelector(`[data-a="${k}"]`);
-    b.classList.remove('s0', 's1', 's2'); b.classList.add('s' + st);
-    b.querySelector('.st').textContent = A_STATE[st];
+    const st = state.damage.areas[k] | 0;
+    setAreaBtn(areaBtns[k], st, A_STATE[st]);
   });
 }
 function renderPowerSubs() {
   POWER_SUBS.forEach(([k]) => {
-    const on = state.power[k] > 0, b = areaGrid.querySelector(`[data-p="${k}"]`);
-    b.classList.remove('s0', 's1', 's2'); b.classList.add(on ? 's0' : 's2');
-    b.querySelector('.st').textContent = on ? 'ONLINE' : 'OFFLINE';
+    const on = state.power[k] > 0;
+    setAreaBtn(subBtns[k], on ? 0 : 2, on ? 'ONLINE' : 'OFFLINE');
   });
 }
 
 // ---- mag-lev cohesion: lift-fan sliders (snap 100 / 50 / 0 → area state 0 / 1 / 2) ----
-const fanGrid = document.getElementById('fan-rows');
+const fanGrid = $('fan-rows');
 FANS.forEach(([k, label]) => {
   const div = document.createElement('div'); div.className = 'row';
   div.innerHTML = `<div class="lbl"><span>${label}</span><b id="fv-${k}">MLC NOMINAL</b></div>`
@@ -667,22 +593,23 @@ FANS.forEach(([k, label]) => {
 });
 function renderFans() {
   FANS.forEach(([k]) => {
-    const st = Math.max(0, Math.min(2, state.damage.areas[k] | 0));
-    const el = document.getElementById('fs-' + k); if (document.activeElement !== el) el.value = 100 - st * 50;
-    const b = document.getElementById('fv-' + k);
+    const st = clamp(state.damage.areas[k] | 0, 0, 2);
+    const el = $('fs-' + k); if (document.activeElement !== el) el.value = 100 - st * 50;
+    const b = $('fv-' + k);
     b.textContent = MLC[st]; b.style.color = st === 0 ? 'var(--g1)' : st === 1 ? 'var(--yellow)' : 'var(--red)';
   });
 }
 
 // ---- shield panels (cycle N0/N1/N2) ----
 const SP_CLASS = ['lit0', 'lit1', 'lit2'];
+const shieldPads = [...document.querySelectorAll('.shieldpad .sp[data-i]')];
 function renderShields() {
-  document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => {
+  shieldPads.forEach(sp => {
     const st = state.damage.shieldPanels[+sp.dataset.i] | 0;
     sp.classList.remove('lit0', 'lit1', 'lit2'); sp.classList.add(SP_CLASS[st]);
   });
 }
-document.querySelectorAll('.shieldpad .sp[data-i]').forEach(sp => sp.addEventListener('click', () => {
+shieldPads.forEach(sp => sp.addEventListener('click', () => {
   const i = +sp.dataset.i;
   state.damage.shieldPanels[i] = (state.damage.shieldPanels[i] + 1) % 3;
   renderShields(); renderHull(); renderRoute(); saveDamage();   // panels affect shield power → EFF
@@ -696,10 +623,10 @@ const Q = new URLSearchParams(location.search);
 const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
 // players see the operator-triggered damage dots but no state readouts (bare)
 // the DM's embedded display carries the system log (?log=1); players never do
-document.getElementById('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
+$('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
 if (PLAYER) {
   document.body.classList.add('player');
-  document.getElementById('con-title').textContent = 'PLAYER VIEW';
+  $('con-title').textContent = 'PLAYER VIEW';
   // players operate the power controls — main-power system throttles, the per-system
   // AUX/BATTERY routing, and the OVERDRIVE button. Everything else is locked (DM-only).
   // (aux sliders re-lock via renderRoute when the aux bank is fully damaged.)
@@ -724,25 +651,14 @@ addEventListener('storage', () => {
 });
 
 // ---- Firebase (dynamic import; operator both writes and reads) ----
-const firebaseConfig = {
-  apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
-  authDomain: "shadowrun-ship-db.firebaseapp.com",
-  databaseURL: "https://shadowrun-ship-db-default-rtdb.firebaseio.com",
-  projectId: "shadowrun-ship-db",
-  storageBucket: "shadowrun-ship-db.firebasestorage.app",
-  messagingSenderId: "584465229092",
-  appId: "1:584465229092:web:d17e05b242a6c99c8c3fb1"
-};
 (async () => {
   try {
-    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js");
-    const { getDatabase, ref, set, onValue } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js");
-    const db = getDatabase(initializeApp(firebaseConfig));
+    const { db, ref, set, onValue } = await firebaseDb();
     fb = { set, ref, db };
-    document.getElementById('netdot').style.color = '#4ade80';
-    document.getElementById('netlbl').textContent = 'CLOUD';
+    $('netdot').style.color = '#4ade80';
+    $('netlbl').textContent = 'CLOUD';
     // adopt cloud state on connect (so a fresh operator matches what's live)
-    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); KEYS_INIT_FIX(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
+    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { state.power = Object.assign(state.power, d); normPower(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { state.timer = d; renderTimer(); } });
