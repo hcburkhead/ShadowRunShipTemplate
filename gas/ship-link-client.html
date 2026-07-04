@@ -1,0 +1,195 @@
+<script>
+// ============================================================
+// SHIPLINK (client-side) — Helicarrier uplink for the CASPER terminal.
+//
+// NO Apps Script permissions needed: this runs in the player's browser and
+// talks straight to the ship's Firebase Realtime Database over fetch(),
+// exactly like the ship consoles themselves do. UrlFetchApp, oauthScopes,
+// and ShipLink.gs are NOT required — delete them if you added them.
+//
+// INSTALL (Terminal.html only):
+//   1. Paste this whole block into Terminal.html, right before the existing
+//      <script> section (or just after it — anywhere in <body> works).
+//   2. In the term-input Enter handler, directly after the line
+//           printLine("shadow@ghòstV2089:~$ " + val);
+//      add this one line:
+//           if (window.handleShipCommand && handleShipCommand(val)) return;
+//   3. Redeploy the web app (Deploy → Manage deployments → New version).
+//
+// COMMANDS (same set as before):
+//   ship | ship help | ship status | ship ping
+//   ship timer <m:ss|secs> [NAME] | ship timer stop | ship timer reset
+//   ship alt <0-100> | ship power <eng|drones|weapons|shields> <0-100>
+//   SD -T <seconds>   (secret — shares the ship terminal's 3-attempt /
+//                      5-minute lockout; echoes into the DM terminal log)
+// ============================================================
+(function () {
+  var SHIP_DB = 'https://shadowrun-ship-db-default-rtdb.firebaseio.com';
+  var TRIES = 3, LOCK_MS = 5 * 60 * 1000;
+
+  function dbGet(key) {
+    return fetch(SHIP_DB + '/' + key + '.json').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  function dbPut(key, value) {
+    return fetch(SHIP_DB + '/' + key + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
+  }
+  function sendCmd(cmd) {
+    return dbPut('shipCommand', {
+      id: 'casper-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+      at: Date.now(), cmd: String(cmd),
+    });
+  }
+
+  function out(lines, red) {
+    (Array.isArray(lines) ? lines : [lines]).forEach(function (l) { printLine(l, !!red); });
+  }
+  function clock(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+  }
+  function fail(e) {
+    out(['> ERR: UPLINK FAILED — ' + ((e && e.message) || e),
+         '> (check the network, or Firebase rules for shipCommand + shipTerminal)'], true);
+  }
+
+  // shared ship-terminal lockout state (same shape every console uses)
+  function normTerm(t) {
+    t = t && typeof t === 'object' ? t : {};
+    return {
+      attempts: Math.max(0, Math.min(TRIES, parseInt(t.attempts, 10) || 0)),
+      lockUntil: Math.max(0, Number(t.lockUntil) || 0),
+      hist: Array.isArray(t.hist) ? t.hist : [],
+    };
+  }
+  function saveTerm(t, lines) {
+    (lines || []).forEach(function (l) { t.hist.push(l); });
+    t.hist = t.hist.slice(-6);
+    return dbPut('shipTerminal', t);
+  }
+
+  // returns TRUE when the input was a ship command (response prints async)
+  window.handleShipCommand = function (raw) {
+    var s = String(raw || '').trim().replace(/\s+/g, ' ');
+    var up = s.toUpperCase();
+
+    // ── the self-destruct code (secret — shared lockout with the ship) ──
+    if (/^SD( |$)/.test(up)) {
+      dbGet('shipTerminal').then(function (t0) {
+        var t = normTerm(t0), now = Date.now();
+        if (t.lockUntil > now) {
+          out('> SHIP UPLINK LOCKED — RETRY IN ' + clock((t.lockUntil - now) / 1000), true);
+          return;
+        }
+        var m = up.match(/^SD -T (\d{1,4})$/);
+        if (m) {
+          var secs = Math.max(1, Math.min(5999, parseInt(m[1], 10)));
+          return sendCmd(up).then(function () {
+            t.attempts = 0;
+            saveTerm(t, [{ m: '▮ CASPER > ' + up, c: 'tl-in' },
+                         { m: '⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + clock(secs), c: 'tl-ok' }]);
+            out(['> UPLINK ACCEPTED.',
+                 '> SELF-DESTRUCT SEQUENCE INITIATED — T-' + clock(secs),
+                 '> THIS TERMINAL IS NOT RESPONSIBLE FOR WHAT HAPPENS NEXT.'], true);
+          });
+        }
+        t.attempts++;
+        if (t.attempts >= TRIES) {
+          t.attempts = 0;
+          t.lockUntil = now + LOCK_MS;
+          saveTerm(t, [{ m: '▮ CASPER > ' + up, c: 'tl-in' },
+                       { m: '✖ COMMAND REJECTED — TERMINAL LOCKED (5:00)', c: 'tl-lock' }]);
+          out('> COMMAND REJECTED — SHIP UPLINK LOCKED (5:00)', true);
+        } else {
+          var left = TRIES - t.attempts;
+          saveTerm(t, [{ m: '▮ CASPER > ' + up, c: 'tl-in' },
+                       { m: '✖ COMMAND NOT RECOGNIZED — ' + left + ' ATTEMPT(S) REMAINING', c: 'tl-err' }]);
+          out('> COMMAND NOT RECOGNIZED — ' + left + ' ATTEMPT(S) REMAINING', true);
+        }
+      }).catch(fail);
+      return true;
+    }
+
+    // ── everything else lives under "ship ..." ──
+    if (!/^SHIP( |$)/.test(up)) return false;   // not ours — CASPER handles it
+    var arg = up.slice(4).trim();
+
+    if (!arg || arg === 'HELP' || arg === '-H') {
+      out([
+        '═══════════════════════════════════════',
+        '   - HELICARRIER UPLINK -',
+        '═══════════════════════════════════════',
+        '',
+        '  ship status              → live ship readout',
+        '  ship timer <m:ss> [NAME] → start a countdown',
+        '  ship timer stop          → pause the countdown',
+        '  ship timer reset         → clear the countdown',
+        '  ship alt <0-100>         → set altitude',
+        '  ship power <sys> <0-100> → throttle a system',
+        '       sys: eng | drones | weapons | shields',
+        '  ship ping                → uplink diagnostic',
+        '',
+        'EXAMPLES:',
+        '  ship timer 5:00 CORE MELTDOWN',
+        '  ship power weapons 0',
+        '  ship alt 25',
+        '',
+        '═══════════════════════════════════════',
+      ]);
+      return true;
+    }
+
+    if (arg === 'PING') {
+      dbGet('shipTimer').then(function () {
+        return dbPut('shipPing', { at: Date.now() });
+      }).then(function () {
+        out(['--- UPLINK DIAGNOSTIC ---', 'TARGET: ' + SHIP_DB,
+             'READ  : OK', 'WRITE : OK',
+             '> uplink healthy — commands will reach the ship.']);
+      }).catch(fail);
+      return true;
+    }
+
+    if (arg === 'STATUS') {
+      Promise.all([dbGet('shipDamageState'), dbGet('shipAux'), dbGet('shipTimer')])
+        .then(function (res) {
+          var dmg = res[0] || {}, aux = res[1] || {}, tm = res[2] || {};
+          var r = parseInt((dmg.areas || {}).reactor, 10) || 0;
+          var core = r >= 2 ? 0 : r >= 1 ? 50 : 100;
+          var auxDmg = Math.max(0, Math.min(50, Number(aux.auxDmg) || 0));
+          var left = tm.running && tm.endsAt ? Math.max(0, (tm.endsAt - Date.now()) / 1000) : (Number(tm.remaining) || 0);
+          out([
+            '--- HELICARRIER UPLINK STATUS ---',
+            'CORE POWER : ' + core + '%' + (core === 0 ? '  [REACTOR OFFLINE]' : core === 50 ? '  [REACTOR DAMAGED]' : ''),
+            'AUX BANK   : ' + (50 - auxDmg) + '% CAP' + (auxDmg >= 50 ? '  [OFFLINE]' : ''),
+            'OVERDRIVE  : ' + (aux.overdrive ? 'ENGAGED' : 'off'),
+            'COUNTDOWN  : ' + (tm.running ? (tm.label || 'IMPACT') + ' — ' + clock(left) : 'inactive'),
+          ]);
+        }).catch(fail);
+      return true;
+    }
+
+    // whitelisted pass-through — the few specific commands players may send
+    var ALLOWED = [
+      /^TIMER (STOP|RESET)$/,
+      /^TIMER \d{1,4}( .+)?$/, /^TIMER \d{1,3}:[0-5]\d( .+)?$/,
+      /^ALT \d{1,3}$/,
+      /^POWER (ENG|ENGINES|DRONES|DRN|WEAPONS|WPN|SHIELDS|SHD) \d{1,3}$/,
+    ];
+    for (var i = 0; i < ALLOWED.length; i++) {
+      if (ALLOWED[i].test(arg)) {
+        sendCmd(arg).then(function () { out('> UPLINK SENT: ' + arg); }).catch(fail);
+        return true;
+      }
+    }
+    out(['> ERR: unknown ship command.', '> Type "ship help" for the uplink index.'], true);
+    return true;
+  };
+})();
+</script>
