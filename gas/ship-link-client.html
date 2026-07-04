@@ -14,23 +14,27 @@
 //           if (window.handleShipCommand && handleShipCommand(val)) return;
 //   3. Redeploy the web app (Deploy → Manage deployments → New version).
 //
-// PLAYER COMMANDS:
-//   ship | ship help | ship status | ship ping
-//   ship timer <m:ss|secs> [NAME] | ship timer stop | ship timer reset
-//   ship alt <0-100> | ship power <eng|drones|weapons|shields> <0-100>
-//   SD -T <seconds>   (secret). If the GM has set a DESTRUCT CODE, the
-//                     terminal then demands it — ENTER AUTHORIZATION CODE,
-//                     with every keystroke masked as "." — and a wrong code
-//                     burns one of the shared 3 attempts (5-minute lockout).
+// HOW IT PLAYS:
+//   establish helicarrier uplink
+//       → hack check: d20 (canvas roll), DC 10. On 10+ an SSH-style remote
+//         session opens — the prompt becomes root@helicarrier:~# and the
+//         terminal mimics the SHIP TERMINAL console exactly: same shared
+//         log, same 3-attempt / 5-minute lockout, and the GM's secret
+//         DESTRUCT CODE word. Typing the accepted code word initiates the
+//         SELF-DESTRUCT (it starts the ship's OH SH*T! timer with whatever
+//         duration the DM configured). Below 10: connection refused — retry.
+//         EXIT / LOGOUT / DISCONNECT closes the session.
 //
-// GM COMMAND (not listed in help):
-//   override          → HELICARRIER PASSWORD OVERRIDE: set/change the
-//                     destruct code word, masked with "." while typing.
-//                     Changing an existing code requires the current one.
+// GM COMMAND (not listed anywhere):
+//   override → HELICARRIER PASSWORD OVERRIDE: set/change the destruct code
+//              word, masked with "." while typing. Changing an existing code
+//              requires the current one. Reports a KEY fingerprint that must
+//              match the DM console's DESTRUCT CODE status.
 // ============================================================
 (function () {
   var SHIP_DB = 'https://shadowrun-ship-db-default-rtdb.firebaseio.com';
   var TRIES = 3, LOCK_MS = 5 * 60 * 1000;
+  var PROMPT = 'root@helicarrier:~#';
 
   function dbGet(key) {
     return fetch(SHIP_DB + '/' + key + '.json').then(function (r) {
@@ -45,12 +49,6 @@
       body: JSON.stringify(value),
     }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
   }
-  function sendCmd(cmd) {
-    return dbPut('shipCommand', {
-      id: 'casper-' + Date.now() + '-' + Math.random().toString(36).slice(2),
-      at: Date.now(), cmd: String(cmd),
-    });
-  }
 
   function out(lines, red) {
     (Array.isArray(lines) ? lines : [lines]).forEach(function (l) { printLine(l, !!red); });
@@ -61,10 +59,11 @@
   }
   function fail(e) {
     out(['> ERR: UPLINK FAILED — ' + ((e && e.message) || e),
-         '> (check the network, or Firebase rules for shipCommand + shipTerminal + shipDestruct)'], true);
+         '> (check the network, or Firebase rules for shipTerminal + shipDestruct + shipTimer)'], true);
   }
+  function dots(n) { return new Array(Math.max(1, n) + 1).join('.'); }
 
-  // shared ship-terminal lockout state (same shape every console uses)
+  // shared ship-terminal state (same shape every console uses)
   function normTerm(t) {
     t = t && typeof t === 'object' ? t : {};
     return {
@@ -81,11 +80,123 @@
   function destructCode(d) {
     return String((d && d.code) || '').toUpperCase().trim().slice(0, 24);
   }
+  function codeHash(s) {   // short fingerprint (never the code) for DM verification
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+    return '#' + ('0' + (h % 256).toString(16).toUpperCase()).slice(-2);
+  }
+  function burn(t, echo, what) {   // one failed attempt; the 3rd locks
+    t.attempts++;
+    if (t.attempts >= TRIES) {
+      t.attempts = 0;
+      t.lockUntil = Date.now() + LOCK_MS;
+      saveTerm(t, [{ m: echo, c: 'tl-in' }, { m: '✖ ' + what + ' — TERMINAL LOCKED (5:00)', c: 'tl-lock' }]);
+      out('✖ ' + what + ' — TERMINAL LOCKED (5:00)', true);
+    } else {
+      var left = TRIES - t.attempts;
+      saveTerm(t, [{ m: echo, c: 'tl-in' }, { m: '✖ ' + what + ' — ' + left + ' ATTEMPT(S) REMAINING', c: 'tl-err' }]);
+      out('✖ ' + what + ' — ' + left + ' ATTEMPT(S) REMAINING', true);
+    }
+  }
 
-  // ── masked input mode ("." per keystroke, capture-phase so the terminal
-  //    never sees the keys). onEnter(buffer) → truthy keeps the mode open. ──
-  var mask = null;   // { buf, onEnter }
   function input() { return document.getElementById('term-input'); }
+
+  // ── SSH-style remote session: prompt swap + we own the Enter key so the
+  //    accepted code word can be echoed obfuscated ──
+  var session = false;
+  var promptSpan = null, promptOld = '';
+  function setPrompt(txt) {
+    if (!promptSpan) promptSpan = document.querySelector('.term-input-line span');
+    if (!promptSpan) return;
+    if (!promptOld) promptOld = promptSpan.textContent;
+    promptSpan.textContent = txt;
+  }
+  function openSession() {
+    session = true;
+    setPrompt(PROMPT);
+    out(['───────────────────────────────────────────',
+         ' SECURE UPLINK ESTABLISHED · SHIPNET/2089',
+         ' HELICARRIER SHIP TERMINAL — remote session',
+         ' type EXIT to disconnect',
+         '───────────────────────────────────────────']);
+  }
+  function closeSession(msg) {
+    session = false;
+    if (promptSpan && promptOld) promptSpan.textContent = promptOld;
+    out(msg || '> uplink closed.');
+  }
+  window.shipUplinkActive = function () { return session; };
+
+  document.addEventListener('keydown', function (e) {
+    var el = input();
+    if (!session || !el || e.target !== el || e.key !== 'Enter') return;
+    e.preventDefault(); e.stopPropagation();
+    var raw = String(el.value || '').trim().replace(/\s+/g, ' ');
+    el.value = '';
+    if (!raw) return;
+    var up = raw.toUpperCase();
+    if (/^(EXIT|LOGOUT|QUIT|DISCONNECT)$/.test(up)) {
+      out(PROMPT + ' ' + up);
+      closeSession('> CONNECTION CLOSED BY REMOTE HOST.');
+      return;
+    }
+    Promise.all([dbGet('shipTerminal'), dbGet('shipDestruct'), dbGet('shipTimer')]).then(function (res) {
+      var t = normTerm(res[0]), code = destructCode(res[1]), tm = res[2] || {};
+      var now = Date.now();
+      if (t.lockUntil > now) {
+        out(PROMPT + ' ' + up);
+        out('✖ TERMINAL LOCKED — RETRY IN ' + clock((t.lockUntil - now) / 1000), true);
+        return;
+      }
+      if (code && up === code) {
+        out(PROMPT + ' ' + dots(up.length));           // never echo the code
+        // the code word IS the trigger — the countdown runs for whatever
+        // duration the DM configured on the ship's OH SH*T! timer
+        var dur = Math.max(1, parseInt(tm.duration, 10) || 600);
+        t.attempts = 0;
+        return dbPut('shipTimer', { duration: dur, remaining: dur, running: true, endsAt: Date.now() + dur * 1000, label: 'SELF-DESTRUCT' })
+          .then(function () {
+            return saveTerm(t, [{ m: '> ' + dots(up.length), c: 'tl-in' },
+                                { m: '⚠ CODE ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + clock(dur), c: 'tl-ok' }]);
+          })
+          .then(function () {
+            out(['⚠ CODE ACCEPTED.',
+                 '⚠ SELF-DESTRUCT SEQUENCE INITIATED — T-' + clock(dur),
+                 '> GET TO THE ESCAPE PODS.'], true);
+          });
+      }
+      out(PROMPT + ' ' + up);
+      burn(t, '> ' + up, 'COMMAND NOT RECOGNIZED');
+    }).catch(fail);
+  }, true);
+
+  // ── hack check: d20, DC 10, with CASPER's canvas roller when available ──
+  function establishUplink() {
+    if (session) { out('> uplink already active.'); return; }
+    var die = 1 + Math.floor(Math.random() * 20);
+    out('> PROBING SHIPNET ICE — HACK CHECK (DC 10)...');
+    var finish = function () {
+      out('> ROLL: d20(' + die + ')' + (die >= 10 ? ' — ACCESS GRANTED' : ' — ACCESS DENIED'), die < 10);
+      if (die >= 10) openSession();
+      else out(['✖ CONNECTION REFUSED — ICE DEFLECTED THE PROBE.', '> re-run the command to try again.'], true);
+    };
+    if (typeof makeD20Roller === 'function') {
+      try {
+        var outEl = document.getElementById('term-output');
+        var wrap = document.createElement('div'); wrap.className = 'd20-roll-inline';
+        var canvas = document.createElement('canvas');
+        canvas.width = 520; canvas.height = 360; canvas.className = 'd20-canvas';
+        wrap.appendChild(canvas); outEl.appendChild(wrap); outEl.scrollTop = outEl.scrollHeight;
+        makeD20Roller(canvas, die >= 10 ? '#44ddff' : '#ff4444').roll(die);
+        setTimeout(finish, 1300);
+        return;
+      } catch (err) { /* fall through to text-only */ }
+    }
+    finish();
+  }
+
+  // ── masked input for the GM override ("." per keystroke) ──
+  var mask = null;
   function maskStart(onEnter) { mask = { buf: '', onEnter: onEnter }; input().value = ''; }
   function maskStop() { mask = null; input().value = ''; }
   document.addEventListener('keydown', function (e) {
@@ -95,48 +206,26 @@
     if (e.key === 'Escape') { maskStop(); out('> CANCELLED.', true); return; }
     if (e.key === 'Enter') {
       var buf = mask.buf, cont = mask.onEnter;
-      out('> ' + new Array(Math.max(1, buf.length) + 1).join('.'));   // obfuscated echo
+      out('> ' + dots(buf.length));
       maskStop();
       cont(buf);
       return;
     }
     if (e.key === 'Backspace') mask.buf = mask.buf.slice(0, -1);
     else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) mask.buf += e.key;
-    el.value = new Array(mask.buf.length + 1).join('.');
+    el.value = mask.buf.length ? dots(mask.buf.length) : '';
   }, true);
   document.addEventListener('paste', function (e) {
     if (mask && e.target === input()) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
-  // fire the destruct once authorized (or when no code is required)
-  function launchSD(t, up, secs) {
-    return sendCmd(up).then(function () {
-      t.attempts = 0;
-      saveTerm(t, [{ m: '▮ CASPER > ' + up, c: 'tl-in' },
-                   { m: '⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + clock(secs), c: 'tl-ok' }]);
-      out(['> UPLINK ACCEPTED.',
-           '> SELF-DESTRUCT SEQUENCE INITIATED — T-' + clock(secs),
-           '> THIS TERMINAL IS NOT RESPONSIBLE FOR WHAT HAPPENS NEXT.'], true);
-    });
-  }
-  function burn(t, echo, what) {   // one failed attempt; the 3rd locks
-    t.attempts++;
-    if (t.attempts >= TRIES) {
-      t.attempts = 0;
-      t.lockUntil = Date.now() + LOCK_MS;
-      saveTerm(t, [{ m: echo, c: 'tl-in' }, { m: '✖ ' + what + ' — TERMINAL LOCKED (5:00)', c: 'tl-lock' }]);
-      out('> ' + what + ' — SHIP UPLINK LOCKED (5:00)', true);
-    } else {
-      var left = TRIES - t.attempts;
-      saveTerm(t, [{ m: echo, c: 'tl-in' }, { m: '✖ ' + what + ' — ' + left + ' ATTEMPT(S) REMAINING', c: 'tl-err' }]);
-      out('> ' + what + ' — ' + left + ' ATTEMPT(S) REMAINING', true);
-    }
-  }
-
-  // returns TRUE when the input was a ship command (response prints async)
+  // returns TRUE when the input was handled here (response prints async)
   window.handleShipCommand = function (raw) {
     var s = String(raw || '').trim().replace(/\s+/g, ' ');
     var up = s.toUpperCase();
+
+    // the hack command that opens the remote ship-terminal session
+    if (/^ESTABLISH HELICARRIER UPLINK$/.test(up)) { establishUplink(); return true; }
 
     // ── HELICARRIER PASSWORD OVERRIDE (GM): set the destruct code word ──
     if (/^(OVERRIDE|HELICARRIER PASSWORD OVERRIDE)$/.test(up)) {
@@ -151,8 +240,10 @@
             var code = buf.toUpperCase().trim().slice(0, 24);
             if (code && code.length < 3) { out('✖ CODE TOO SHORT (MIN 3 CHARS) — override aborted.', true); return; }
             dbPut('shipDestruct', { code: code, at: Date.now() }).then(function () {
-              out(code ? ['▸ DESTRUCT CODE SET.', '▸ SD -T now demands the code word.']
-                       : ['▸ DESTRUCT CODE CLEARED.', '▸ SD -T works on syntax alone.']);
+              out(code ? ['▸ DESTRUCT CODE SET (KEY ' + codeHash(code) + ').',
+                          '▸ typing the code word at the ship terminal (or an uplink session) initiates self-destruct.',
+                          '▸ verify: the DM console shows the same KEY fingerprint.']
+                       : ['▸ DESTRUCT CODE CLEARED.']);
             }).catch(fail);
           });
         }
@@ -169,103 +260,7 @@
       return true;
     }
 
-    // ── the self-destruct command (shares the ship terminal lockout) ──
-    if (/^SD( |$)/.test(up)) {
-      Promise.all([dbGet('shipTerminal'), dbGet('shipDestruct')]).then(function (res) {
-        var t = normTerm(res[0]), code = destructCode(res[1]), now = Date.now();
-        if (t.lockUntil > now) {
-          out('> SHIP UPLINK LOCKED — RETRY IN ' + clock((t.lockUntil - now) / 1000), true);
-          return;
-        }
-        var m = up.match(/^SD -T (\d{1,4})$/);
-        if (!m) { burn(t, '▮ CASPER > ' + up, 'COMMAND NOT RECOGNIZED'); return; }
-        var secs = Math.max(1, Math.min(5999, parseInt(m[1], 10)));
-        if (!code) { launchSD(t, up, secs).catch(fail); return; }
-        // GM set a code word: demand it, masked with "."
-        out('⚿ AUTHORIZATION CODE REQUIRED — ENTER CODE: (ESC to cancel)', true);
-        maskStart(function (buf) {
-          var guess = buf.toUpperCase().trim();
-          if (guess && guess === code) { launchSD(t, up, secs).catch(fail); return; }
-          burn(t, '▮ CASPER > ' + up + ' [BAD AUTH CODE]', 'AUTHORIZATION CODE INVALID');
-        });
-      }).catch(fail);
-      return true;
-    }
-
-    // ── everything else lives under "ship ..." ──
-    if (!/^SHIP( |$)/.test(up)) return false;   // not ours — CASPER handles it
-    var arg = up.slice(4).trim();
-
-    if (!arg || arg === 'HELP' || arg === '-H') {
-      out([
-        '═══════════════════════════════════════',
-        '   - HELICARRIER UPLINK -',
-        '═══════════════════════════════════════',
-        '',
-        '  ship status              → live ship readout',
-        '  ship timer <m:ss> [NAME] → start a countdown',
-        '  ship timer stop          → pause the countdown',
-        '  ship timer reset         → clear the countdown',
-        '  ship alt <0-100>         → set altitude',
-        '  ship power <sys> <0-100> → throttle a system',
-        '       sys: eng | drones | weapons | shields',
-        '  ship ping                → uplink diagnostic',
-        '',
-        'EXAMPLES:',
-        '  ship timer 5:00 CORE MELTDOWN',
-        '  ship power weapons 0',
-        '  ship alt 25',
-        '',
-        '═══════════════════════════════════════',
-      ]);
-      return true;
-    }
-
-    if (arg === 'PING') {
-      dbGet('shipTimer').then(function () {
-        return dbPut('shipPing', { at: Date.now() });
-      }).then(function () {
-        out(['--- UPLINK DIAGNOSTIC ---', 'TARGET: ' + SHIP_DB,
-             'READ  : OK', 'WRITE : OK',
-             '> uplink healthy — commands will reach the ship.']);
-      }).catch(fail);
-      return true;
-    }
-
-    if (arg === 'STATUS') {
-      Promise.all([dbGet('shipDamageState'), dbGet('shipAux'), dbGet('shipTimer')])
-        .then(function (res) {
-          var dmg = res[0] || {}, aux = res[1] || {}, tm = res[2] || {};
-          var r = parseInt((dmg.areas || {}).reactor, 10) || 0;
-          var core = r >= 2 ? 0 : r >= 1 ? 50 : 100;
-          var auxDmg = Math.max(0, Math.min(50, Number(aux.auxDmg) || 0));
-          var left = tm.running && tm.endsAt ? Math.max(0, (tm.endsAt - Date.now()) / 1000) : (Number(tm.remaining) || 0);
-          out([
-            '--- HELICARRIER UPLINK STATUS ---',
-            'CORE POWER : ' + core + '%' + (core === 0 ? '  [REACTOR OFFLINE]' : core === 50 ? '  [REACTOR DAMAGED]' : ''),
-            'AUX BANK   : ' + (50 - auxDmg) + '% CAP' + (auxDmg >= 50 ? '  [OFFLINE]' : ''),
-            'OVERDRIVE  : ' + (aux.overdrive ? 'ENGAGED' : 'off'),
-            'COUNTDOWN  : ' + (tm.running ? (tm.label || 'IMPACT') + ' — ' + clock(left) : 'inactive'),
-          ]);
-        }).catch(fail);
-      return true;
-    }
-
-    // whitelisted pass-through — the few specific commands players may send
-    var ALLOWED = [
-      /^TIMER (STOP|RESET)$/,
-      /^TIMER \d{1,4}( .+)?$/, /^TIMER \d{1,3}:[0-5]\d( .+)?$/,
-      /^ALT \d{1,3}$/,
-      /^POWER (ENG|ENGINES|DRONES|DRN|WEAPONS|WPN|SHIELDS|SHD) \d{1,3}$/,
-    ];
-    for (var i = 0; i < ALLOWED.length; i++) {
-      if (ALLOWED[i].test(arg)) {
-        sendCmd(arg).then(function () { out('> UPLINK SENT: ' + arg); }).catch(fail);
-        return true;
-      }
-    }
-    out(['> ERR: unknown ship command.', '> Type "ship help" for the uplink index.'], true);
-    return true;
+    return false;   // not ours — CASPER handles it
   };
 })();
 </script>

@@ -13,12 +13,12 @@ no build step; just open the files (or host on GitHub Pages).
 - `ship-model.js` — the shared power/damage model (pure functions + sync
   constants); both `operator.html` and `index.html` import it, so the math
   lives in one place.
-- `gas/ship-commands.gs` — Google Apps Script helper for sending remote
+- `gas/ship-commands.gs` — Google Apps Script helper for sending remote GM
   commands to the ship from a Google Sheet (see "Remote commands" below).
-- `gas/casper-shiplink.gs` — drop-in bridge for the CASPER TACTICAL OS player
-  terminal (GAS web app): adds `ship status/timer/alt/power` commands plus the
-  hidden `SD -T <secs>` destruct code, sharing the ship terminal's 3-attempt /
-  5-minute lockout. Install notes are in the file header.
+- `gas/ship-link-client.html` — paste-in block for the CASPER TACTICAL OS
+  player terminal (GAS web app): the `establish helicarrier uplink` hack roll
+  and the SSH-style remote ship-terminal session. Runs entirely in the
+  browser — no Apps Script permissions. Install notes are in the file header.
 - `Helicarrier.fbx` — the ship model. `sts.png` — logo. `vendor/` — Three.js.
 
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
@@ -68,33 +68,42 @@ recover **damaged (yellow)** panels back up to the available ceiling (e.g. main
 damaged + one panel down = 37%; routing 13% brings it to 50%). **Offline (red)**
 panels are a hard loss until the DM repairs them — routed power can't recover them.
 
-**Ship terminal.** A command-line card on the console (players get it too). The
-players can type commands; the right one — **`SD -T <seconds>`**, e.g.
-`SD -T 20` — starts a SELF-DESTRUCT countdown on the display **regardless of
-core power** (unlike overdrive, which needs a full core). Three bad entries
-lock the terminal for **5 minutes** (again on each relock); the DM has a
-RESET LOCK override, and the terminal history/lockout syncs to every console.
+**Ship terminal & the destruct code word.** A command-line card on the console
+(players get it too). The DM sets a secret **code word** in the masked DESTRUCT
+CODE field (keystrokes render as `.`; Enter sets, empty Enter clears; synced
+via `shipDestruct`; the status shows a `SET #A7` fingerprint so consoles can be
+checked for agreement without revealing the code). **Typing the accepted code
+word into the terminal initiates the SELF-DESTRUCT** — regardless of core
+power: it starts the OH SH*T! timer with its **configured duration** (the DM
+sets the timer length "like normal" beforehand) under a SELF-DESTRUCT banner,
+and the echo is obfuscated. Every wrong entry burns one of **3 attempts**; the
+third locks the terminal for **5 minutes** (again on each relock). The DM has
+a RESET LOCK override, and the terminal history/lockout syncs to every console.
+Players have to figure the code word out in play.
 
-**Destruct authorization code.** The DM can set a secret **code word** (the
-masked DESTRUCT CODE field on the terminal card — keystrokes render as `.`;
-Enter sets, empty Enter clears; synced via `shipDestruct`). While a code is
-set, `SD -T <secs>` additionally demands it: the terminal switches to a masked
-**ENTER AUTHORIZATION CODE** prompt, a wrong code word burns one of the same
-3 attempts (→ 5-minute lockout), the right one fires the sequence. Players
-have to figure the code out in play. With no code set, `SD -T` works on syntax
-alone. In the CASPER terminal the GM can also set/change it with the hidden
-`override` command (changing an existing code requires the current one).
+**CASPER uplink (SSH-style remote session).** In the CASPER player terminal
+(GAS web app — see `gas/ship-link-client.html`, a paste-in block needing no
+Apps Script permissions), the hack command **`establish helicarrier uplink`**
+rolls a d20 (canvas animation, **DC 10**). On 10+ the prompt switches to
+`root@helicarrier:~#` and the session **mimics the ship terminal console**:
+same shared log, same 3-attempt/5-minute lockout, and the same code word —
+typing it initiates the self-destruct. `EXIT` disconnects. Below 10 the
+connection is refused (retry allowed). The GM sets/changes the code word from
+CASPER with the hidden `override` command (masked; changing an existing code
+requires the current one; reports the matching KEY fingerprint).
 
-**Remote commands (Google Apps Script / Sheets).** External tools can drive the
-ship by writing to the `shipCommand` key in the Firebase DB — `gas/ship-commands.gs`
-is a paste-ready Apps Script with a `sendShipCommand('...')` helper, a SHIP
-spreadsheet menu, and an optional type-a-command-in-a-cell console. Supported
-commands (no terminal lockout on this channel — it's the GM's authorized path):
-`SD -T <secs>`, `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
+**Remote commands (Google Apps Script / Sheets).** External GM tools can drive
+the ship by writing to the `shipCommand` key in the Firebase DB —
+`gas/ship-commands.gs` is a paste-ready Apps Script with a
+`sendShipCommand('...')` helper, a SHIP spreadsheet menu, and an optional
+type-a-command-in-a-cell console. Supported commands (no terminal lockout or
+code word on this channel — it's the GM's authorized path): `SD -T <secs>`,
+`TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
 `DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
 `POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`. Every executed
 command is echoed in the terminal log with a `▮ REMOTE >` prefix; there is also
-a local test hook — run `shipCommand('SD -T 20')` in the browser console.
+a local test hook — run `shipCommand('TIMER 5:00 CORE MELTDOWN')` in the
+browser console.
 
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
