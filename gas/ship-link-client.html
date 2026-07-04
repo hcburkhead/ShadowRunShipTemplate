@@ -38,10 +38,10 @@
 //   namespace is treated as a code attempt, exactly like the ship terminal.
 //
 //   sts reveal → a SEPARATE hack: interrogate the ship's sarcastic AI
-//   (ARIA) for the destruct code word. Rolls d20 + the character's LOGIC
+//   for the destruct code word. Rolls d20 + the character's LOGIC
 //   modifier (resolved from the sheet via resolveRollModifier):
-//     · NATURAL 20        → ARIA reveals the code itself
-//     · total ≥ 20        → ARIA concedes a HINT — the DM (voicing ARIA)
+//     · NATURAL 20        → the ship AI reveals the code itself
+//     · total ≥ 20        → the ship AI concedes a HINT — the DM (voicing it)
 //                           delivers it at the table; the DM console log
 //                           is pinged so they know a hint is owed
 //     · below 20          → snark, nothing, no attempts burned
@@ -312,16 +312,27 @@
 
   // ── sts reveal: interrogate the ship AI for the destruct code word.
   //    d20 + LOGIC modifier (from the character sheet). Natural 20 → the
-  //    code; total ≥ 20 → a HINT the DM delivers in ARIA's voice; below →
-  //    snark. Only while the AI CORE is ONLINE. Never burns attempts. ──
+  //    code; total ≥ 20 → a HINT the DM delivers in the ship AI's voice;
+  //    below → snark; natural 1 → counter-intrusion. Roll numbers are never
+  //    shown — results read as SKILL EFFORT (beginner … masterwork). ──
   var REVEAL_ATTR = 'logic';   // sheet attribute used for the interrogation check
-  var ARIA_SNARK = [
+  var AI_SNARK = [
     'Nice try, hotshot. My lips — metaphorical — are sealed.',
     'You call THAT an intrusion vector? Adorable.',
     'I have seen toasters with better technique. Denied.',
     'Almost. In the way that missing the ship entirely is "almost".',
     'The code is— no. No, I am not doing this. Ask the DM like everyone else.',
   ];
+  // roll → skill-effort wording (no numbers leave the dice canvas)
+  function effortLabel(die, total) {
+    if (die === 20) return 'MASTERWORK — FLAWLESS EXECUTION';
+    if (die === 1) return 'SCRIPT-KIDDIE — FLAILING AT THE KEYS';
+    if (total >= 20) return 'EXPERT — SURGICAL INTRUSION WORK';
+    if (total >= 15) return 'PROFESSIONAL — CLEAN, PRACTICED WORK';
+    if (total >= 11) return 'COMPETENT — JOURNEYMAN TECHNIQUE';
+    if (total >= 6) return 'AMATEUR — ENTHUSIASTIC BUT MESSY';
+    return 'BEGINNER — TUTORIAL-LEVEL KEYSTROKES';
+  }
   function getRevealMod(cb) {   // resolve the LOGIC modifier from the sheet
     try {
       google.script.run
@@ -331,13 +342,13 @@
     } catch (e) { cb(0, REVEAL_ATTR.toUpperCase()); }
   }
   function doReveal() {
-    out('> INTERROGATING SHIP AI — DEEP ACCESS CHECK (d20 + LOGIC)...');
-    getRevealMod(function (mod, label) {
+    out('> INTERROGATING SHIP AI — DEEP ACCESS CHECK...');
+    getRevealMod(function (mod) {
       rollHackDie(function (die) {
         var total = die + mod;
-        var modStr = (mod >= 0 ? '+' : '') + mod;
-        var rollTxt = 'd20(' + die + ') ' + modStr + ' = ' + total;
-        out('> ROLL: ' + rollTxt + '  [' + label + ']', die !== 20 && total < 20);
+        var effort = effortLabel(die, total);
+        var effortShort = effort.split(' — ')[0].toLowerCase();   // e.g. "professional"
+        out('> INTRUSION ANALYSIS: ' + effort, die !== 20 && total < 20);
         Promise.all([dbGet('shipDamageState'), dbGet('shipDestruct'), dbGet('shipTerminal')]).then(function (res) {
           var ai = parseInt((((res[0] || {}).areas) || {}).aiCore, 10) || 0;
           var code = destructCode(res[1]);
@@ -346,45 +357,45 @@
             t.attempts++;
             if (t.attempts >= TRIES) t.attempts = 0;
             t.lockUntil = Date.now() + 10 * 60 * 1000;
-            saveTerm(t, [{ m: '☠ AI counter-intrusion — remote operator locked out (10:00) — ' + rollTxt, c: 'tl-lock' }]);
+            saveTerm(t, [{ m: '☠ AI counter-intrusion — remote operator locked out (10:00) — ' + effortShort + ' effort', c: 'tl-lock' }]);
             out(ai >= 1
-              ? ['[ARIA] ▒▒—bzzt—▒ …even d-damaged, I f-felt that one… ▒▒',
+              ? ['[SHIP AI] ▒▒—bzzt—▒ …even d-damaged, I f-felt that one… ▒▒',
                  '☠ COUNTER-INTRUSION TRIGGERED.',
                  '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)']
-              : ['[ARIA] "A one. A NATURAL one. I felt that from here."',
-                 '[ARIA] "Counter-intrusion deployed. Enjoy the timeout, hotshot."',
+              : ['[SHIP AI] "That was... genuinely embarrassing to watch. Beginner hour is over."',
+                 '[SHIP AI] "Counter-intrusion deployed. Enjoy the timeout, hotshot."',
                  '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)'], true);
             return;
           }
           if (ai >= 1) {   // damaged or offline — no banter, no code, no hint
             saveTerm(t, [{ m: '▮ REMOTE > AI interrogation — core unresponsive', c: 'tl-sys' }]);
-            out(['[ARIA] ▒▒—bzzt—▒ …c-core integrity c-comp-promised… ▒▒',
+            out(['[SHIP AI] ▒▒—bzzt—▒ …c-core integrity c-comp-promised… ▒▒',
                  '✖ AI CORE UNRESPONSIVE — NOTHING RECOVERED.'], true);
             return;
           }
           if (die === 20) {                 // natural 20 — the code itself
             if (!code) {
-              out('[ARIA] "A flawless crack, and the vault is empty — no destruct code is even configured. Anticlimactic."');
+              out('[SHIP AI] "A flawless crack, and the vault is empty — no destruct code is even configured. Anticlimactic."');
               return;
             }
-            saveTerm(t, [{ m: '⚿ ARIA disclosed the destruct code to a remote operator', c: 'tl-lock' }]);
-            out(['[ARIA] "Oh, FINE. A natural 20. You beautiful nuisance."',
-                 '[ARIA] "The destruct code is «' + code + '». Do give me a head start."']);
+            saveTerm(t, [{ m: '⚿ ship AI disclosed the destruct code to a remote operator', c: 'tl-lock' }]);
+            out(['[SHIP AI] "Oh, FINE. Masterwork intrusion. You beautiful nuisance."',
+                 '[SHIP AI] "The destruct code is «' + code + '». Do give me a head start."']);
             return;
           }
-          if (total >= 20) {                // "unnatural" 20 — a hint, voiced by the DM
+          if (total >= 20) {                // expert effort — a hint, voiced by the DM
             if (!code) {
-              out('[ARIA] "Impressive-ish. But there is no destruct code configured to hint at. Awkward."');
+              out('[SHIP AI] "Impressive-ish. But there is no destruct code configured to hint at. Awkward."');
               return;
             }
-            saveTerm(t, [{ m: '⚿ ARIA concedes a destruct-code HINT — ' + rollTxt + ' — DM delivers it', c: 'tl-ok' }]);
-            out(['[ARIA] "A twenty. Not a NATURAL twenty, mind you — I checked. But a deal is a deal."',
-                 '[ARIA] "One hint. Lean in — your operator will do the voice."',
-                 '> HINT AUTHORIZED — the DM delivers ARIA\'s hint at the table.']);
+            saveTerm(t, [{ m: '⚿ ship AI concedes a destruct-code HINT — ' + effortShort + ' effort — DM delivers it', c: 'tl-ok' }]);
+            out(['[SHIP AI] "Expert work. Not flawless — I checked — but a deal is a deal."',
+                 '[SHIP AI] "One hint. Lean in — your operator will do the voice."',
+                 '> HINT AUTHORIZED — the DM delivers the ship AI\'s hint at the table.']);
             return;
           }
-          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation failed — ' + rollTxt, c: 'tl-err' }]);
-          out('[ARIA] "' + ARIA_SNARK[die % ARIA_SNARK.length] + '"', true);
+          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation shrugged off — ' + effortShort + ' effort', c: 'tl-err' }]);
+          out('[SHIP AI] "' + AI_SNARK[die % AI_SNARK.length] + '"', true);
         }).catch(fail);
       });
     });
