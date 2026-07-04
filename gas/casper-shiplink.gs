@@ -37,24 +37,64 @@ var SHIP_DB_URL = 'https://shadowrun-ship-db-default-rtdb.firebaseio.com';
 var SHIP_TRIES = 3;
 var SHIP_LOCK_MS = 5 * 60 * 1000;
 
+// last transport error — read by the diagnostic + error messages
+var SHIP_LAST_ERR = '';
+
 // ---- Firebase REST helpers ----
 function shipGet_(key) {
+  SHIP_LAST_ERR = '';
   try {
     var res = UrlFetchApp.fetch(SHIP_DB_URL + '/' + key + '.json', { muteHttpExceptions: true });
-    return res.getResponseCode() === 200 ? JSON.parse(res.getContentText()) : null;
-  } catch (e) { return null; }
+    if (res.getResponseCode() === 200) return JSON.parse(res.getContentText());
+    SHIP_LAST_ERR = 'HTTP ' + res.getResponseCode() + ' — ' + String(res.getContentText()).slice(0, 120);
+    return null;
+  } catch (e) {
+    SHIP_LAST_ERR = String((e && e.message) || e).slice(0, 160);
+    return null;
+  }
 }
 function shipPut_(key, value) {
+  SHIP_LAST_ERR = '';
   try {
     var res = UrlFetchApp.fetch(SHIP_DB_URL + '/' + key + '.json', {
       method: 'put', contentType: 'application/json',
       payload: JSON.stringify(value), muteHttpExceptions: true,
     });
-    return res.getResponseCode() === 200;
-  } catch (e) { return false; }
+    if (res.getResponseCode() === 200) return true;
+    SHIP_LAST_ERR = 'HTTP ' + res.getResponseCode() + ' — ' + String(res.getContentText()).slice(0, 120);
+    return false;
+  } catch (e) {
+    SHIP_LAST_ERR = String((e && e.message) || e).slice(0, 160);
+    return false;
+  }
 }
 function shipSend_(cmd) {
   return shipPut_('shipCommand', { id: Utilities.getUuid(), at: Date.now(), cmd: String(cmd) });
+}
+
+// detailed failure message + the most likely fix for what went wrong
+function shipUplinkErr_() {
+  var e = SHIP_LAST_ERR || 'unknown error';
+  var lines = ['> ERR: UPLINK FAILED — ' + e];
+  if (/permission to call|external_request|authorization is required|not have permission/i.test(e)) {
+    lines.push('> FIX: the script is not authorized for external requests.');
+    lines.push('>      Apps Script editor → select shipLinkPing → Run → accept the prompt, then redeploy.');
+  } else if (/401|403|permission.?denied|unauthorized/i.test(e)) {
+    lines.push('> FIX: Firebase rules block this path — allow read/write on');
+    lines.push('>      shipCommand + shipTerminal in the Realtime Database rules.');
+  }
+  return shipText_(lines);
+}
+
+/**
+ * Run THIS from the Apps Script editor once (Run → shipLinkPing) to trigger
+ * the UrlFetchApp authorization prompt and check the uplink end to end.
+ */
+function shipLinkPing() {
+  var res = shipLinkHandle('ship ping');
+  var out = (res && res.content ? res.content : ['no response']).join('\n');
+  Logger.log(out);
+  return out;
 }
 
 // ---- small utils ----
@@ -95,10 +135,10 @@ function shipLinkHandle(raw) {
     var m = up.match(/^SD -T (\d{1,4})$/);
     if (m) {
       var secs = Math.max(1, Math.min(5999, parseInt(m[1], 10)));
+      if (!shipSend_(up)) return shipUplinkErr_();   // transport failure ≠ wrong code
       t.attempts = 0;
       shipTermSave_(t, [{ m: '▮ CASPER > ' + up, c: 'tl-in' },
                         { m: '⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + shipClock_(secs), c: 'tl-ok' }]);
-      shipSend_(up);
       return shipText_([
         '> UPLINK ACCEPTED.',
         '> SELF-DESTRUCT SEQUENCE INITIATED — T-' + shipClock_(secs),
@@ -137,6 +177,7 @@ function shipLinkHandle(raw) {
       '  ship alt <0-100>         → set altitude',
       '  ship power <sys> <0-100> → throttle a system',
       '       sys: eng | drones | weapons | shields',
+      '  ship ping                → uplink diagnostic',
       '',
       'EXAMPLES:',
       '  ship timer 5:00 CORE MELTDOWN',
@@ -145,6 +186,18 @@ function shipLinkHandle(raw) {
       '',
       '═══════════════════════════════════════',
     ]);
+  }
+
+  if (arg === 'PING') {
+    var pr = shipGet_('shipTimer');
+    var readLine = SHIP_LAST_ERR ? 'READ  : FAIL — ' + SHIP_LAST_ERR : 'READ  : OK' + (pr === null ? ' (key empty)' : '');
+    var readErr = SHIP_LAST_ERR;
+    var wrote = shipPut_('shipPing', { at: Date.now() });
+    var writeLine = wrote ? 'WRITE : OK' : 'WRITE : FAIL — ' + SHIP_LAST_ERR;
+    var out = ['--- UPLINK DIAGNOSTIC ---', 'TARGET: ' + SHIP_DB_URL, readLine, writeLine];
+    if (!wrote || readErr) out = out.concat(shipUplinkErr_().content.slice(1));   // append FIX hints
+    else out.push('> uplink healthy — commands should reach the ship.');
+    return shipText_(out);
   }
 
   if (arg === 'STATUS') {
@@ -174,8 +227,8 @@ function shipLinkHandle(raw) {
   ];
   for (var i = 0; i < ALLOWED.length; i++) {
     if (ALLOWED[i].test(arg)) {
-      var ok = shipSend_(arg);
-      return shipText_([ok ? '> UPLINK SENT: ' + arg : '> ERR: UPLINK UNREACHABLE — TRY AGAIN.']);
+      if (!shipSend_(arg)) return shipUplinkErr_();
+      return shipText_(['> UPLINK SENT: ' + arg]);
     }
   }
   return shipText_(['> ERR: unknown ship command.', '> Type "ship help" for the uplink index.']);
