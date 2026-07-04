@@ -54,6 +54,26 @@
   #in-tti-label{ width:100%; font:inherit; font-size:12px; letter-spacing:2px; text-transform:uppercase;
     background:var(--panel2); color:var(--g1); border:1px solid var(--edge); border-radius:4px; padding:6px 8px; }
   #in-tti-label:focus{ outline:none; border-color:var(--g3); }
+
+  /* ship terminal — players type commands; the right one runs */
+  .term-log{ min-height:64px; max-height:110px; overflow-y:auto; background:#020a05;
+    border:1px solid var(--edge); border-radius:4px; padding:6px 8px; font-size:9.5px; line-height:1.55;
+    display:flex; flex-direction:column; gap:2px; scrollbar-width:thin; scrollbar-color:var(--g3) transparent; }
+  .term-log .tl-in{ color:var(--glint); }
+  .term-log .tl-ok{ color:var(--red); font-weight:bold; }
+  .term-log .tl-err{ color:var(--amber); }
+  .term-log .tl-lock{ color:var(--red); }
+  .term-log .tl-sys{ color:var(--dim); }
+  .term-line{ display:flex; align-items:center; gap:6px; }
+  .term-prompt{ color:var(--g1); font-weight:bold; }
+  #term-in{ flex:1; min-width:0; font:inherit; font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    background:var(--panel2); color:var(--g1); border:1px solid var(--edge); border-radius:4px; padding:6px 8px; }
+  #term-in:focus{ outline:none; border-color:var(--g3); }
+  #term-in:disabled{ opacity:.35; cursor:not-allowed; }
+  #term-status.locked{ color:var(--red); animation:lockpulse 1.4s ease-in-out infinite; }
+  #term-unlock{ font:inherit; font-size:8px; letter-spacing:1px; color:var(--dim); background:transparent;
+    border:1px solid var(--edge); border-radius:3px; padding:2px 6px; cursor:pointer; align-self:flex-start; }
+  #term-unlock:hover{ color:var(--g1); border-color:var(--g2); }
   .timerset .tcolon{ color:var(--g1); font-size:15px; font-weight:bold; }
   .timerset .tunit{ font-size:8px; color:var(--dim); letter-spacing:2px; margin-left:4px; }
   #tti-ctl button.on{ background:var(--g1); border-color:var(--g1); color:#03130a; font-weight:bold; }
@@ -245,6 +265,21 @@
               <div class="row"><div class="lbl"><span>⚠ AUX BANK DAMAGE</span><b id="auxdmg-v">0%</b></div><input type="range" min="0" max="50" value="0" id="sl-auxdmg"></div>
               <div class="hint">DM only — damage the AUX bank (not tied to ship integrity). Fully damaging it locks aux out for players. The battery bank can't be damaged.</div>
             </div>
+          </div>
+
+          <!-- SHIP TERMINAL — players type commands here; the right command runs.
+               3 bad entries lock the terminal for 5 minutes. -->
+          <div class="card">
+            <h2>SHIP TERMINAL <span class="v" id="term-status">READY</span></h2>
+            <div class="term-log" id="term-log"></div>
+            <div class="term-line"><span class="term-prompt">&gt;</span>
+              <input type="text" id="term-in" maxlength="40" autocomplete="off" spellcheck="false"
+                     aria-label="terminal command" placeholder="ENTER COMMAND">
+            </div>
+            <button id="term-unlock" class="ctl-only" type="button">RESET LOCK</button>
+            <div class="hint ctl-only">DM only — accepted command: <b>SD -T &lt;seconds&gt;</b> (e.g. "SD -T 20")
+              starts a SELF-DESTRUCT countdown, no matter the core state. 3 bad entries → 5-minute lockout
+              (RESET LOCK clears it).</div>
           </div>
         </div>
       </section>
@@ -650,7 +685,172 @@ shieldPads.forEach(sp => sp.addEventListener('click', () => {
   renderShields(); renderHull(); renderRoute(); saveDamage();   // panels affect shield power → EFF
 }));
 
-function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); }
+// ---- ship terminal ----
+// players type commands; SD -T <seconds> starts a SELF-DESTRUCT countdown via
+// the shared timer — deliberately NOT core-gated, unlike the overdrive path.
+// 3 bad entries lock the terminal for 5 minutes (again on each relock). The
+// attempts/lock/history state syncs (shipTerminal) so every console — and the
+// DM — sees the same terminal.
+const TERM_CMD = /^SD -T (\d{1,4})$/;              // matched against normalized input
+const TERM_TRIES = 3, TERM_LOCK_MS = 5 * 60 * 1000, TERM_HIST = 6;
+const TERM_CLS = ['tl-in', 'tl-ok', 'tl-err', 'tl-lock', 'tl-sys'];
+function normTerm(raw) {
+  if (!raw || typeof raw !== 'object') raw = {};
+  return {
+    attempts: clamp(raw.attempts | 0, 0, TERM_TRIES),
+    lockUntil: Math.max(0, +raw.lockUntil || 0),
+    hist: (Array.isArray(raw.hist) ? raw.hist : []).slice(-TERM_HIST).map(h => ({
+      m: String((h && h.m) || '').slice(0, 90),
+      c: TERM_CLS.includes(h && h.c) ? h.c : 'tl-sys',
+    })),
+  };
+}
+state.term = normTerm(load('shipTerminal', {}));
+const saveTerm = () => pushKey('shipTerminal', state.term);
+const termIn = $('term-in'), termLog = $('term-log');
+const termLocked = () => (state.term.lockUntil || 0) > Date.now();
+function termPush(m, c) { state.term.hist = [...state.term.hist, { m, c }].slice(-TERM_HIST); }
+function renderTerm() {
+  // history renders from synced state, so every console shows the same log
+  termLog.replaceChildren(...state.term.hist.map(h => {
+    const d = document.createElement('div'); d.className = h.c; d.textContent = h.m; return d;
+  }));
+  termLog.scrollTop = termLog.scrollHeight;
+  const locked = termLocked(), st = $('term-status');
+  if (!locked && state.term.lockUntil) state.term.lockUntil = 0;   // expired — clear locally
+  termIn.disabled = locked;
+  st.classList.toggle('locked', locked);
+  st.textContent = locked ? 'LOCKED ' + fmtT((state.term.lockUntil - Date.now()) / 1000)
+    : state.term.attempts > 0 ? (TERM_TRIES - state.term.attempts) + ' TRIES LEFT' : 'READY';
+}
+termIn.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || termLocked()) return;
+  const raw = termIn.value.trim().replace(/\s+/g, ' ').toUpperCase();
+  if (!raw) return;
+  termIn.value = '';
+  termPush('> ' + raw, 'tl-in');
+  const m = raw.match(TERM_CMD);
+  if (m) {
+    // valid code: launch the destruct countdown — regardless of core power
+    const secs = clamp(+m[1], 1, 5999);
+    state.term.attempts = 0;
+    state.timer = { duration: secs, remaining: secs, running: true, endsAt: Date.now() + secs * 1000, label: 'SELF-DESTRUCT' };
+    saveTimer(); renderTimer();
+    termPush('⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(secs), 'tl-ok');
+  } else {
+    state.term.attempts++;
+    if (state.term.attempts >= TERM_TRIES) {
+      state.term.attempts = 0;
+      state.term.lockUntil = Date.now() + TERM_LOCK_MS;
+      termPush('✖ COMMAND REJECTED — TERMINAL LOCKED (5:00)', 'tl-lock');
+    } else {
+      termPush('✖ COMMAND NOT RECOGNIZED — ' + (TERM_TRIES - state.term.attempts) + ' ATTEMPT(S) REMAINING', 'tl-err');
+    }
+  }
+  saveTerm(); renderTerm();
+});
+$('term-unlock').addEventListener('click', () => {   // DM override
+  state.term.attempts = 0; state.term.lockUntil = 0;
+  termPush('▸ terminal lock cleared by operator', 'tl-sys');
+  saveTerm(); renderTerm();
+});
+setInterval(() => { if (state.term.lockUntil) renderTerm(); }, 500);   // live lockout countdown
+
+// ---- remote command channel (Google Apps Script / Sheets → ship) ----
+// external tools PUT { id, at, cmd } to the shipCommand key in Firebase (see
+// gas/ship-commands.gs); every open console executes new commands and logs
+// them to the shared terminal. All commands are absolute assignments, so two
+// consoles executing the same command is harmless. This is the GM's
+// authorized channel — no attempt lockout applies here.
+const AREA_KEYS = { REACTOR: 'reactor', BRIDGE: 'bridge', AI: 'aiCore', AICORE: 'aiCore', DRONEBAY: 'droneBay',
+  WPNFWD: 'wpnFwd', WPNAFT: 'wpnAft', BOOSTP: 'boostP', BOOSTS: 'boostS',
+  FANFP: 'fanFP', FANFS: 'fanFS', FANAP: 'fanAP', FANAS: 'fanAS' };
+const STATE_WORDS = { ONLINE: 0, DAMAGED: 1, OFFLINE: 2, 0: 0, 1: 1, 2: 2 };
+const SHIELD_IDX = { FORE: 0, STBD: 1, AFT: 2, PORT: 3 };
+const POWER_ALIAS = { ENG: 'eng', ENGINES: 'eng', DRONES: 'drones', DRN: 'drones',
+  WEAPONS: 'weapons', WPN: 'weapons', SHIELDS: 'shields', SHD: 'shields' };
+const parseClock = s => {   // "90" or "1:30" → seconds
+  const m = String(s).match(/^(\d{1,3}):([0-5]\d)$/);
+  return m ? +m[1] * 60 + +m[2] : (/^\d{1,4}$/.test(s) ? +s : NaN);
+};
+const startCountdown = (secs, label) => {
+  state.timer = { duration: secs, remaining: secs, running: true, endsAt: Date.now() + secs * 1000, label };
+  saveTimer(); renderTimer();
+};
+function execRemote(cmd) {
+  const raw = String(cmd || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  let m;
+  if ((m = raw.match(/^SD -T (\d{1,4})$/))) {
+    const secs = clamp(+m[1], 1, 5999);
+    startCountdown(secs, 'SELF-DESTRUCT');
+    return '⚠ SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(secs);
+  }
+  if (raw === 'TIMER STOP') {
+    const t = state.timer;
+    if (t.running) { t.remaining = timerLeft(); t.running = false; t.endsAt = null; saveTimer(); renderTimer(); }
+    return '❚❚ countdown stopped';
+  }
+  if (raw === 'TIMER RESET') {
+    const t = state.timer;
+    t.running = false; t.endsAt = null; t.remaining = t.duration;
+    saveTimer(); renderTimer();
+    return '↺ countdown reset';
+  }
+  if ((m = raw.match(/^TIMER (\S+)( .+)?$/))) {
+    const secs = parseClock(m[1]);
+    if (!Number.isFinite(secs) || secs < 1) return '✖ bad duration: ' + m[1];
+    const label = normTimerLabel(m[2] || state.timer.label);
+    startCountdown(Math.min(secs, 5999), label);
+    return '▶ ' + label + ' countdown started · ' + fmtT(secs);
+  }
+  if ((m = raw.match(/^DAMAGE (\w+) (\w+)$/))) {
+    const k = AREA_KEYS[m[1]], v = STATE_WORDS[m[2]];
+    if (!k || v === undefined) return '✖ unknown area/state: ' + raw;
+    state.damage.areas[k] = v;
+    renderAreas(); renderFans(); renderPower(); renderRoute(); renderHull(); saveDamage(); savePower();
+    return '● ' + m[1] + ' → ' + m[2];
+  }
+  if ((m = raw.match(/^SHIELD (\w+) (\w+)$/))) {
+    const i = SHIELD_IDX[m[1]], v = STATE_WORDS[m[2]];
+    if (i === undefined || v === undefined) return '✖ unknown panel/state: ' + raw;
+    state.damage.shieldPanels[i] = v;
+    renderShields(); renderHull(); renderRoute(); saveDamage();
+    return '⛨ SHIELD ' + m[1] + ' → ' + m[2];
+  }
+  if ((m = raw.match(/^POWER (\w+) (\d{1,3})$/))) {
+    const k = POWER_ALIAS[m[1]];
+    if (!k) return '✖ unknown system: ' + m[1];
+    state.power[k] = clamp(+m[2], 0, 100);
+    renderPower(); renderRoute(); renderPowerSubs(); savePower();
+    return '⚡ ' + m[1] + ' throttle → ' + state.power[k] + '%';
+  }
+  if ((m = raw.match(/^ALT (\d{1,3})$/))) {
+    state.altitude = clamp(+m[1], 0, 100);
+    renderAlt(); saveAlt();
+    return '▲ altitude → ' + state.altitude + '%';
+  }
+  return '✖ unknown command: ' + raw.slice(0, 40);
+}
+let cmdSeen = null;
+try { cmdSeen = localStorage.getItem('shipCmdSeen'); } catch (e) {}
+function handleRemoteCommand(d) {
+  if (!d || typeof d !== 'object' || !d.cmd) return;
+  const id = String(d.id ?? d.at ?? '');
+  if (!id || id === cmdSeen) return;                       // already executed here
+  cmdSeen = id;
+  try { localStorage.setItem('shipCmdSeen', id); } catch (e) {}
+  if (d.at && Date.now() - +d.at > 60000) return;          // stale — don't replay on page load
+  const res = execRemote(d.cmd);
+  termPush('▮ REMOTE > ' + String(d.cmd).trim().replace(/\s+/g, ' ').toUpperCase().slice(0, 60), 'tl-sys');
+  termPush(res, res.startsWith('✖') ? 'tl-err' : res.startsWith('⚠') ? 'tl-ok' : 'tl-sys');
+  saveTerm(); renderTerm();
+}
+// local test hook: run shipCommand('SD -T 20') in the browser console; also
+// accepts a raw {id, at, cmd} payload, exactly as Firebase would deliver it
+window.shipCommand = cmd => handleRemoteCommand(
+  cmd && typeof cmd === 'object' ? cmd : { id: 'local-' + Date.now() + '-' + Math.random(), at: Date.now(), cmd });
+
+function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); }
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
@@ -668,10 +868,12 @@ if (PLAYER) {
   const SYS_SLIDERS = KEYS.map(k => 'sl-' + k);   // sl-eng / sl-drones / sl-weapons / sl-shields
   document.querySelectorAll('input, button').forEach(el => {
     const id = el.id || '';
-    const operable = /^sl-aux-|^sl-batt-/.test(id) || SYS_SLIDERS.includes(id) || id === 'btn-overdrive';
+    const operable = /^sl-aux-|^sl-batt-/.test(id) || SYS_SLIDERS.includes(id)
+      || id === 'btn-overdrive' || id === 'term-in';
     if (!operable) { el.disabled = true; el.tabIndex = -1; }
   });
   renderRoute();   // re-apply the aux lock after the blanket disable above
+  renderTerm();    // re-apply the terminal lockout state too
 }
 
 // keep in sync if another local tab changes things
@@ -682,6 +884,7 @@ addEventListener('storage', () => {
   state.altitude = load('shipAltitude', { v: state.altitude }).v;
   state.timer = load('shipTimer', state.timer);
   state.aux = normAux(load('shipAux', state.aux));
+  state.term = normTerm(load('shipTerminal', state.term));
   renderAll();
 });
 
@@ -706,6 +909,8 @@ addEventListener('storage', () => {
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { mirrorLocal('shipAltitude', d); state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { mirrorLocal('shipTimer', d); state.timer = d; renderTimer(); } });
     onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { mirrorLocal('shipAux', d); state.aux = normAux(d); renderRoute(); renderHull(); } });
+    onValue(ref(db, 'shipTerminal'),    s => { const d = s.val(); if (d) { mirrorLocal('shipTerminal', d); state.term = normTerm(d); renderTerm(); } });
+    onValue(ref(db, 'shipCommand'),     s => handleRemoteCommand(s.val()));   // GAS / Sheets remote commands
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);
   }
