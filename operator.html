@@ -71,6 +71,10 @@
   #term-in:focus{ outline:none; border-color:var(--g3); }
   #term-in:disabled{ opacity:.35; cursor:not-allowed; }
   #term-status.locked{ color:var(--red); animation:lockpulse 1.4s ease-in-out infinite; }
+  #term-in.auth{ border-color:var(--amber); color:var(--amber); }
+  #dcode-in{ width:100%; font:inherit; font-size:10px; letter-spacing:2px; background:var(--panel2);
+    color:var(--amber); border:1px dashed var(--edge); border-radius:4px; padding:5px 8px; }
+  #dcode-in:focus{ outline:none; border-color:var(--amber); }
   #term-unlock{ font:inherit; font-size:8px; letter-spacing:1px; color:var(--dim); background:transparent;
     border:1px solid var(--edge); border-radius:3px; padding:2px 6px; cursor:pointer; align-self:flex-start; }
   #term-unlock:hover{ color:var(--g1); border-color:var(--g2); }
@@ -277,9 +281,15 @@
                      aria-label="terminal command" placeholder="ENTER COMMAND">
             </div>
             <button id="term-unlock" class="ctl-only" type="button">RESET LOCK</button>
+            <div class="row ctl-only" style="margin-top:2px">
+              <div class="lbl"><span>⚿ DESTRUCT CODE</span><b id="dcode-st">NOT SET</b></div>
+              <input type="text" id="dcode-in" maxlength="24" autocomplete="off" spellcheck="false"
+                     aria-label="destruct authorization code" placeholder="TYPE CODE · ENTER TO SET · EMPTY = CLEAR">
+            </div>
             <div class="hint ctl-only">DM only — accepted command: <b>SD -T &lt;seconds&gt;</b> (e.g. "SD -T 20")
-              starts a SELF-DESTRUCT countdown, no matter the core state. 3 bad entries → 5-minute lockout
-              (RESET LOCK clears it).</div>
+              starts a SELF-DESTRUCT countdown, no matter the core state. Set a DESTRUCT CODE above (masked)
+              and the command also demands that code word — players have to figure it out. Wrong codes burn
+              the same 3 attempts → 5-minute lockout (RESET LOCK clears it).</div>
           </div>
         </div>
       </section>
@@ -710,6 +720,18 @@ const saveTerm = () => pushKey('shipTerminal', state.term);
 const termIn = $('term-in'), termLog = $('term-log');
 const termLocked = () => (state.term.lockUntil || 0) > Date.now();
 function termPush(m, c) { state.term.hist = [...state.term.hist, { m, c }].slice(-TERM_HIST); }
+
+// DESTRUCT CODE — a GM-set code word (shipDestruct, synced) that the SD
+// command additionally demands; players have to figure it out. Empty = no
+// code required (SD works on syntax alone, as before).
+const normDestruct = raw => ({ code: String((raw && raw.code) || '').toUpperCase().trim().slice(0, 24) });
+state.destruct = normDestruct(load('shipDestruct', {}));
+const saveDestruct = () => pushKey('shipDestruct', state.destruct);
+function renderDestruct() {
+  const el = $('dcode-st');
+  el.textContent = state.destruct.code ? 'SET' : 'NOT SET';
+  el.style.color = state.destruct.code ? 'var(--amber)' : 'var(--dim)';
+}
 function renderTerm() {
   // history renders from synced state, so every console shows the same log
   termLog.replaceChildren(...state.term.hist.map(h => {
@@ -723,7 +745,54 @@ function renderTerm() {
   st.textContent = locked ? 'LOCKED ' + fmtT((state.term.lockUntil - Date.now()) / 1000)
     : state.term.attempts > 0 ? (TERM_TRIES - state.term.attempts) + ' TRIES LEFT' : 'READY';
 }
+// launch the destruct countdown — regardless of core power
+function launchSD(secs) {
+  state.term.attempts = 0;
+  state.timer = { duration: secs, remaining: secs, running: true, endsAt: Date.now() + secs * 1000, label: 'SELF-DESTRUCT' };
+  saveTimer(); renderTimer();
+  termPush('⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(secs), 'tl-ok');
+}
+function termBurn(msg) {   // one failed attempt; the 3rd locks the terminal
+  state.term.attempts++;
+  if (state.term.attempts >= TERM_TRIES) {
+    state.term.attempts = 0;
+    state.term.lockUntil = Date.now() + TERM_LOCK_MS;
+    termPush(msg + ' — TERMINAL LOCKED (5:00)', 'tl-lock');
+  } else {
+    termPush(msg + ' — ' + (TERM_TRIES - state.term.attempts) + ' ATTEMPT(S) REMAINING', 'tl-err');
+  }
+}
+let termAuth = null, termAuthBuf = '';   // masked AUTHORIZATION CODE stage
+function termAuthExit() {
+  termAuth = null; termAuthBuf = '';
+  termIn.value = ''; termIn.classList.remove('auth');
+  termIn.placeholder = 'ENTER COMMAND';
+}
 termIn.addEventListener('keydown', e => {
+  // masked code entry: consume every key, render "." per character
+  if (termAuth) {
+    e.preventDefault();
+    if (e.key === 'Escape') {
+      termAuthExit();
+      termPush('○ authorization cancelled', 'tl-sys');
+      saveTerm(); renderTerm();
+      return;
+    }
+    if (e.key === 'Enter') {
+      const guess = termAuthBuf.trim().toUpperCase(), secs = termAuth.secs;
+      termPush('> ' + '.'.repeat(Math.max(1, guess.length)), 'tl-in');   // obfuscated echo
+      termAuthExit();
+      if (guess && guess === state.destruct.code) launchSD(secs);
+      else termBurn('✖ AUTHORIZATION CODE INVALID');
+      saveTerm(); renderTerm();
+      return;
+    }
+    if (e.key === 'Backspace') termAuthBuf = termAuthBuf.slice(0, -1);
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) termAuthBuf += e.key;
+    termIn.value = '.'.repeat(termAuthBuf.length);
+    return;
+  }
+
   if (e.key !== 'Enter' || termLocked()) return;
   const raw = termIn.value.trim().replace(/\s+/g, ' ').toUpperCase();
   if (!raw) return;
@@ -731,21 +800,18 @@ termIn.addEventListener('keydown', e => {
   termPush('> ' + raw, 'tl-in');
   const m = raw.match(TERM_CMD);
   if (m) {
-    // valid code: launch the destruct countdown — regardless of core power
     const secs = clamp(+m[1], 1, 5999);
-    state.term.attempts = 0;
-    state.timer = { duration: secs, remaining: secs, running: true, endsAt: Date.now() + secs * 1000, label: 'SELF-DESTRUCT' };
-    saveTimer(); renderTimer();
-    termPush('⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(secs), 'tl-ok');
-  } else {
-    state.term.attempts++;
-    if (state.term.attempts >= TERM_TRIES) {
-      state.term.attempts = 0;
-      state.term.lockUntil = Date.now() + TERM_LOCK_MS;
-      termPush('✖ COMMAND REJECTED — TERMINAL LOCKED (5:00)', 'tl-lock');
+    if (state.destruct.code) {
+      // GM set a code word: demand it before the sequence fires
+      termAuth = { secs }; termAuthBuf = '';
+      termIn.classList.add('auth');
+      termIn.placeholder = 'ENTER AUTHORIZATION CODE';
+      termPush('⚿ AUTHORIZATION CODE REQUIRED — enter code (ESC cancels)', 'tl-sys');
     } else {
-      termPush('✖ COMMAND NOT RECOGNIZED — ' + (TERM_TRIES - state.term.attempts) + ' ATTEMPT(S) REMAINING', 'tl-err');
+      launchSD(secs);
     }
+  } else {
+    termBurn('✖ COMMAND NOT RECOGNIZED');
   }
   saveTerm(); renderTerm();
 });
@@ -756,12 +822,36 @@ $('term-unlock').addEventListener('click', () => {   // DM override
 });
 setInterval(() => { if (state.term.lockUntil) renderTerm(); }, 500);   // live lockout countdown
 
+// DM-only DESTRUCT CODE setter — masked: typed characters render as "." so
+// the code never shows on screen. Enter sets it; Enter on empty clears it.
+{
+  const dcodeIn = $('dcode-in');
+  let dcodeBuf = '';
+  dcodeIn.addEventListener('keydown', e => {
+    e.preventDefault();
+    if (e.key === 'Enter') {
+      state.destruct.code = dcodeBuf.trim().toUpperCase().slice(0, 24);
+      dcodeBuf = ''; dcodeIn.value = '';
+      saveDestruct(); renderDestruct();
+      termPush(state.destruct.code ? '⚿ destruct authorization code updated by operator'
+                                   : '⚿ destruct authorization code cleared', 'tl-sys');
+      saveTerm(); renderTerm();
+      return;
+    }
+    if (e.key === 'Backspace') dcodeBuf = dcodeBuf.slice(0, -1);
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) dcodeBuf += e.key;
+    dcodeIn.value = '.'.repeat(dcodeBuf.length);
+  });
+  dcodeIn.addEventListener('paste', e => e.preventDefault());
+}
+
 // ---- remote command channel (Google Apps Script / Sheets → ship) ----
 // external tools PUT { id, at, cmd } to the shipCommand key in Firebase (see
 // gas/ship-commands.gs); every open console executes new commands and logs
 // them to the shared terminal. All commands are absolute assignments, so two
 // consoles executing the same command is harmless. This is the GM's
-// authorized channel — no attempt lockout applies here.
+// authorized channel — neither the attempt lockout nor the destruct code
+// word applies here.
 const AREA_KEYS = { REACTOR: 'reactor', BRIDGE: 'bridge', AI: 'aiCore', AICORE: 'aiCore', DRONEBAY: 'droneBay',
   WPNFWD: 'wpnFwd', WPNAFT: 'wpnAft', BOOSTP: 'boostP', BOOSTS: 'boostS',
   FANFP: 'fanFP', FANFS: 'fanFS', FANAP: 'fanAP', FANAS: 'fanAS' };
@@ -850,7 +940,7 @@ function handleRemoteCommand(d) {
 window.shipCommand = cmd => handleRemoteCommand(
   cmd && typeof cmd === 'object' ? cmd : { id: 'local-' + Date.now() + '-' + Math.random(), at: Date.now(), cmd });
 
-function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); }
+function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); renderDestruct(); }
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
@@ -885,6 +975,7 @@ addEventListener('storage', () => {
   state.timer = load('shipTimer', state.timer);
   state.aux = normAux(load('shipAux', state.aux));
   state.term = normTerm(load('shipTerminal', state.term));
+  state.destruct = normDestruct(load('shipDestruct', state.destruct));
   renderAll();
 });
 
@@ -910,6 +1001,7 @@ addEventListener('storage', () => {
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { mirrorLocal('shipTimer', d); state.timer = d; renderTimer(); } });
     onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { mirrorLocal('shipAux', d); state.aux = normAux(d); renderRoute(); renderHull(); } });
     onValue(ref(db, 'shipTerminal'),    s => { const d = s.val(); if (d) { mirrorLocal('shipTerminal', d); state.term = normTerm(d); renderTerm(); } });
+    onValue(ref(db, 'shipDestruct'),    s => { const d = s.val(); if (d) { mirrorLocal('shipDestruct', d); state.destruct = normDestruct(d); renderDestruct(); } });
     onValue(ref(db, 'shipCommand'),     s => handleRemoteCommand(s.val()));   // GAS / Sheets remote commands
   } catch (e) {
     console.warn('[operator] Firebase unavailable — local/BroadcastChannel only.', e);

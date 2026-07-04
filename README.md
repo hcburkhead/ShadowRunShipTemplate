@@ -75,6 +75,16 @@ core power** (unlike overdrive, which needs a full core). Three bad entries
 lock the terminal for **5 minutes** (again on each relock); the DM has a
 RESET LOCK override, and the terminal history/lockout syncs to every console.
 
+**Destruct authorization code.** The DM can set a secret **code word** (the
+masked DESTRUCT CODE field on the terminal card — keystrokes render as `.`;
+Enter sets, empty Enter clears; synced via `shipDestruct`). While a code is
+set, `SD -T <secs>` additionally demands it: the terminal switches to a masked
+**ENTER AUTHORIZATION CODE** prompt, a wrong code word burns one of the same
+3 attempts (→ 5-minute lockout), the right one fires the sequence. Players
+have to figure the code out in play. With no code set, `SD -T` works on syntax
+alone. In the CASPER terminal the GM can also set/change it with the hidden
+`override` command (changing an existing code requires the current one).
+
 **Remote commands (Google Apps Script / Sheets).** External tools can drive the
 ship by writing to the `shipCommand` key in the Firebase DB — `gas/ship-commands.gs`
 is a paste-ready Apps Script with a `sendShipCommand('...')` helper, a SHIP
