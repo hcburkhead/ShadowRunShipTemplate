@@ -22,6 +22,9 @@
 //                     terminal then demands it — ENTER AUTHORIZATION CODE,
 //                     with every keystroke masked as "." — and a wrong code
 //                     burns one of the shared 3 attempts (5-minute lockout).
+//   <code word>       typing the bare code word at the prompt also works:
+//                     it ARMS the destruct (one shot, 10 min) so SD -T then
+//                     fires without the masked prompt.
 //
 // GM COMMAND (not listed in help):
 //   override          → HELICARRIER PASSWORD OVERRIDE: set/change the
@@ -81,6 +84,22 @@
   function destructCode(d) {
     return String((d && d.code) || '').toUpperCase().trim().slice(0, 24);
   }
+  function codeHash(s) {   // short fingerprint (never the code) for DM verification
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+    return '#' + ('0' + (h % 256).toString(16).toUpperCase()).slice(-2);
+  }
+
+  // cached copy of the code so the bare word can be recognized at the prompt
+  // (refreshed at load, every 60s, and after every SD/override interaction)
+  var cachedCode = '';
+  var SD_ARM_MS = 10 * 60 * 1000, armedUntil = 0;   // bare code word arms SD (one shot)
+  function refreshCode() {
+    return dbGet('shipDestruct').then(function (d) { cachedCode = destructCode(d); return cachedCode; })
+      .catch(function () { return cachedCode; });
+  }
+  refreshCode();
+  setInterval(refreshCode, 60000);
 
   // ── masked input mode ("." per keystroke, capture-phase so the terminal
   //    never sees the keys). onEnter(buffer) → truthy keeps the mode open. ──
@@ -138,6 +157,16 @@
     var s = String(raw || '').trim().replace(/\s+/g, ' ');
     var up = s.toUpperCase();
 
+    // ── typing the bare code word authorizes: ARMS the destruct (one shot)
+    //    so SD -T fires without the masked prompt ──
+    if (cachedCode && up === cachedCode) {
+      armedUntil = Date.now() + SD_ARM_MS;
+      out(['⚿ AUTHORIZATION CODE ACCEPTED — DESTRUCT ARMED.',
+           '> enter SD -T <seconds> to initiate.'], true);
+      refreshCode();
+      return true;
+    }
+
     // ── HELICARRIER PASSWORD OVERRIDE (GM): set the destruct code word ──
     if (/^(OVERRIDE|HELICARRIER PASSWORD OVERRIDE)$/.test(up)) {
       dbGet('shipDestruct').then(function (d) {
@@ -151,7 +180,10 @@
             var code = buf.toUpperCase().trim().slice(0, 24);
             if (code && code.length < 3) { out('✖ CODE TOO SHORT (MIN 3 CHARS) — override aborted.', true); return; }
             dbPut('shipDestruct', { code: code, at: Date.now() }).then(function () {
-              out(code ? ['▸ DESTRUCT CODE SET.', '▸ SD -T now demands the code word.']
+              cachedCode = code;
+              out(code ? ['▸ DESTRUCT CODE SET (KEY ' + codeHash(code) + ').',
+                          '▸ SD -T now demands the code word.',
+                          '▸ verify: the DM console shows the same KEY fingerprint.']
                        : ['▸ DESTRUCT CODE CLEARED.', '▸ SD -T works on syntax alone.']);
             }).catch(fail);
           });
@@ -177,10 +209,15 @@
           out('> SHIP UPLINK LOCKED — RETRY IN ' + clock((t.lockUntil - now) / 1000), true);
           return;
         }
+        cachedCode = code;                               // keep the arm check fresh
         var m = up.match(/^SD -T (\d{1,4})$/);
         if (!m) { burn(t, '▮ CASPER > ' + up, 'COMMAND NOT RECOGNIZED'); return; }
         var secs = Math.max(1, Math.min(5999, parseInt(m[1], 10)));
-        if (!code) { launchSD(t, up, secs).catch(fail); return; }
+        if (!code || Date.now() <= armedUntil) {         // no code, or already authorized
+          armedUntil = 0;                                // an arm is one-shot
+          launchSD(t, up, secs).catch(fail);
+          return;
+        }
         // GM set a code word: demand it, masked with "."
         out('⚿ AUTHORIZATION CODE REQUIRED — ENTER CODE: (ESC to cancel)', true);
         maskStart(function (buf) {

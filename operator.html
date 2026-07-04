@@ -727,9 +727,16 @@ function termPush(m, c) { state.term.hist = [...state.term.hist, { m, c }].slice
 const normDestruct = raw => ({ code: String((raw && raw.code) || '').toUpperCase().trim().slice(0, 24) });
 state.destruct = normDestruct(load('shipDestruct', {}));
 const saveDestruct = () => pushKey('shipDestruct', state.destruct);
+// short fingerprint of the code (never the code itself) so the DM can verify
+// every console holds the same word without revealing it
+function codeHash(s) {
+  let h = 5381;
+  for (const ch of s) h = (h * 33 + ch.charCodeAt(0)) >>> 0;
+  return '#' + ('0' + (h % 256).toString(16).toUpperCase()).slice(-2);
+}
 function renderDestruct() {
   const el = $('dcode-st');
-  el.textContent = state.destruct.code ? 'SET' : 'NOT SET';
+  el.textContent = state.destruct.code ? 'SET ' + codeHash(state.destruct.code) : 'NOT SET';
   el.style.color = state.destruct.code ? 'var(--amber)' : 'var(--dim)';
 }
 function renderTerm() {
@@ -762,6 +769,8 @@ function termBurn(msg) {   // one failed attempt; the 3rd locks the terminal
     termPush(msg + ' — ' + (TERM_TRIES - state.term.attempts) + ' ATTEMPT(S) REMAINING', 'tl-err');
   }
 }
+const SD_ARM_MS = 10 * 60 * 1000;        // bare code word arms SD for 10 min (one shot)
+let sdArmedUntil = 0;
 let termAuth = null, termAuthBuf = '';   // masked AUTHORIZATION CODE stage
 function termAuthExit() {
   termAuth = null; termAuthBuf = '';
@@ -797,17 +806,30 @@ termIn.addEventListener('keydown', e => {
   const raw = termIn.value.trim().replace(/\s+/g, ' ').toUpperCase();
   if (!raw) return;
   termIn.value = '';
+  // refresh the code from storage in case a sync event was missed
+  state.destruct = normDestruct(load('shipDestruct', state.destruct));
+  const code = state.destruct.code;
+  // typing the bare code word at the prompt also authorizes: it ARMS the
+  // destruct command (one shot) so SD -T fires without the masked prompt
+  if (code && raw === code) {
+    termPush('> ' + '.'.repeat(raw.length), 'tl-in');   // never echo the code
+    sdArmedUntil = Date.now() + SD_ARM_MS;
+    termPush('⚿ AUTHORIZATION CODE ACCEPTED — DESTRUCT ARMED · enter SD -T <seconds>', 'tl-ok');
+    saveTerm(); renderTerm();
+    return;
+  }
   termPush('> ' + raw, 'tl-in');
   const m = raw.match(TERM_CMD);
   if (m) {
     const secs = clamp(+m[1], 1, 5999);
-    if (state.destruct.code) {
+    if (code && Date.now() > sdArmedUntil) {
       // GM set a code word: demand it before the sequence fires
       termAuth = { secs }; termAuthBuf = '';
       termIn.classList.add('auth');
       termIn.placeholder = 'ENTER AUTHORIZATION CODE';
       termPush('⚿ AUTHORIZATION CODE REQUIRED — enter code (ESC cancels)', 'tl-sys');
     } else {
+      sdArmedUntil = 0;   // an arm is one-shot
       launchSD(secs);
     }
   } else {

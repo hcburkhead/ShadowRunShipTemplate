@@ -80,10 +80,15 @@ masked DESTRUCT CODE field on the terminal card — keystrokes render as `.`;
 Enter sets, empty Enter clears; synced via `shipDestruct`). While a code is
 set, `SD -T <secs>` additionally demands it: the terminal switches to a masked
 **ENTER AUTHORIZATION CODE** prompt, a wrong code word burns one of the same
-3 attempts (→ 5-minute lockout), the right one fires the sequence. Players
-have to figure the code out in play. With no code set, `SD -T` works on syntax
-alone. In the CASPER terminal the GM can also set/change it with the hidden
-`override` command (changing an existing code requires the current one).
+3 attempts (→ 5-minute lockout), the right one fires the sequence. Typing the
+**bare code word** at the prompt also works — it's accepted (echo obfuscated)
+and **arms** the destruct for one shot, so `SD -T <secs>` then fires without
+the prompt. Players have to figure the code out in play. With no code set,
+`SD -T` works on syntax alone. The DM status shows a short **fingerprint**
+(`SET #A7`) so consoles can be checked for agreement without revealing the
+code. In the CASPER terminal the GM can also set/change it with the hidden
+`override` command (changing an existing code requires the current one; it
+reports the same KEY fingerprint).
 
 **Remote commands (Google Apps Script / Sheets).** External tools can drive the
 ship by writing to the `shipCommand` key in the Firebase DB — `gas/ship-commands.gs`
