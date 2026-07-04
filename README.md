@@ -83,11 +83,15 @@ Players have to figure the code word out in play.
 
 **CASPER uplink (SSH-style remote session).** In the CASPER player terminal
 (GAS web app — see `gas/ship-link-client.html`, a paste-in block needing no
-Apps Script permissions), the hack command **`establish helicarrier uplink`**
-rolls a d20 (canvas animation, **DC 10**). On 10+ the prompt switches to
-`root@helicarrier:~#` and the session **mimics the ship terminal console**:
-same shared log, same 3-attempt/5-minute lockout, and the same code word —
-typing it initiates the self-destruct. `EXIT` disconnects. Below 10 the
+Apps Script permissions), the hack command **`hack establish uplink`** rolls a
+d20 (red canvas animation like the hacking tools, **DC 10**). On 10+ the
+prompt switches to `root@helicarrier:~#` and the session **mimics the ship
+terminal console**: same shared log, same 3-attempt/5-minute lockout, and the
+same code word — typing it initiates the self-destruct. Inside the session the
+**STS shipnet command set** is available: `sts status`, `sts timer <m:ss>
+[NAME]` / `stop` / `reset`, `sts alt <0-100>`, `sts power <sys> <0-100>`,
+`sts ping`, `sts help` — STS commands never burn attempts; anything outside
+the `sts` namespace counts as a code attempt. `EXIT` disconnects. Below 10 the
 connection is refused (retry allowed). The GM sets/changes the code word from
 CASPER with the hidden `override` command (masked; changing an existing code
 requires the current one; reports the matching KEY fingerprint).
