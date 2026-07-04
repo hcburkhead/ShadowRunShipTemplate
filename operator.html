@@ -778,7 +778,7 @@ termIn.addEventListener('keydown', e => {
   termIn.value = '';
 
   // --- NEW: Intercept CLEAR command to empty the log ---
-  if (raw === 'CLR') {
+  if (raw === 'CLEAR') {
     state.term.hist = [];
     saveTerm(); 
     renderTerm();
