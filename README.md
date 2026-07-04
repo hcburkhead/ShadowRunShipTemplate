@@ -13,6 +13,8 @@ no build step; just open the files (or host on GitHub Pages).
 - `ship-model.js` — the shared power/damage model (pure functions + sync
   constants); both `operator.html` and `index.html` import it, so the math
   lives in one place.
+- `gas/ship-commands.gs` — Google Apps Script helper for sending remote
+  commands to the ship from a Google Sheet (see "Remote commands" below).
 - `Helicarrier.fbx` — the ship model. `sts.png` — logo. `vendor/` — Three.js.
 
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
@@ -68,6 +70,17 @@ players can type commands; the right one — **`SD -T <seconds>`**, e.g.
 core power** (unlike overdrive, which needs a full core). Three bad entries
 lock the terminal for **5 minutes** (again on each relock); the DM has a
 RESET LOCK override, and the terminal history/lockout syncs to every console.
+
+**Remote commands (Google Apps Script / Sheets).** External tools can drive the
+ship by writing to the `shipCommand` key in the Firebase DB — `gas/ship-commands.gs`
+is a paste-ready Apps Script with a `sendShipCommand('...')` helper, a SHIP
+spreadsheet menu, and an optional type-a-command-in-a-cell console. Supported
+commands (no terminal lockout on this channel — it's the GM's authorized path):
+`SD -T <secs>`, `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
+`DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
+`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`. Every executed
+command is echoed in the terminal log with a `▮ REMOTE >` prefix; there is also
+a local test hook — run `shipCommand('SD -T 20')` in the browser console.
 
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
