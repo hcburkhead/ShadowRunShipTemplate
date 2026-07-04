@@ -776,6 +776,16 @@ termIn.addEventListener('keydown', e => {
   const raw = termIn.value.trim().replace(/\s+/g, ' ').toUpperCase();
   if (!raw) return;
   termIn.value = '';
+
+  // --- NEW: Intercept CLEAR command to empty the log ---
+  if (raw === 'CLEAR') {
+    state.term.hist = [];
+    saveTerm(); 
+    renderTerm();
+    return;
+  }
+  // ---------------------------------------------------
+
   // refresh the code from storage in case a sync event was missed
   state.destruct = normDestruct(load('shipDestruct', state.destruct));
   const code = state.destruct.code;
