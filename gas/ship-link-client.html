@@ -26,16 +26,22 @@
 //         refused — retry. EXIT / LOGOUT / DISCONNECT closes the session.
 //         ("establish helicarrier uplink" is accepted too.)
 //
-//   inside the session, the STS shipnet command set is available:
+//   inside the session, the hacker's restricted STS command set:
 //     sts | sts help              → command index
-//     sts status                  → live ship readout
-//     sts timer <m:ss|secs> [NAME] | sts timer stop | sts timer reset
-//     sts alt <0-100>             → set altitude
-//     sts power <sys> <0-100>     → throttle eng|drones|weapons|shields
-//     sts ping                    → uplink diagnostic
-//   unknown STS subcommands do NOT burn attempts; anything typed outside
-//   the STS namespace is treated as a code attempt, exactly like the ship
-//   terminal.
+//     sts status                  → live ship readout (read-only)
+//     sts aux <sys> <0-50>        → route the AUX reserve to a system
+//     sts batt <sys> <0-25>       → route the BACKUP BATTERY to a system
+//          sys: eng | drones | weapons | shields
+//     sts ping                    → uplink diagnostic (read-only)
+//   nothing else — no core throttle, no timers, no altitude. Unknown STS
+//   subcommands do NOT burn attempts; anything typed outside the STS
+//   namespace is treated as a code attempt, exactly like the ship terminal.
+//
+//   sts reveal → a SEPARATE hack: interrogate the ship's sarcastic AI
+//   (ARIA) for the destruct code word. Its own red d20 — success ONLY on a
+//   natural 20, and only while the AI CORE is ONLINE (damaged/offline AI
+//   gives static). Failing just earns snark — no attempts burned — so it's
+//   the gamble alternative to hunting the code through DM challenges.
 //
 // GM COMMAND (not listed anywhere):
 //   override → HELICARRIER PASSWORD OVERRIDE: set/change the destruct code
@@ -194,33 +200,33 @@
     }).catch(fail);
   }, true);
 
-  // ── STS shipnet commands (in-session only) ──
+  // ── STS shipnet commands (in-session only; hacker-restricted set) ──
   function handleSts(arg) {
     if (!arg || arg === 'HELP' || arg === '-H') {
       out([
         '═══════════════════════════════════════',
         '   - STS SHIPNET COMMAND INDEX -',
+        '   access level: REMOTE // RESTRICTED',
         '═══════════════════════════════════════',
         '',
-        '  sts status              → live ship readout',
-        '  sts timer <m:ss> [NAME] → start a countdown',
-        '  sts timer stop          → pause the countdown',
-        '  sts timer reset         → clear the countdown',
-        '  sts alt <0-100>         → set altitude',
-        '  sts power <sys> <0-100> → throttle a system',
+        '  sts status            → live ship readout',
+        '  sts aux <sys> <0-50>  → route AUX reserve',
+        '  sts batt <sys> <0-25> → route BACKUP BATTERY',
         '       sys: eng | drones | weapons | shields',
-        '  sts ping                → uplink diagnostic',
-        '  exit                    → disconnect',
+        '  sts reveal            → interrogate the ship AI',
+        '       (deep access — natural 20 only)',
+        '  sts ping              → uplink diagnostic',
+        '  exit                  → disconnect',
         '',
         'EXAMPLES:',
-        '  sts timer 5:00 CORE MELTDOWN',
-        '  sts power weapons 0',
-        '  sts alt 25',
+        '  sts aux shields 50',
+        '  sts batt eng 25',
         '',
         '═══════════════════════════════════════',
       ]);
       return;
     }
+    if (/^REVEAL( PASSCODE| CODE)?$/.test(arg)) return doReveal();
     if (arg === 'PING') {
       return dbGet('shipTimer').then(function () {
         return dbPut('shipPing', { at: Date.now() });
@@ -247,31 +253,27 @@
           ]);
         }).catch(fail);
     }
-    // whitelisted pass-through commands (executed by the ship consoles)
+    // the hacker may only touch the reserve banks: AUX and BACKUP BATTERY
     var ALLOWED = [
-      /^TIMER (STOP|RESET)$/,
-      /^TIMER \d{1,4}( .+)?$/, /^TIMER \d{1,3}:[0-5]\d( .+)?$/,
-      /^ALT \d{1,3}$/,
-      /^POWER (ENG|ENGINES|DRONES|DRN|WEAPONS|WPN|SHIELDS|SHD) \d{1,3}$/,
+      /^AUX (ENG|ENGINES|DRONES|DRN|WEAPONS|WPN|SHIELDS|SHD) \d{1,3}$/,
+      /^BATT (ENG|ENGINES|DRONES|DRN|WEAPONS|WPN|SHIELDS|SHD) \d{1,3}$/,
     ];
     for (var i = 0; i < ALLOWED.length; i++) {
       if (ALLOWED[i].test(arg)) {
         return sendCmd(arg).then(function () { out('> COMMAND RELAYED: ' + arg); }).catch(fail);
       }
     }
+    if (/^(TIMER|ALT|POWER)( |$)/.test(arg)) {   // known shipnet systems, above this clearance
+      out(['✖ ACCESS DENIED — insufficient clearance for that subsystem.',
+           '> remote sessions may only route AUX / BATT reserves.'], true);   // no attempt burned
+      return;
+    }
     out(['✖ unknown sts command.', '> type STS HELP for the shipnet index.'], true);   // no attempt burned
   }
 
-  // ── hack check: d20, DC 10, with CASPER's canvas roller when available ──
-  function establishUplink() {
-    if (session) { out('> uplink already active.'); return; }
+  // ── red hack d20 (same colour as CASPER's hacking tools) ──
+  function rollHackDie(done) {
     var die = 1 + Math.floor(Math.random() * 20);
-    out('> PROBING SHIPNET ICE — HACK CHECK (DC 10)...');
-    var finish = function () {
-      out('> ROLL: d20(' + die + ')' + (die >= 10 ? ' — ACCESS GRANTED' : ' — ACCESS DENIED'), die < 10);
-      if (die >= 10) openSession();
-      else out(['✖ CONNECTION REFUSED — ICE DEFLECTED THE PROBE.', '> re-run the command to try again.'], true);
-    };
     if (typeof makeD20Roller === 'function') {
       try {
         var outEl = document.getElementById('term-output');
@@ -279,12 +281,63 @@
         var canvas = document.createElement('canvas');
         canvas.width = 520; canvas.height = 360; canvas.className = 'd20-canvas';
         wrap.appendChild(canvas); outEl.appendChild(wrap); outEl.scrollTop = outEl.scrollHeight;
-        makeD20Roller(canvas, '#ff4444').roll(die);   // red — same as the hacking tools
-        setTimeout(finish, 1300);
+        makeD20Roller(canvas, '#ff4444').roll(die);
+        setTimeout(function () { done(die); }, 1300);
         return;
       } catch (err) { /* fall through to text-only */ }
     }
-    finish();
+    done(die);
+  }
+
+  // ── hack check: d20, DC 10 ──
+  function establishUplink() {
+    if (session) { out('> uplink already active.'); return; }
+    out('> PROBING SHIPNET ICE — HACK CHECK (DC 10)...');
+    rollHackDie(function (die) {
+      out('> ROLL: d20(' + die + ')' + (die >= 10 ? ' — ACCESS GRANTED' : ' — ACCESS DENIED'), die < 10);
+      if (die >= 10) openSession();
+      else out(['✖ CONNECTION REFUSED — ICE DEFLECTED THE PROBE.', '> re-run the command to try again.'], true);
+    });
+  }
+
+  // ── sts reveal: interrogate the ship AI for the destruct code word.
+  //    A separate hack from the uplink — success ONLY on a natural 20, and
+  //    only while the AI CORE is ONLINE. Failure costs nothing but dignity. ──
+  var ARIA_SNARK = [
+    'Nice try, hotshot. My lips — metaphorical — are sealed.',
+    'You call THAT an intrusion vector? Adorable.',
+    'I have seen toasters with better technique. Denied.',
+    'Almost. In the way that missing the ship entirely is "almost".',
+    'The code is— no. No, I am not doing this. Ask the DM like everyone else.',
+  ];
+  function doReveal() {
+    out('> INTERROGATING SHIP AI — DEEP ACCESS CHECK (NATURAL 20 REQUIRED)...');
+    rollHackDie(function (die) {
+      out('> ROLL: d20(' + die + ')', die < 20);
+      Promise.all([dbGet('shipDamageState'), dbGet('shipDestruct'), dbGet('shipTerminal')]).then(function (res) {
+        var ai = parseInt((((res[0] || {}).areas) || {}).aiCore, 10) || 0;
+        var code = destructCode(res[1]);
+        var t = normTerm(res[2]);
+        if (ai >= 1) {   // damaged or offline — no banter, no code
+          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation — core unresponsive', c: 'tl-sys' }]);
+          out(['[ARIA] ▒▒—bzzt—▒ …c-core integrity c-comp-promised… ▒▒',
+               '✖ AI CORE UNRESPONSIVE — NOTHING RECOVERED.'], true);
+          return;
+        }
+        if (die < 20) {
+          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation failed — d20(' + die + ')', c: 'tl-err' }]);
+          out('[ARIA] "' + ARIA_SNARK[die % ARIA_SNARK.length] + '"', true);
+          return;
+        }
+        if (!code) {
+          out('[ARIA] "A flawless crack, and the vault is empty — no destruct code is even configured. Anticlimactic."');
+          return;
+        }
+        saveTerm(t, [{ m: '⚿ ARIA disclosed the destruct code to a remote operator', c: 'tl-lock' }]);
+        out(['[ARIA] "Oh, FINE. A natural 20. You beautiful nuisance."',
+             '[ARIA] "The destruct code is «' + code + '». Do give me a head start."']);
+      }).catch(fail);
+    });
   }
 
   // ── masked input for the GM override ("." per keystroke) ──

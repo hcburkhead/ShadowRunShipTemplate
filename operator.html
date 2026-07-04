@@ -887,6 +887,16 @@ function execRemote(cmd) {
     renderPower(); renderRoute(); renderPowerSubs(); savePower();
     return '⚡ ' + m[1] + ' throttle → ' + state.power[k] + '%';
   }
+  if ((m = raw.match(/^(AUX|BATT) (\w+) (\d{1,3})$/))) {   // reserve routing (hacker-accessible)
+    const k = POWER_ALIAS[m[2]];
+    if (!k) return '✖ unknown system: ' + m[2];
+    const r = state.aux[k] || (state.aux[k] = { aux: 0, batt: 0 });
+    if (m[1] === 'AUX') r.aux = clamp(+m[3], 0, AUX_MAX);
+    else r.batt = clamp(+m[3], 0, BATT_MAX);
+    renderRoute(); saveAux();                              // renderRoute re-clamps to the live bank caps
+    const v = m[1] === 'AUX' ? r.aux : r.batt;
+    return '⚡ ' + m[1] + ' ' + m[2] + ' → ' + v + '%';
+  }
   if ((m = raw.match(/^ALT (\d{1,3})$/))) {
     state.altitude = clamp(+m[1], 0, 100);
     renderAlt(); saveAlt();

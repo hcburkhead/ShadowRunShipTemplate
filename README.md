@@ -87,14 +87,21 @@ Apps Script permissions), the hack command **`hack establish uplink`** rolls a
 d20 (red canvas animation like the hacking tools, **DC 10**). On 10+ the
 prompt switches to `root@helicarrier:~#` and the session **mimics the ship
 terminal console**: same shared log, same 3-attempt/5-minute lockout, and the
-same code word — typing it initiates the self-destruct. Inside the session the
-**STS shipnet command set** is available: `sts status`, `sts timer <m:ss>
-[NAME]` / `stop` / `reset`, `sts alt <0-100>`, `sts power <sys> <0-100>`,
-`sts ping`, `sts help` — STS commands never burn attempts; anything outside
-the `sts` namespace counts as a code attempt. `EXIT` disconnects. Below 10 the
-connection is refused (retry allowed). The GM sets/changes the code word from
-CASPER with the hidden `override` command (masked; changing an existing code
-requires the current one; reports the matching KEY fingerprint).
+same code word — typing it initiates the self-destruct. The hacker's
+**restricted STS command set** inside the session: `sts status` (read-only),
+`sts aux <sys> <0-50>` and `sts batt <sys> <0-25>` (the only things a remote
+session may modify — reserve routing), `sts ping`, `sts help`. Core throttle,
+timers, and altitude answer **ACCESS DENIED**. STS commands never burn
+attempts; anything outside the `sts` namespace counts as a code attempt.
+**`sts reveal`** is a separate hack: interrogate the ship's sarcastic AI
+(ARIA) for the destruct code — its own red d20, success **only on a natural
+20**, and only while the **AI CORE is ONLINE** (damaged/offline AI answers
+with static). Failures cost nothing but get logged to the DM's terminal; a
+success is logged as "ARIA disclosed the destruct code" without revealing it.
+`EXIT` disconnects. Below 10 on the uplink roll the connection is refused
+(retry allowed). The GM sets/changes the code word from CASPER with the hidden
+`override` command (masked; changing an existing code requires the current
+one; reports the matching KEY fingerprint).
 
 **Remote commands (Google Apps Script / Sheets).** External GM tools can drive
 the ship by writing to the `shipCommand` key in the Firebase DB —
