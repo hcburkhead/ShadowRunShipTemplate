@@ -102,8 +102,11 @@ itself; a **total of 20+** (e.g. 17 +3, "expert effort") earns a **hint**,
 which the DM — voicing the ship AI — delivers at the table (the DM terminal
 log is pinged that a hint is owed); below 20 is snark and nothing, at no
 cost. A **natural 1** triggers the AI's counter-intrusion: it **burns an
-attempt and locks the terminal for 10 minutes** (this fires even with the AI
-core down — the ship's ICE never sleeps). Reveals and hints otherwise require
+attempt, force-disconnects the session (auto-EXIT), and blacklists CASPER's
+uplink for 10 minutes** — the hacker must re-run `hack establish uplink` once
+it expires. The ship's own terminal is **not** locked by this (only the
+regular 3-strike rule locks it). The blacklist fires even with the AI core
+down — the ship's ICE never sleeps. Reveals and hints otherwise require
 the **AI CORE ONLINE** (damaged/offline AI answers with static, even on a
 crit). Everything is logged to the DM's terminal in effort terms; a code
 disclosure is logged without revealing the word.

@@ -45,9 +45,12 @@
 //                           delivers it at the table; the DM console log
 //                           is pinged so they know a hint is owed
 //     · below 20          → snark, nothing, no attempts burned
-//     · NATURAL 1         → counter-intrusion: burns an attempt and locks
-//                           the terminal for 10 MINUTES (fires even if the
-//                           AI core is down — the ship's ICE never sleeps)
+//     · NATURAL 1         → counter-intrusion: burns an attempt, force-
+//                           disconnects the session (auto-EXIT), and
+//                           blacklists CASPER's uplink for 10 MINUTES —
+//                           re-hack after it expires. The ship's own
+//                           terminal is NOT locked. Fires even if the AI
+//                           core is down — the ship's ICE never sleeps.
 //   Only while the AI CORE is ONLINE — damaged/offline AI gives static
 //   even on a crit. The gamble alternative to hunting the code through
 //   DM challenges.
@@ -133,6 +136,18 @@
   }
 
   function input() { return document.getElementById('term-input'); }
+
+  // ── uplink blacklist (nat-1 counter-intrusion): CASPER-local, survives a
+  //    page refresh via localStorage; the ship's own terminal is unaffected ──
+  var UPLINK_CD_KEY = 'shipUplinkCooldown';
+  var uplinkCdMem = 0;   // fallback if storage is unavailable in the sandbox
+  function uplinkCooldown() {
+    try { return +(localStorage.getItem(UPLINK_CD_KEY) || 0); } catch (e) { return uplinkCdMem; }
+  }
+  function setUplinkCooldown(ts) {
+    uplinkCdMem = ts;
+    try { localStorage.setItem(UPLINK_CD_KEY, String(ts)); } catch (e) {}
+  }
 
   // ── SSH-style remote session: prompt swap + we own the Enter key so the
   //    accepted code word can be echoed obfuscated ──
@@ -224,7 +239,7 @@
         '       sys: eng | drones | weapons | shields',
         '  sts reveal            → interrogate the ship AI',
         '       (d20 + LOGIC · nat 20 = code · 20+ = hint',
-        '        · nat 1 = counter-intrusion lockout)',
+        '        · nat 1 = severed uplink, 10:00 blacklist)',
         '  sts ping              → uplink diagnostic',
         '  exit                  → disconnect',
         '',
@@ -302,6 +317,12 @@
   // ── hack check: d20, DC 10 ──
   function establishUplink() {
     if (session) { out('> uplink already active.'); return; }
+    var cd = uplinkCooldown();
+    if (Date.now() < cd) {   // nat-1 blacklist: no roll until it expires
+      out(['✖ COUNTER-INTRUSION ACTIVE — UPLINK BLACKLISTED.',
+           '> RETRY IN ' + clock((cd - Date.now()) / 1000) + '.'], true);
+      return;
+    }
     out('> PROBING SHIPNET ICE — HACK CHECK (DC 10)...');
     rollHackDie(function (die) {
       out('> ROLL: d20(' + die + ')' + (die >= 10 ? ' — ACCESS GRANTED' : ' — ACCESS DENIED'), die < 10);
@@ -353,18 +374,16 @@
           var ai = parseInt((((res[0] || {}).areas) || {}).aiCore, 10) || 0;
           var code = destructCode(res[1]);
           var t = normTerm(res[2]);
-          if (die === 1) {   // CRITICAL FAILURE — counter-intrusion: burn + 10-minute lockout
-            t.attempts++;
-            if (t.attempts >= TRIES) t.attempts = 0;
-            t.lockUntil = Date.now() + 10 * 60 * 1000;
-            saveTerm(t, [{ m: '☠ AI counter-intrusion — remote operator locked out (10:00) — ' + effortShort + ' effort', c: 'tl-lock' }]);
+          if (die === 1) {   // CRITICAL FAILURE — counter-intrusion severs THIS uplink.
+            // CASPER-side blacklist only: the ship's own terminal stays usable.
+            setUplinkCooldown(Date.now() + 10 * 60 * 1000);
             out(ai >= 1
               ? ['[SHIP AI] ▒▒—bzzt—▒ …even d-damaged, I f-felt that one… ▒▒',
-                 '☠ COUNTER-INTRUSION TRIGGERED.',
-                 '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)']
+                 '☠ COUNTER-INTRUSION TRIGGERED.']
               : ['[SHIP AI] "That was... genuinely embarrassing to watch. Beginner hour is over."',
-                 '[SHIP AI] "Counter-intrusion deployed. Enjoy the timeout, hotshot."',
-                 '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)'], true);
+                 '[SHIP AI] "Counter-intrusion deployed. Get out of my house."'], true);
+            burn(t, '▮ REMOTE > AI counter-intrusion — uplink severed (10:00 blacklist) — ' + effortShort + ' effort', 'AI COUNTER-INTRUSION');
+            closeSession('☠ CONNECTION TERMINATED BY REMOTE HOST — UPLINK BLACKLISTED (10:00).');
             return;
           }
           if (ai >= 1) {   // damaged or offline — no banter, no code, no hint
