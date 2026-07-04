@@ -94,10 +94,17 @@ session may modify — reserve routing), `sts ping`, `sts help`. Core throttle,
 timers, and altitude answer **ACCESS DENIED**. STS commands never burn
 attempts; anything outside the `sts` namespace counts as a code attempt.
 **`sts reveal`** is a separate hack: interrogate the ship's sarcastic AI
-(ARIA) for the destruct code — its own red d20, success **only on a natural
-20**, and only while the **AI CORE is ONLINE** (damaged/offline AI answers
-with static). Failures cost nothing but get logged to the DM's terminal; a
-success is logged as "ARIA disclosed the destruct code" without revealing it.
+(ARIA) for the destruct code — a red **d20 + LOGIC modifier** check (the
+modifier resolves from the CASPER character sheet). A **natural 20** reveals
+the code itself; a **total of 20+** (e.g. 17 +3) earns a **hint**, which the
+DM — voicing ARIA — delivers at the table (the DM terminal log is pinged that
+a hint is owed, with the roll math); below 20 is snark and nothing, at no
+cost. A **natural 1** triggers ARIA's counter-intrusion: it **burns an
+attempt and locks the terminal for 10 minutes** (this fires even with the AI
+core down — the ship's ICE never sleeps). Reveals and hints otherwise require
+the **AI CORE ONLINE** (damaged/offline AI answers with static, even on a
+crit). Everything is logged to the DM's terminal with the roll math; a code
+disclosure is logged without revealing the word.
 `EXIT` disconnects. Below 10 on the uplink roll the connection is refused
 (retry allowed). The GM sets/changes the code word from CASPER with the hidden
 `override` command (masked; changing an existing code requires the current

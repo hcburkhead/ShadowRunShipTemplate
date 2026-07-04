@@ -38,10 +38,19 @@
 //   namespace is treated as a code attempt, exactly like the ship terminal.
 //
 //   sts reveal → a SEPARATE hack: interrogate the ship's sarcastic AI
-//   (ARIA) for the destruct code word. Its own red d20 — success ONLY on a
-//   natural 20, and only while the AI CORE is ONLINE (damaged/offline AI
-//   gives static). Failing just earns snark — no attempts burned — so it's
-//   the gamble alternative to hunting the code through DM challenges.
+//   (ARIA) for the destruct code word. Rolls d20 + the character's LOGIC
+//   modifier (resolved from the sheet via resolveRollModifier):
+//     · NATURAL 20        → ARIA reveals the code itself
+//     · total ≥ 20        → ARIA concedes a HINT — the DM (voicing ARIA)
+//                           delivers it at the table; the DM console log
+//                           is pinged so they know a hint is owed
+//     · below 20          → snark, nothing, no attempts burned
+//     · NATURAL 1         → counter-intrusion: burns an attempt and locks
+//                           the terminal for 10 MINUTES (fires even if the
+//                           AI core is down — the ship's ICE never sleeps)
+//   Only while the AI CORE is ONLINE — damaged/offline AI gives static
+//   even on a crit. The gamble alternative to hunting the code through
+//   DM challenges.
 //
 // GM COMMAND (not listed anywhere):
 //   override → HELICARRIER PASSWORD OVERRIDE: set/change the destruct code
@@ -214,7 +223,8 @@
         '  sts batt <sys> <0-25> → route BACKUP BATTERY',
         '       sys: eng | drones | weapons | shields',
         '  sts reveal            → interrogate the ship AI',
-        '       (deep access — natural 20 only)',
+        '       (d20 + LOGIC · nat 20 = code · 20+ = hint',
+        '        · nat 1 = counter-intrusion lockout)',
         '  sts ping              → uplink diagnostic',
         '  exit                  → disconnect',
         '',
@@ -301,8 +311,10 @@
   }
 
   // ── sts reveal: interrogate the ship AI for the destruct code word.
-  //    A separate hack from the uplink — success ONLY on a natural 20, and
-  //    only while the AI CORE is ONLINE. Failure costs nothing but dignity. ──
+  //    d20 + LOGIC modifier (from the character sheet). Natural 20 → the
+  //    code; total ≥ 20 → a HINT the DM delivers in ARIA's voice; below →
+  //    snark. Only while the AI CORE is ONLINE. Never burns attempts. ──
+  var REVEAL_ATTR = 'logic';   // sheet attribute used for the interrogation check
   var ARIA_SNARK = [
     'Nice try, hotshot. My lips — metaphorical — are sealed.',
     'You call THAT an intrusion vector? Adorable.',
@@ -310,33 +322,71 @@
     'Almost. In the way that missing the ship entirely is "almost".',
     'The code is— no. No, I am not doing this. Ask the DM like everyone else.',
   ];
+  function getRevealMod(cb) {   // resolve the LOGIC modifier from the sheet
+    try {
+      google.script.run
+        .withSuccessHandler(function (r) { cb((r && r.mod) | 0, (r && r.name) || REVEAL_ATTR.toUpperCase()); })
+        .withFailureHandler(function () { cb(0, REVEAL_ATTR.toUpperCase()); })
+        .resolveRollModifier(REVEAL_ATTR);
+    } catch (e) { cb(0, REVEAL_ATTR.toUpperCase()); }
+  }
   function doReveal() {
-    out('> INTERROGATING SHIP AI — DEEP ACCESS CHECK (NATURAL 20 REQUIRED)...');
-    rollHackDie(function (die) {
-      out('> ROLL: d20(' + die + ')', die < 20);
-      Promise.all([dbGet('shipDamageState'), dbGet('shipDestruct'), dbGet('shipTerminal')]).then(function (res) {
-        var ai = parseInt((((res[0] || {}).areas) || {}).aiCore, 10) || 0;
-        var code = destructCode(res[1]);
-        var t = normTerm(res[2]);
-        if (ai >= 1) {   // damaged or offline — no banter, no code
-          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation — core unresponsive', c: 'tl-sys' }]);
-          out(['[ARIA] ▒▒—bzzt—▒ …c-core integrity c-comp-promised… ▒▒',
-               '✖ AI CORE UNRESPONSIVE — NOTHING RECOVERED.'], true);
-          return;
-        }
-        if (die < 20) {
-          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation failed — d20(' + die + ')', c: 'tl-err' }]);
+    out('> INTERROGATING SHIP AI — DEEP ACCESS CHECK (d20 + LOGIC)...');
+    getRevealMod(function (mod, label) {
+      rollHackDie(function (die) {
+        var total = die + mod;
+        var modStr = (mod >= 0 ? '+' : '') + mod;
+        var rollTxt = 'd20(' + die + ') ' + modStr + ' = ' + total;
+        out('> ROLL: ' + rollTxt + '  [' + label + ']', die !== 20 && total < 20);
+        Promise.all([dbGet('shipDamageState'), dbGet('shipDestruct'), dbGet('shipTerminal')]).then(function (res) {
+          var ai = parseInt((((res[0] || {}).areas) || {}).aiCore, 10) || 0;
+          var code = destructCode(res[1]);
+          var t = normTerm(res[2]);
+          if (die === 1) {   // CRITICAL FAILURE — counter-intrusion: burn + 10-minute lockout
+            t.attempts++;
+            if (t.attempts >= TRIES) t.attempts = 0;
+            t.lockUntil = Date.now() + 10 * 60 * 1000;
+            saveTerm(t, [{ m: '☠ AI counter-intrusion — remote operator locked out (10:00) — ' + rollTxt, c: 'tl-lock' }]);
+            out(ai >= 1
+              ? ['[ARIA] ▒▒—bzzt—▒ …even d-damaged, I f-felt that one… ▒▒',
+                 '☠ COUNTER-INTRUSION TRIGGERED.',
+                 '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)']
+              : ['[ARIA] "A one. A NATURAL one. I felt that from here."',
+                 '[ARIA] "Counter-intrusion deployed. Enjoy the timeout, hotshot."',
+                 '✖ ATTEMPT BURNED — TERMINAL LOCKED (10:00)'], true);
+            return;
+          }
+          if (ai >= 1) {   // damaged or offline — no banter, no code, no hint
+            saveTerm(t, [{ m: '▮ REMOTE > AI interrogation — core unresponsive', c: 'tl-sys' }]);
+            out(['[ARIA] ▒▒—bzzt—▒ …c-core integrity c-comp-promised… ▒▒',
+                 '✖ AI CORE UNRESPONSIVE — NOTHING RECOVERED.'], true);
+            return;
+          }
+          if (die === 20) {                 // natural 20 — the code itself
+            if (!code) {
+              out('[ARIA] "A flawless crack, and the vault is empty — no destruct code is even configured. Anticlimactic."');
+              return;
+            }
+            saveTerm(t, [{ m: '⚿ ARIA disclosed the destruct code to a remote operator', c: 'tl-lock' }]);
+            out(['[ARIA] "Oh, FINE. A natural 20. You beautiful nuisance."',
+                 '[ARIA] "The destruct code is «' + code + '». Do give me a head start."']);
+            return;
+          }
+          if (total >= 20) {                // "unnatural" 20 — a hint, voiced by the DM
+            if (!code) {
+              out('[ARIA] "Impressive-ish. But there is no destruct code configured to hint at. Awkward."');
+              return;
+            }
+            saveTerm(t, [{ m: '⚿ ARIA concedes a destruct-code HINT — ' + rollTxt + ' — DM delivers it', c: 'tl-ok' }]);
+            out(['[ARIA] "A twenty. Not a NATURAL twenty, mind you — I checked. But a deal is a deal."',
+                 '[ARIA] "One hint. Lean in — your operator will do the voice."',
+                 '> HINT AUTHORIZED — the DM delivers ARIA\'s hint at the table.']);
+            return;
+          }
+          saveTerm(t, [{ m: '▮ REMOTE > AI interrogation failed — ' + rollTxt, c: 'tl-err' }]);
           out('[ARIA] "' + ARIA_SNARK[die % ARIA_SNARK.length] + '"', true);
-          return;
-        }
-        if (!code) {
-          out('[ARIA] "A flawless crack, and the vault is empty — no destruct code is even configured. Anticlimactic."');
-          return;
-        }
-        saveTerm(t, [{ m: '⚿ ARIA disclosed the destruct code to a remote operator', c: 'tl-lock' }]);
-        out(['[ARIA] "Oh, FINE. A natural 20. You beautiful nuisance."',
-             '[ARIA] "The destruct code is «' + code + '». Do give me a head start."']);
-      }).catch(fail);
+        }).catch(fail);
+      });
     });
   }
 
