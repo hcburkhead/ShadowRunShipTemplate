@@ -124,7 +124,7 @@ export function readJSON(key, fallback = null) {
 }
 
 // ---- Firebase real-time sync (loaded dynamically so pages work offline) ----
-export const SYNC_KEYS = ['shipPowerLevels', 'shipDamageState', 'shipAux', 'shipAltitude', 'shipTimer'];
+export const SYNC_KEYS = ['shipPowerLevels', 'shipDamageState', 'shipAux', 'shipAltitude', 'shipTimer', 'shipTerminal'];
 export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
   authDomain: "shadowrun-ship-db.firebaseapp.com",

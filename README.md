@@ -62,6 +62,13 @@ recover **damaged (yellow)** panels back up to the available ceiling (e.g. main
 damaged + one panel down = 37%; routing 13% brings it to 50%). **Offline (red)**
 panels are a hard loss until the DM repairs them — routed power can't recover them.
 
+**Ship terminal.** A command-line card on the console (players get it too). The
+players can type commands; the right one — **`SD -T <seconds>`**, e.g.
+`SD -T 20` — starts a SELF-DESTRUCT countdown on the display **regardless of
+core power** (unlike overdrive, which needs a full core). Three bad entries
+lock the terminal for **5 minutes** (again on each relock); the DM has a
+RESET LOCK override, and the terminal history/lockout syncs to every console.
+
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
 
