@@ -71,7 +71,6 @@
   #term-in:focus{ outline:none; border-color:var(--g3); }
   #term-in:disabled{ opacity:.35; cursor:not-allowed; }
   #term-status.locked{ color:var(--red); animation:lockpulse 1.4s ease-in-out infinite; }
-  #term-in.auth{ border-color:var(--amber); color:var(--amber); }
   #dcode-in{ width:100%; font:inherit; font-size:10px; letter-spacing:2px; background:var(--panel2);
     color:var(--amber); border:1px dashed var(--edge); border-radius:4px; padding:5px 8px; }
   #dcode-in:focus{ outline:none; border-color:var(--amber); }
@@ -286,10 +285,11 @@
               <input type="text" id="dcode-in" maxlength="24" autocomplete="off" spellcheck="false"
                      aria-label="destruct authorization code" placeholder="TYPE CODE · ENTER TO SET · EMPTY = CLEAR">
             </div>
-            <div class="hint ctl-only">DM only — accepted command: <b>SD -T &lt;seconds&gt;</b> (e.g. "SD -T 20")
-              starts a SELF-DESTRUCT countdown, no matter the core state. Set a DESTRUCT CODE above (masked)
-              and the command also demands that code word — players have to figure it out. Wrong codes burn
-              the same 3 attempts → 5-minute lockout (RESET LOCK clears it).</div>
+            <div class="hint ctl-only">DM only — set a DESTRUCT CODE above (masked). Typing that code word
+              into this terminal initiates the SELF-DESTRUCT, no matter the core state: it starts the
+              OH SH*T! timer with its configured duration under a SELF-DESTRUCT banner — so set the timer
+              length "like normal" first. Wrong entries burn 3 attempts → 5-minute lockout (RESET LOCK
+              clears it). Players have to figure the code word out.</div>
           </div>
         </div>
       </section>
@@ -696,12 +696,12 @@ shieldPads.forEach(sp => sp.addEventListener('click', () => {
 }));
 
 // ---- ship terminal ----
-// players type commands; SD -T <seconds> starts a SELF-DESTRUCT countdown via
-// the shared timer — deliberately NOT core-gated, unlike the overdrive path.
-// 3 bad entries lock the terminal for 5 minutes (again on each relock). The
-// attempts/lock/history state syncs (shipTerminal) so every console — and the
-// DM — sees the same terminal.
-const TERM_CMD = /^SD -T (\d{1,4})$/;              // matched against normalized input
+// players type entries; the DM-set DESTRUCT CODE word, typed and accepted,
+// initiates the self-destruct: it starts the OH SH*T! timer with its
+// configured duration under a SELF-DESTRUCT banner — deliberately NOT
+// core-gated, unlike the overdrive path. 3 bad entries lock the terminal for
+// 5 minutes (again on each relock). The attempts/lock/history state syncs
+// (shipTerminal) so every console — and the DM — sees the same terminal.
 const TERM_TRIES = 3, TERM_LOCK_MS = 5 * 60 * 1000, TERM_HIST = 6;
 const TERM_CLS = ['tl-in', 'tl-ok', 'tl-err', 'tl-lock', 'tl-sys'];
 function normTerm(raw) {
@@ -752,12 +752,14 @@ function renderTerm() {
   st.textContent = locked ? 'LOCKED ' + fmtT((state.term.lockUntil - Date.now()) / 1000)
     : state.term.attempts > 0 ? (TERM_TRIES - state.term.attempts) + ' TRIES LEFT' : 'READY';
 }
-// launch the destruct countdown — regardless of core power
-function launchSD(secs) {
+// initiate the destruct — the countdown duration comes from the DM's OH SH*T!
+// timer card ("set it like normal"); the code word is only the trigger
+function launchSD() {
+  const dur = Math.max(1, (+state.timer.duration | 0) || 600);
   state.term.attempts = 0;
-  state.timer = { duration: secs, remaining: secs, running: true, endsAt: Date.now() + secs * 1000, label: 'SELF-DESTRUCT' };
+  state.timer = { duration: dur, remaining: dur, running: true, endsAt: Date.now() + dur * 1000, label: 'SELF-DESTRUCT' };
   saveTimer(); renderTimer();
-  termPush('⚠ COMMAND ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(secs), 'tl-ok');
+  termPush('⚠ CODE ACCEPTED — SELF-DESTRUCT SEQUENCE INITIATED · T-' + fmtT(dur), 'tl-ok');
 }
 function termBurn(msg) {   // one failed attempt; the 3rd locks the terminal
   state.term.attempts++;
@@ -769,39 +771,7 @@ function termBurn(msg) {   // one failed attempt; the 3rd locks the terminal
     termPush(msg + ' — ' + (TERM_TRIES - state.term.attempts) + ' ATTEMPT(S) REMAINING', 'tl-err');
   }
 }
-const SD_ARM_MS = 10 * 60 * 1000;        // bare code word arms SD for 10 min (one shot)
-let sdArmedUntil = 0;
-let termAuth = null, termAuthBuf = '';   // masked AUTHORIZATION CODE stage
-function termAuthExit() {
-  termAuth = null; termAuthBuf = '';
-  termIn.value = ''; termIn.classList.remove('auth');
-  termIn.placeholder = 'ENTER COMMAND';
-}
 termIn.addEventListener('keydown', e => {
-  // masked code entry: consume every key, render "." per character
-  if (termAuth) {
-    e.preventDefault();
-    if (e.key === 'Escape') {
-      termAuthExit();
-      termPush('○ authorization cancelled', 'tl-sys');
-      saveTerm(); renderTerm();
-      return;
-    }
-    if (e.key === 'Enter') {
-      const guess = termAuthBuf.trim().toUpperCase(), secs = termAuth.secs;
-      termPush('> ' + '.'.repeat(Math.max(1, guess.length)), 'tl-in');   // obfuscated echo
-      termAuthExit();
-      if (guess && guess === state.destruct.code) launchSD(secs);
-      else termBurn('✖ AUTHORIZATION CODE INVALID');
-      saveTerm(); renderTerm();
-      return;
-    }
-    if (e.key === 'Backspace') termAuthBuf = termAuthBuf.slice(0, -1);
-    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) termAuthBuf += e.key;
-    termIn.value = '.'.repeat(termAuthBuf.length);
-    return;
-  }
-
   if (e.key !== 'Enter' || termLocked()) return;
   const raw = termIn.value.trim().replace(/\s+/g, ' ').toUpperCase();
   if (!raw) return;
@@ -809,30 +779,11 @@ termIn.addEventListener('keydown', e => {
   // refresh the code from storage in case a sync event was missed
   state.destruct = normDestruct(load('shipDestruct', state.destruct));
   const code = state.destruct.code;
-  // typing the bare code word at the prompt also authorizes: it ARMS the
-  // destruct command (one shot) so SD -T fires without the masked prompt
   if (code && raw === code) {
     termPush('> ' + '.'.repeat(raw.length), 'tl-in');   // never echo the code
-    sdArmedUntil = Date.now() + SD_ARM_MS;
-    termPush('⚿ AUTHORIZATION CODE ACCEPTED — DESTRUCT ARMED · enter SD -T <seconds>', 'tl-ok');
-    saveTerm(); renderTerm();
-    return;
-  }
-  termPush('> ' + raw, 'tl-in');
-  const m = raw.match(TERM_CMD);
-  if (m) {
-    const secs = clamp(+m[1], 1, 5999);
-    if (code && Date.now() > sdArmedUntil) {
-      // GM set a code word: demand it before the sequence fires
-      termAuth = { secs }; termAuthBuf = '';
-      termIn.classList.add('auth');
-      termIn.placeholder = 'ENTER AUTHORIZATION CODE';
-      termPush('⚿ AUTHORIZATION CODE REQUIRED — enter code (ESC cancels)', 'tl-sys');
-    } else {
-      sdArmedUntil = 0;   // an arm is one-shot
-      launchSD(secs);
-    }
+    launchSD();
   } else {
+    termPush('> ' + raw, 'tl-in');
     termBurn('✖ COMMAND NOT RECOGNIZED');
   }
   saveTerm(); renderTerm();
