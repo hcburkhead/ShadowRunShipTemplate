@@ -15,6 +15,10 @@ no build step; just open the files (or host on GitHub Pages).
   lives in one place.
 - `gas/ship-commands.gs` — Google Apps Script helper for sending remote
   commands to the ship from a Google Sheet (see "Remote commands" below).
+- `gas/casper-shiplink.gs` — drop-in bridge for the CASPER TACTICAL OS player
+  terminal (GAS web app): adds `ship status/timer/alt/power` commands plus the
+  hidden `SD -T <secs>` destruct code, sharing the ship terminal's 3-attempt /
+  5-minute lockout. Install notes are in the file header.
 - `Helicarrier.fbx` — the ship model. `sts.png` — logo. `vendor/` — Three.js.
 
 State syncs via localStorage + BroadcastChannel, with optional Firebase for
