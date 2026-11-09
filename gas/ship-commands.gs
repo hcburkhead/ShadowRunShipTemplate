@@ -19,6 +19,10 @@
  *   SHIELD <PANEL> <STATE>     PANEL: FORE | STBD | AFT | PORT
  *   POWER <SYSTEM> <0-100>     SYSTEM: ENG | DRONES | WEAPONS | SHIELDS
  *   ALT <0-100>                ship altitude
+ *   BREAKER <6 digits>         arm the SIGNAL BREAKER challenge, e.g. BREAKER 482915
+ *   BREAKER RANDOM             arm (or reseed) it with a random sequence
+ *   BREAKER LOCK | UNLOCK      lock the players out / let them back in
+ *   BREAKER OFF                end it (hides the board on the player view)
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -48,6 +52,10 @@ function shipRepairReactor()    { sendShipCommand('DAMAGE REACTOR ONLINE'); }
 function shipCutWeapons()       { sendShipCommand('POWER WEAPONS 0'); }
 function shipRestoreWeapons()   { sendShipCommand('POWER WEAPONS 100'); }
 function shipShieldForeDown()   { sendShipCommand('SHIELD FORE OFFLINE'); }
+function shipBreakerRandom()    { sendShipCommand('BREAKER RANDOM'); }
+function shipBreakerLock()      { sendShipCommand('BREAKER LOCK'); }
+function shipBreakerUnlock()    { sendShipCommand('BREAKER UNLOCK'); }
+function shipBreakerOff()       { sendShipCommand('BREAKER OFF'); }
 
 /** Adds a SHIP menu to the spreadsheet on open. */
 function onOpen() {
@@ -61,6 +69,11 @@ function onOpen() {
     .addSeparator()
     .addItem('Stop countdown',       'shipTimerStop')
     .addItem('Reset countdown',      'shipTimerReset')
+    .addSeparator()
+    .addItem('Signal breaker: random seed', 'shipBreakerRandom')
+    .addItem('Signal breaker: lock out',    'shipBreakerLock')
+    .addItem('Signal breaker: unlock',      'shipBreakerUnlock')
+    .addItem('Signal breaker: end',         'shipBreakerOff')
     .addToUi();
 }
 
