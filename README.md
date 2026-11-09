@@ -10,6 +10,9 @@ no build step; just open the files (or host on GitHub Pages).
 - `index.html` — the holographic display: a perspective view + four profile
   views (dorsal / port / fore / aft), driven by shared state.
 - `holo.html` — standalone holo view.
+- `signal-breaker.js` — the SIGNAL BREAKER code-breaker challenge: the shared
+  rules (scoring, sync-state validation) plus the player board. Imported by
+  `operator.html`.
 - `ship-model.js` — the shared power/damage model (pure functions + sync
   constants); both `operator.html` and `index.html` import it, so the math
   lives in one place.
@@ -100,13 +103,30 @@ type-a-command-in-a-cell console. Supported commands (no terminal lockout or
 code word on this channel — it's the GM's authorized path): `SD -T <secs>`,
 `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
 `DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
-`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`. Every executed
+`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`,
+`BREAKER <6 digits>|RANDOM|LOCK|UNLOCK|OFF` (the sequence is masked in the
+log). Every executed
 command is echoed in the terminal log with a `▮ REMOTE >` prefix; there is also
 a local test hook — run `shipCommand('TIMER 5:00 CORE MELTDOWN')` in the
 browser console.
 
 It's a tracker — aux/battery routing is the players' control; the DM applies the
 in-game effect by hand.
+
+**Signal Breaker (code-breaker challenge).** The DM arms a secret 6-number
+sequence (one digit 0–9 for each node A–F) on the SIGNAL BREAKER card. The field
+is masked: digits show as `•`, Enter arms it, and the status shows a `SET #A2`
+fingerprint (HOLD TO PEEK reveals the sequence). **RANDOM** arms a fresh
+random sequence, for when players get stuck or the pattern gets predictable;
+re-arming wipes their progress. The board then appears on the player view.
+Players enter a **full sequence** every transmission; each node's
+oscilloscope reads back **NOMINAL** (green, exact match), **HIGH** (red, guess
+too high) or **LOW** (blue, guess too low). NOMINAL nodes **lock in** (kept and
+skipped during entry) and the rest clear. There's no timer and no attempt cap:
+the DM uses **LOCK OUT / UNLOCK** to freeze the board, and **END** hides it.
+Every transmission is logged on the DM card. State syncs as `shipBreaker`,
+so all player screens share one board. Player controls: type 0–9, ←/→ select,
+↑/↓ tune, Backspace clear, Enter transmit (or click the ▲▼ buttons).
 
 ## What the DM controls (operator.html)
 - **Core power** — read-only; it reflects the core reactor's state.
