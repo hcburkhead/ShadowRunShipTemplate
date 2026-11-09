@@ -218,9 +218,9 @@ export class BreakerBoard {
     const n = this.hist.length;
     const txt = {
       off: 'SIGNAL BREAKER OFFLINE',
-      active: 'CRACK THE OPERATOR SEQUENCE',
-      cracked: `✓ SEQUENCE CRACKED IN ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
-      lockout: '✖ ACCESS REVOKED — LOCKED OUT BY OPERATOR',
+      active: 'RELAY STATUS:OFFLINE',
+      cracked: `✓ RELAY ACTIVE || ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
+      lockout: '✖ ACCESS REVOKED — SERA INITIATED LOCK-OUT',
     }[this.status];
     s.textContent = txt;
     s.className = 'bk-status bk-st-' + this.status;
