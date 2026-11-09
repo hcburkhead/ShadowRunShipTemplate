@@ -124,7 +124,10 @@ oscilloscope reads back **NOMINAL** (green, exact match), **HIGH** (red, guess
 too high) or **LOW** (blue, guess too low). NOMINAL nodes **lock in** (kept and
 skipped during entry) and the rest clear. There's no timer and no attempt cap:
 the DM uses **LOCK OUT / UNLOCK** to freeze the board, and **END** hides it.
-Every transmission is logged on the DM card. State syncs as `shipBreaker`,
+Players can also transmit from the **ship terminal** with `-RELAY 123456`
+(one digit per node A–F, spaces allowed). It follows the same rules, never
+burns a terminal attempt, and replies with the NOMINAL count. Every
+transmission is logged on the DM card. State syncs as `shipBreaker`,
 so all player screens share one board. Player controls: type 0–9, ←/→ select,
 ↑/↓ tune, Backspace clear, Enter transmit (or click the ▲▼ buttons).
 
