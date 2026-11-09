@@ -220,8 +220,8 @@
     padding:5px 8px; display:flex; flex-direction:column; gap:1px; scrollbar-width:thin; scrollbar-color:var(--g3) transparent; }
   .bk-empty-log{ font-size:9.5px; color:var(--dim); }
   .bk-grid{ display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:8px; }
-  @media (max-width:900px){ .bk-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); } }
-  @media (max-width:560px){ .bk-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+  @container (max-width:820px){ .bk-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); } }
+  @container (max-width:420px){ .bk-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); } }
   .bk-status, .bk-hud, .bk-log-row{ overflow-wrap:anywhere; }
   .bk-node{ background:var(--panel2); border:1px solid var(--edge); border-radius:4px; padding:5px 6px;
     display:flex; flex-direction:column; gap:3px; cursor:pointer; user-select:none; transition:border-color .15s, box-shadow .15s; }
@@ -240,12 +240,13 @@
   .bk-node.bk-locked .bk-tune button{ visibility:hidden; }
   .bk-tx:disabled{ opacity:.35; cursor:not-allowed; }
 
-  /* operator: the DM card only. players: the board only, and only while a challenge is armed */
-  .breaker-player-card{ display:none; }
-  body.player .block.breaker-block{ display:none; }
-  body.player .block.breaker-block.bk-on{ display:flex; }
-  body.player .breaker-block .card.breaker-player-card{ display:flex; grid-column:1/-1; }
-  body.player .breaker-block .block-grid{ grid-template-columns:1fr; }
+  /* the board lives in the power block: hidden on the operator console, shown on the player
+     view only while a challenge is armed. Wide screens: it fills the two columns beside
+     CORE / SYSTEM POWER; narrower: its own full-width row (dense flow backfills the gap). */
+  .breaker-player-card{ display:none; grid-column:1/-1; container-type:inline-size; }
+  body.player .power-block .card.breaker-player-card:not(.bk-on){ display:none; }
+  body.player .power-block .block-grid.bk-dense{ grid-auto-flow:row dense; }   /* only while the board shows */
+  @media (min-width:1240px){ body.player .breaker-player-card{ grid-column:span 2; } }
 </style>
 </head>
 <body>
@@ -306,6 +307,13 @@
             <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
             <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
             <div class="hint">Each system draws from core power, capped by the current CORE %. Throttle or cut a system; it can't exceed core unless players add reserves.</div>
+          </div>
+
+          <!-- players: the SIGNAL BREAKER code-breaker board (built by signal-breaker.js),
+               beside the power controls; shown only while the DM has a challenge armed -->
+          <div class="card breaker-player-card" id="bk-player-card">
+            <h2>⌁ SIGNAL BREAKER <span class="v">OPERATOR CHALLENGE</span></h2>
+            <div class="breaker-board" id="breaker-board"></div>
           </div>
 
           <!-- AUX + BATTERY ROUTING (players route reserves per system; DM can damage the banks) -->
@@ -380,11 +388,6 @@
               Remote: BREAKER &lt;6 digits&gt; · BREAKER RANDOM · BREAKER LOCK · BREAKER UNLOCK · BREAKER OFF.</div>
           </div>
 
-          <!-- players: the code-breaker board (built by signal-breaker.js) -->
-          <div class="card breaker-player-card">
-            <h2>⌁ SIGNAL BREAKER <span class="v">OPERATOR CHALLENGE</span></h2>
-            <div class="breaker-board" id="breaker-board"></div>
-          </div>
         </div>
       </section>
 
@@ -957,7 +960,9 @@ function breakerTransmit(guess) {
 }
 function renderBreaker() {
   const b = state.breaker;
-  $('breaker-block').classList.toggle('bk-on', b.status !== 'off');
+  const bkCard = $('bk-player-card');
+  bkCard.classList.toggle('bk-on', b.status !== 'off');
+  bkCard.parentElement.classList.toggle('bk-dense', b.status !== 'off');
   const st = $('bk-dm-status');
   if (!st.classList.contains('err')) {
     st.textContent = BK_STATUS_TXT[b.status] + (b.status !== 'off' ? ' · ' + b.hist.length + ' TX' : '');
