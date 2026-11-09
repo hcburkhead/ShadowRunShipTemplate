@@ -219,7 +219,7 @@ export class BreakerBoard {
     const txt = {
       off: 'SIGNAL BREAKER OFFLINE',
       active: 'RELAY STATUS:OFFLINE',
-      cracked: `✓ RELAY ACTIVE || ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
+      cracked: `✓ RELAY STATUS:ACTIVE || ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
       lockout: '✖ ACCESS REVOKED — SERA INITIATED LOCK-OUT',
     }[this.status];
     s.textContent = txt;
