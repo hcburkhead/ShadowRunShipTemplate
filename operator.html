@@ -384,6 +384,7 @@
             <div class="hint">DM only. Type the 6-digit sequence above (masked) and press Enter to arm it;
               the board appears on the player view. RANDOM arms a fresh random sequence, which also
               wipes the players' progress (use it if they get stuck or the pattern gets predictable).
+              Players can also type -RELAY 123456 in the SHIP TERMINAL (it never burns a terminal attempt).
               No timer or attempt cap: LOCK OUT freezes the board until you UNLOCK it, END hides it.
               Remote: BREAKER &lt;6 digits&gt; · BREAKER RANDOM · BREAKER LOCK · BREAKER UNLOCK · BREAKER OFF.</div>
           </div>
@@ -464,8 +465,8 @@ import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
          normTimerLabel, firebaseDb } from './ship-model.js';
-import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
-         RESULT_GLYPH, RESULT_CLASS, BreakerBoard } from './signal-breaker.js';
+import { BK_NODES, BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
+         nodeLabel, RESULT_GLYPH, RESULT_CLASS, BreakerBoard } from './signal-breaker.js';
 
 // element ids are static — resolve each at most once
 const domCache = {};
@@ -885,6 +886,16 @@ termIn.addEventListener('keydown', e => {
   }
   // ---------------------------------------------------
 
+  // SIGNAL BREAKER relay ("-RELAY 123456"): transmits a sequence from the
+  // keyboard. Not a code guess, so it never burns a terminal attempt.
+  const relay = raw.match(/^-?RELAY(?: (.+))?$/);
+  if (relay) {
+    termPush('> ' + raw, 'tl-in');
+    termRelay(relay[1] || '');
+    saveTerm(); renderTerm();
+    return;
+  }
+
   // refresh the code from storage in case a sync event was missed
   state.destruct = normDestruct(load('shipDestruct', state.destruct));
   const code = state.destruct.code;
@@ -957,6 +968,34 @@ function breakerTransmit(guess) {
   b.hist = [...b.hist, { g: guess, r }].slice(-BK_HIST);
   if (isCracked(r)) b.status = 'cracked';
   saveBreaker(); renderBreaker();
+}
+// terminal relay: same rules as the board — a full 6-digit sequence, and NOMINAL
+// nodes stay locked (a different digit typed there is ignored and reported)
+function termRelay(arg) {
+  state.breaker = normBreaker(load('shipBreaker', state.breaker));   // in case a sync event was missed
+  const b = state.breaker;
+  if (b.status !== 'active') {
+    termPush(b.status === 'lockout' ? '✖ RELAY REFUSED — ACCESS REVOKED BY OPERATOR'
+      : b.status === 'cracked' ? '✓ RELAY IDLE — SEQUENCE ALREADY CRACKED'
+      : '✖ RELAY OFFLINE — NO SIGNAL CHALLENGE ACTIVE', 'tl-err');
+    return;
+  }
+  const seq = parseSequence(arg);
+  if (!seq) { termPush('✖ USAGE: -RELAY <6 DIGITS 0-9>, ONE PER NODE A–F', 'tl-err'); return; }
+  const last = b.hist[b.hist.length - 1];
+  const held = [];
+  const guess = seq.map((v, i) => {
+    if (!last || last.r[i] !== 'n') return v;
+    if (v !== last.g[i]) held.push(nodeLabel(i));
+    return last.g[i];
+  });
+  breakerTransmit(guess);
+  const nb = state.breaker, res = nb.hist[nb.hist.length - 1].r;
+  const nom = res.split('').filter(r => r === 'n').length;
+  if (held.length) termPush('▸ NODE' + (held.length > 1 ? 'S ' : ' ') + held.join(', ') + ' LOCKED — HELD AT NOMINAL', 'tl-sys');
+  termPush(nb.status === 'cracked'
+    ? '✓ RELAY #' + nb.hist.length + ' — SEQUENCE CRACKED'
+    : '⌁ RELAY #' + nb.hist.length + ' · ' + nom + '/' + BK_NODES + ' NODES NOMINAL', nb.status === 'cracked' ? 'tl-in' : 'tl-sys');
 }
 function renderBreaker() {
   const b = state.breaker;

@@ -133,7 +133,8 @@ export class BreakerBoard {
       <div class="bk-hud"><span>TRANSMISSIONS <b class="bk-count">0</b></span><span>NOMINAL <b class="bk-nom">0/${BK_NODES}</b></span></div>
       <div class="bk-log"></div>
       <div class="hint bk-hint">Enter a FULL sequence each transmission — NOMINAL nodes lock in.
-        Type 0–9 · ←/→ select · ↑/↓ tune · BKSP clear · ENTER transmit.</div>
+        Type 0–9 · ←/→ select · ↑/↓ tune · BKSP clear · ENTER transmit —
+        or type <b>-RELAY 123456</b> in the SHIP TERMINAL.</div>
       <div class="bk-grid">${nodes}</div>
       <button type="button" class="btn-wide bk-tx" tabindex="-1" disabled>ENTER SEQUENCE</button>`;
 
