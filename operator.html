@@ -974,9 +974,9 @@ function termRelay(arg) {
   state.breaker = normBreaker(load('shipBreaker', state.breaker));   // in case a sync event was missed
   const b = state.breaker;
   if (b.status !== 'active') {
-    termPush(b.status === 'lockout' ? '✖ RELAY REFUSED — ACCESS REVOKED BY OPERATOR'
-      : b.status === 'cracked' ? '✓ RELAY IDLE — SEQUENCE ALREADY CRACKED'
-      : '✖ RELAY OFFLINE — NO SIGNAL CHALLENGE ACTIVE', 'tl-err');
+    termPush(b.status === 'lockout' ? '✖ ACCESS REVOKED — SERA INITIATED LOCK-OUT'
+      : b.status === 'cracked' ? '✓ RELAY STATUS:ACTIVE — NO FURTHER INPUT REQUIRED'
+      : '✖ RELAY STATUS:OFFLINE — NO CONTROLLER LINK', 'tl-err');
     return;
   }
   const seq = parseSequence(arg);
@@ -993,7 +993,7 @@ function termRelay(arg) {
   const nom = res.split('').filter(r => r === 'n').length;
   if (held.length) termPush('▸ NODE' + (held.length > 1 ? 'S ' : ' ') + held.join(', ') + ' LOCKED — HELD AT NOMINAL', 'tl-sys');
   termPush(nb.status === 'cracked'
-    ? '✓ RELAY #' + nb.hist.length + ' — SEQUENCE CRACKED'
+    ? '✓ RELAY STATUS:ACTIVE || RELAY #' + nb.hist.length
     : '⌁ RELAY #' + nb.hist.length + ' · ' + nom + '/' + BK_NODES + ' NODES NOMINAL', nb.status === 'cracked' ? 'tl-in' : 'tl-sys');
 }
 function renderBreaker() {
