@@ -7,9 +7,8 @@
 // Units: feet at y = 0, facing +Z, ~4.5–7 units tall (the ship is ~160 long);
 // index.html scales / places / spins them.
 //
-//   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
-//             eyes glowing in the hood, long cloak, a cyberdeck (live scrolling terminal) +
-//             datajack cable
+//   casper  — street hacker: hoodie with pulled-up hood, blue glowing visor, rebreather mask,
+//             open green jacket with hands in pockets, tactical cargo pants, live terminal HUD
 //   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
 //             jeans, groomed beard with one braid, swept-back hair, commlink in hand,
 //             double-bladed axe strapped across his back
@@ -18,8 +17,7 @@
 //             suppressed scoped rifle at the ready
 //   ryu     — stocky, heavily augmented weapons specialist: two cyber arms, armoured chest
 //             plate + shoulder pads, spinal nodes, shin plates, visor (live terminal HUD),
-//             topknot, katana
-//             across the back, heavy thigh holster, two small drones at his shoulders
+//             topknot, katana across the back, heavy thigh holster, two small drones at his shoulders
 
 import * as THREE from './vendor/three.module.js';
 
@@ -110,48 +108,62 @@ function humanoid(g, o) {
 }
 
 const BUILD = {
-  // ---- troll hacker: tall and slender, hooded ----
+  // ---- street hacker: hoodie, glowing blue visor, rebreather mask, open green jacket ----
   casper(g) {
-    const DECK = 0x6df3ff;
+    const GREEN = 0x22c55e, BLUE = 0x38bdf8, MASK = 0xa1a1aa;
     humanoid(g, {
-      thigh: 0.24, arm: 0.14, foot: 0.75,
+      thigh: 0.24, arm: 0.15, foot: 0.72,
+      armColor: [GREEN, GREEN],
       legs: [[[-0.3, 3.2, 0], [-0.34, 1.75, 0.12], [-0.32, 0.4, 0]], [[0.3, 3.2, 0], [0.36, 1.75, 0.1], [0.34, 0.4, 0]]],
-      arms: [[[-0.62, 5.0, 0], [-0.82, 4.1, 0.2], [-0.42, 3.8, 0.95]], [[0.62, 5.0, 0], [0.82, 4.1, 0.2], [0.42, 3.8, 0.95]]],
+      arms: [[[-0.62, 4.95, 0], [-0.72, 4.05, 0.22], [-0.38, 3.25, 0.38]], [[0.62, 4.95, 0], [0.72, 4.05, 0.22], [0.38, 3.25, 0.38]]],
       torsoY: 3.05, torsoZ: 0.65, torso: [[0.42, 0], [0.4, 0.4], [0.36, 0.8], [0.5, 1.4], [0.6, 1.8], [0.5, 2.0], [0.2, 2.15]],
       neck: [5.15, 5.45, 0.13], head: { p: [0, 5.75, 0.05], r: 0.36 },
     });
-    // the hood: a rounded hoodie cowl — a soft dome open at the front (gap centred on +Z),
-    // a rolled rim framing the face, and the hood's bunched fold at the back of the neck
-    const OPEN = 1.45;                                                   // face opening width (radians)
+
+    // hoodie: rounded cowl dome framing face
+    const OPEN = 1.35;
     solid(g, new THREE.SphereGeometry(0.5, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
-      W, { p: [0, 5.82, -0.06], s: [0.88, 1.28, 1.1] }, 8);               // slim, tall dome; low edge angle → panel lines
-    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]); // rolled rim around the face
-    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);    // bunched fold at the neck
-    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W);  // centre seam over the crown
-    line(g, [[-0.1, 5.4, 0.38], [-0.12, 5.1, 0.44], [-0.1, 4.85, 0.44]], W);           // drawstrings
-    line(g, [[0.12, 5.42, 0.44], [0.14, 5.1, 0.5], [0.12, 4.85, 0.5]], W);
-    solid(g, new THREE.CylinderGeometry(0.72, 1.05, 3.3, 12, 1, true, Math.PI * 0.6, Math.PI * 0.8), W, { p: [0, 3.55, -0.08] }); // cloak (back)
-    solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [-0.62, 6.15, -0.05], r: [0, 0, 1.0] }); // horns through the hood
-    solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [0.62, 6.15, -0.05], r: [0, 0, -1.0] });
-    box(g, 0.48, 0.07, 0.05, DECK, { p: [0, 5.8, 0.36] });              // eyes glowing in the shadow
-    solid(g, new THREE.ConeGeometry(0.05, 0.25, 4), W, { p: [-0.13, 5.42, 0.38] }); // tusks
-    solid(g, new THREE.ConeGeometry(0.05, 0.25, 4), W, { p: [0.13, 5.42, 0.38] });
-    ring(g, [0, 3.15, 0], 0.46, 0.04, W, undefined, [1, 0.68, 1]);      // belt
-    box(g, 0.28, 0.3, 0.16, W, { p: [0.38, 3.0, 0.25] });               // belt pouches
-    box(g, 0.28, 0.3, 0.16, W, { p: [-0.38, 3.0, 0.25] });
-    box(g, 1.4, 0.1, 0.8, DECK, { p: [0, 3.65, 1.15] });                // cyberdeck (keyboard half)
-    line(g, [[-0.55, 3.71, 0.95], [0.55, 3.71, 0.95]], DECK);           // key rows
-    line(g, [[-0.55, 3.71, 1.15], [0.55, 3.71, 1.15]], DECK);
-    // screen hinged at the far edge, leaning back so it faces him (like an open laptop)
-    box(g, 1.3, 0.75, 0.05, DECK, { p: [0, 4.03, 1.63], r: [0.3, 0, 0] });
-    // live terminal on the display: a scrolling command / log feed (canvas texture, shared by
-    // every Casper copy and advanced by userData.tick), on the face turned toward him
-    const scr = new THREE.Group(); scr.position.set(0, 4.03, 1.6); scr.rotation.x = 0.3;
-    const term = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.52), new THREE.MeshBasicMaterial({
+      W, { p: [0, 5.82, -0.06], s: [0.9, 1.28, 1.1] }, 8);
+    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]);   // hoodie rim
+    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);      // neck fold
+    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W); // crown seam
+    line(g, [[-0.1, 5.35, 0.42], [-0.12, 4.8, 0.46], [-0.1, 4.2, 0.46]], W);  // drawstrings
+    line(g, [[0.12, 5.35, 0.42], [0.14, 4.8, 0.46], [0.12, 4.2, 0.46]], W);
+
+    // face: glowing blue visor + cyber rebreather mask
+    box(g, 0.52, 0.12, 0.08, BLUE, { p: [0, 5.82, 0.38] });               // horizontal visor
+    line(g, [[-0.25, 5.82, 0.43], [0.25, 5.82, 0.43]], BLUE);
+    solid(g, new THREE.ConeGeometry(0.24, 0.38, 6), MASK, { p: [0, 5.5, 0.38], r: [-0.3, 0, 0] }); // mask body
+    rod(g, [-0.14, 5.48, 0.38], [-0.24, 5.45, 0.3], 0.07, 0.07, MASK, 6);  // filter canisters
+    rod(g, [0.14, 5.48, 0.38], [0.24, 5.45, 0.3], 0.07, 0.07, MASK, 6);
+    box(g, 0.12, 0.18, 0.08, BLUE, { p: [0, 5.48, 0.42] });               // mask glow core
+    line(g, [[-0.08, 5.52, 0.47], [0.08, 5.52, 0.47]], BLUE);
+    line(g, [[-0.08, 5.44, 0.47], [0.08, 5.44, 0.47]], BLUE);
+
+    // open green bomber jacket over hoodie with hands tucked into pockets
+    solid(g, new THREE.CylinderGeometry(0.68, 0.78, 2.1, 12, 1, true, 0.5, Math.PI * 2 - 1.0), GREEN, { p: [0, 4.05, 0], s: [1.05, 1, 0.85] });
+    line(g, [[-0.28, 4.9, 0.42], [-0.38, 4.0, 0.48], [-0.38, 3.1, 0.42]], GREEN); // jacket lapels / front edges
+    line(g, [[0.28, 4.9, 0.42], [0.38, 4.0, 0.48], [0.38, 3.1, 0.42]], GREEN);
+    box(g, 0.18, 0.45, 0.05, W, { p: [-0.42, 4.5, 0.4], r: [0, 0, -0.15] });     // white tactical patches / shoulder straps
+    box(g, 0.18, 0.45, 0.05, W, { p: [0.42, 4.5, 0.4], r: [0, 0, 0.15] });
+    line(g, [[-0.5, 4.8, 0.35], [-0.3, 4.2, 0.42]], W);
+    line(g, [[0.5, 4.8, 0.35], [0.3, 4.2, 0.42]], W);
+    box(g, 0.22, 0.28, 0.12, GREEN, { p: [-0.38, 3.25, 0.4] });             // front pockets
+    box(g, 0.22, 0.28, 0.12, GREEN, { p: [0.38, 3.25, 0.4] });
+
+    // tactical cargo pockets on trousers
+    box(g, 0.26, 0.35, 0.12, W, { p: [-0.38, 2.3, 0.15] });
+    box(g, 0.26, 0.35, 0.12, W, { p: [0.38, 2.3, 0.15] });
+    line(g, [[-0.34, 2.5, 0.22], [-0.34, 2.1, 0.22], [-0.18, 2.1, 0.22]], W);
+    line(g, [[0.34, 2.5, 0.22], [0.34, 2.1, 0.22], [0.18, 2.1, 0.22]], W);
+
+    // live floating cyberdeck terminal display
+    const scr = new THREE.Group(); scr.position.set(0, 3.8, 0.7); scr.rotation.x = -0.15;
+    const term = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.42), new THREE.MeshBasicMaterial({
       map: deckTerminal().tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    term.position.z = -0.03; term.rotation.y = Math.PI;                  // front of the text faces him (−Z)
+    term.position.z = 0;
     scr.add(term); g.add(scr);
-    tube(g, [[0.3, 3.7, 1.0], [0.45, 4.4, 0.75], [0.3, 5.1, 0.45], [0.25, 5.55, 0.3]], 0.03, DECK); // datajack cable
+
     g.userData.tick = t => updateDeckTerminal(t);
     return 6.95;
   },
