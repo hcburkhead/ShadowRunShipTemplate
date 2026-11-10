@@ -760,8 +760,14 @@ function updateCrew() {
 // every wireframe vertex within an area's radius is assigned to that area; while the area is
 // DAMAGED / OFFLINE its vertices pulse softly between their base colour and yellow / red.
 let tintZones = [], tintGeoms = [], liveTint = false, tintDirty = true, tintCrash = false, tintLast = 0;
-function buildTint(groups, zones) {
-  tintZones = zones.map(z => ({ eval: z.eval, r: z.r, center: new THREE.Vector3(...z.pos), col: null, sets: [] }));
+// zones tint either a ship-frame BOX (z.box = { L:[a,b], B:[a,b], U:[a,b] } — along −1 stern…+1 bow,
+// beam ±1, up 0 keel…1 top; fitted to the real cannons / bridge / thrusters) or a sphere (z.r).
+// Zones with tint:false (the lift fans: their blades are coloured instead) are skipped.
+function buildTint(groups, zones, toShip) {
+  tintZones = zones.filter(z => z.tint !== false)
+    .map(z => ({ eval: z.eval, r: z.r, box: z.box, center: new THREE.Vector3(...z.pos), col: null, sets: [] }));
+  const inBox = (b, f) => { const bm = b.mirror ? Math.abs(f[1]) : f[1];   // mirror: same box both sides of the keel
+    return f[0] >= b.L[0] && f[0] <= b.L[1] && bm >= b.B[0] && bm <= b.B[1] && f[2] >= b.U[0] && f[2] <= b.U[1]; };
   const v = new THREE.Vector3();
   for (const g of groups) {
     g.updateWorldMatrix(true, true);
@@ -771,8 +777,15 @@ function buildTint(groups, zones) {
       for (let i = 0; i < n; i++) {
         v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
         let best = -1, bd = 1;
-        for (let zi = 0; zi < tintZones.length; zi++) {
-          const d = v.distanceTo(tintZones[zi].center) / tintZones[zi].r;
+        const f = toShip(v);
+        for (let zi = 0; zi < tintZones.length; zi++) {      // a fitted box wins outright
+          const z = tintZones[zi];
+          if (z.box && inBox(z.box, f)) { best = zi; bd = -1; break; }
+        }
+        if (bd > 0) for (let zi = 0; zi < tintZones.length; zi++) {
+          const z = tintZones[zi];
+          if (z.box) continue;
+          const d = v.distanceTo(z.center) / z.r;
           if (d < bd) { bd = d; best = zi; }
         }
         if (best >= 0) per[best].push(i);
@@ -1010,12 +1023,17 @@ loader.load(MODEL_URL, (res) => {
   const maxDim = Math.max(sz.x, sz.z);
   const zones = [];
   const FAN_KEYS = ['fanFP', 'fanFS', 'fanAP', 'fanAS'];
-  centres.forEach((c, i) => zones.push({ key: FAN_KEYS[i], pos: [c[0], c[1] + 4, c[2]], r: FR * 1.3, eval: dotEngine(i) }));  // 4 lift fans
-  const Z = (along, beam, up, key, sys, rk) => zones.push({ key, pos: apos(along, beam, up), r: maxDim * rk, eval: dotArea(key, sys) });
-  Z(-0.85,  0.38, 0.32, 'boostP', 'eng', 0.09); Z(-0.85, -0.38, 0.32, 'boostS', 'eng', 0.09);   // boosters ← ENGINES slider
-  Z( 0.05,  0,    0.92, 'bridge', null, 0.08);  Z(-0.04, 0,     0.6,  'aiCore', null, 0.06);   // command
-  Z( 0.34,  0,    0.32, 'reactor', null, 0.07); Z(-0.12, 0,     0.42, 'droneBay', 'drones', 0.07); // power / internal
-  Z( 0.5,   0.12, 0.62, 'wpnFwd', 'weapons', 0.07); Z(-0.62, 0.12, 0.62, 'wpnAft', 'weapons', 0.07); // weapons
+  // lift fans: dots + crew anchors only — the operator view colours their blades, not the wireframe
+  centres.forEach((c, i) => zones.push({ key: FAN_KEYS[i], pos: [c[0], c[1] + 4, c[2]], r: FR * 1.3, eval: dotEngine(i), tint: false }));
+  // (along, beam, up) = dot / crew anchor; box = the wireframe region the operator view tints
+  const Z = (along, beam, up, key, sys, rk, bx) => zones.push({ key, pos: apos(along, beam, up), r: maxDim * rk, box: bx, eval: dotArea(key, sys) });
+  Z(-0.93,  0.2,  0.47, 'boostP', 'eng', 0.09, { L: [-1.05, -0.82], B: [0.03, 0.4],   U: [0.26, 0.66] });   // aft thruster blocks
+  Z(-0.93, -0.2,  0.47, 'boostS', 'eng', 0.09, { L: [-1.05, -0.82], B: [-0.4, -0.03], U: [0.26, 0.66] });   //  ← ENGINES slider
+  Z( 0.3,   0,    0.1,  'bridge', null, 0.08,  { L: [0.1, 0.52],    B: [-0.32, 0.32], U: [-0.02, 0.22] });  // underside gondola
+  Z(-0.04,  0,    0.6,  'aiCore', null, 0.06);                                                             // interior spots
+  Z( 0.34,  0,    0.32, 'reactor', null, 0.07); Z(-0.12, 0, 0.42, 'droneBay', 'drones', 0.07);
+  Z( 0.8,   0,    0.48, 'wpnFwd', 'weapons', 0.07, { L: [0.55, 1.05], B: [0.1, 0.32], U: [0.38, 0.64], mirror: true }); // the two bow cannons
+  Z(-0.62,  0.12, 0.62, 'wpnAft', 'weapons', 0.07);                                                        //  ← WEAPONS slider
 
   if (DOTS) {   // shown in the perspective AND all four profile views
     damageMarkers = [];
@@ -1027,7 +1045,8 @@ loader.load(MODEL_URL, (res) => {
     for (const t of targets) for (const L of locs) addMarker(t, L.pos[0], L.pos[1], L.pos[2], L.eval);
   }
   // the profile views share the model's geometry (clones), so tinting it covers all four
-  if (TINT) buildTint([model, detailed], zones);
+  const toShip = v => [(axes.lenIsX ? v.x : v.z) * axes.bowSign / Lh, (axes.lenIsX ? v.z : v.x) / Bh, (v.y - box.min.y) / sz.y];
+  if (TINT) buildTint([model, detailed], zones, toShip);
   // crew indicators (both views): one glowing white dot per player, anchored at the area the GM picked
   buildCrew(zones, [perspLift, top && top.scene, port && port.scene, fore && fore.scene, aft && aft.scene].filter(Boolean));
 
