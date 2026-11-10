@@ -8,8 +8,8 @@
 // index.html scales / places / spins them.
 //
 //   casper  — troll street hacker: hoodie with L-shaped horns, glowing blue visor, tusks +
-//             rebreather mask, open green jacket, techno backpack with glowing power core,
-//             tactical cargo pants, cyberdeck laptop + datajack cable, live terminal HUD
+//             rebreather mask, open green jacket, techno backpack, tactical cargo pants,
+//             hands posed typing on cyberdeck laptop + datajack cable, live terminal HUD
 //   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
 //             jeans, groomed beard with one braid, swept-back hair, commlink in hand,
 //             double-bladed axe strapped across his back
@@ -109,14 +109,15 @@ function humanoid(g, o) {
 }
 
 const BUILD = {
-  // ---- street troll hacker: hoodie, L-horns, visor, tusks, rebreather mask, open jacket, techno backpack, cyberdeck ----
+  // ---- street troll hacker: hoodie, L-horns, visor, tusks, rebreather mask, open jacket, techno backpack, typing on cyberdeck ----
   casper(g) {
     const GREEN = 0x22c55e, BLUE = 0x38bdf8, MASK = 0xa1a1aa, DECK = 0x6df3ff;
     humanoid(g, {
       thigh: 0.24, arm: 0.15, foot: 0.72,
       armColor: [GREEN, GREEN],
       legs: [[[-0.3, 3.2, 0], [-0.34, 1.75, 0.12], [-0.32, 0.4, 0]], [[0.3, 3.2, 0], [0.36, 1.75, 0.1], [0.34, 0.4, 0]]],
-      arms: [[[-0.62, 4.95, 0], [-0.72, 4.05, 0.22], [-0.38, 3.25, 0.38]], [[0.62, 4.95, 0], [0.72, 4.05, 0.22], [0.38, 3.25, 0.38]]],
+      // arms posed reaching forward with hands resting/typing over the laptop keyboard
+      arms: [[[-0.62, 4.95, 0], [-0.55, 4.15, 0.45], [-0.22, 3.78, 0.9]], [[0.62, 4.95, 0], [0.55, 4.15, 0.45], [0.22, 3.78, 0.9]]],
       torsoY: 3.05, torsoZ: 0.65, torso: [[0.42, 0], [0.4, 0.4], [0.36, 0.8], [0.5, 1.4], [0.6, 1.8], [0.5, 2.0], [0.2, 2.15]],
       neck: [5.15, 5.45, 0.13], head: { p: [0, 5.75, 0.05], r: 0.36 },
     });
@@ -147,7 +148,7 @@ const BUILD = {
     solid(g, new THREE.ConeGeometry(0.05, 0.26, 4), W, { p: [-0.15, 5.42, 0.44], r: [0.3, 0, -0.2] }); // left tusk
     solid(g, new THREE.ConeGeometry(0.05, 0.26, 4), W, { p: [0.15, 5.42, 0.44], r: [0.3, 0, 0.2] });   // right tusk
 
-    // open green jacket over hoodie with hands in pockets
+    // open green jacket over hoodie
     solid(g, new THREE.CylinderGeometry(0.68, 0.78, 2.1, 12, 1, true, 0.5, Math.PI * 2 - 1.0), GREEN, { p: [0, 4.05, 0], s: [1.05, 1, 0.85] });
     line(g, [[-0.28, 4.9, 0.42], [-0.38, 4.0, 0.48], [-0.38, 3.1, 0.42]], GREEN); // jacket lapels
     line(g, [[0.28, 4.9, 0.42], [0.38, 4.0, 0.48], [0.38, 3.1, 0.42]], GREEN);
@@ -162,7 +163,7 @@ const BUILD = {
     ring(g, [0, 4.25, -0.58], 0.15, 0.03, BLUE, [Math.PI / 2, 0, 0]);           // core accent ring
     box(g, 0.84, 0.18, 0.28, BLUE, { p: [0, 4.55, -0.5] });                    // top heat-vent housing
     box(g, 0.18, 0.35, 0.15, W, { p: [-0.42, 4.1, -0.5] });                    // side utility modules
-    box(g, 0.42, 0.35, 0.15, W, { p: [0.42, 4.1, -0.5] });
+    box(g, 0.18, 0.35, 0.15, W, { p: [0.42, 4.1, -0.5] });
     tube(g, [[-0.32, 4.65, -0.38], [-0.38, 4.82, 0.18], [-0.38, 4.15, 0.38]], 0.035, W); // harness shoulder straps
     tube(g, [[0.32, 4.65, -0.38], [0.38, 4.82, 0.18], [0.38, 4.15, 0.38]], 0.035, W);
 
