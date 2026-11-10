@@ -107,7 +107,7 @@ type-a-command-in-a-cell console. Supported commands (no terminal lockout or
 code word on this channel — it's the GM's authorized path): `SD -T <secs>`,
 `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
 `DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
-`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`, `CREW <CASPER|GIMLI|GANBOLD|RYU> <AREA|OFF>`,
+`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>` (capped by the system's state), `STATE <SYS|ALL> <ONLINE|DAMAGED|OFFLINE>`, `ALT <0-100>`, `CREW <CASPER|GIMLI|GANBOLD|RYU> <AREA|OFF>`,
 `BREAKER <6 digits>|RANDOM|LOCK|UNLOCK|OFF`, `BREAKER TARGET <SYS>`,
 `RELAY <ENG|DRONES|WEAPONS|SHIELDS|TERM|ALL> <ONLINE|DAMAGED|OFFLINE>` (the
 sequence is masked in the log). Every executed
@@ -136,8 +136,13 @@ so all player screens share one board. Player controls: type 0–9, ←/→ sele
 **System relays (unlocking player controls).** Each player-operated system —
 ENGINES, DRONES, WEAPONS, SHIELDS and the TERMINAL — has its own **relay**
 with the same **ONLINE / DAMAGED / OFFLINE** states as the rest of the ship.
-The DM sets them in DAMAGE CONTROL → SYSTEM-RELAY (or `RELAY <SYS> <state>`),
-and the relay gates that system's controls on the player view:
+The relay **is** the system's state: the DM sets it with the **SYSTEMS** state
+controls in DAMAGE CONTROL (or `STATE <SYS|ALL> <state>`, alias `RELAY`). The
+state caps that system's power slider for everyone — **OFFLINE** disables it
+(0%), **DAMAGED** lets it ramp up to **66%**, **ONLINE** up to **100%** — and
+the slider still moves freely below the cap. Raising the state ramps the slider
+up to the new cap; lowering it clamps the slider down. The state also gates
+that system's controls on the player view:
 - **OFFLINE** — every control for that system is locked.
 - **DAMAGED** — its SYSTEM POWER throttle and BATTERY routing unlock
   (TERMINAL: the ship terminal input unlocks).
@@ -151,11 +156,10 @@ At the top of the SIGNAL BREAKER card (① PUZZLE IS FOR) the DM picks the **cha
 system's relay the current challenge is for); the player board shows
 `TARGET ▸ <SYSTEM> RELAY` plus every relay's status. Repairs run through
 **SERA**, the ship's AI:
-- **OFFLINE** — SERA brings the relay back **ONLINE on her own** as soon as
-  every ship sector (all damage-control areas, lift fans and shield panels) is
-  nominal. While any sector is damaged, a cracked challenge gets it to DAMAGED.
-  (So to keep a relay down, damage a sector first — otherwise SERA restores it
-  immediately.)
+- **OFFLINE** — SERA brings the system back **ONLINE on her own** when the
+  damaged sectors (damage-control areas, lift fans, shield panels) are repaired
+  to nominal. Otherwise a cracked challenge gets it to DAMAGED. (The DM can take
+  a system OFFLINE on an undamaged ship; SERA only reacts to sector repairs.)
 - **DAMAGED** — takes **two** cracked challenges: the first lets SERA
   **reinitialize** the system (`REINIT 1/2`), the second **re-engages** it →
   ONLINE.
@@ -167,8 +171,11 @@ the DM knocks one down.
 
 ## What the DM controls (operator.html)
 - **Core power** — read-only; it reflects the core reactor's state.
-- **System power** — a per-system core throttle (0–100%), capped by the current
-  core level. Throttle or cut any system.
+- **System power** — a per-system core throttle, capped by the current core
+  level and by the system's STATE (OFFLINE 0% · DAMAGED ≤66% · ONLINE ≤100%).
+- **System states** — DAMAGE CONTROL → SYSTEMS: one ONLINE / DAMAGED / OFFLINE
+  control per system (engines, drones, weapons, shields, terminal). It replaces
+  the old power toggles and relay buttons; see "System relays" above.
 - **Aux / battery routing** — players route per-system aux (50%) and battery
   (25%); the DM can **damage the aux/battery banks** (independent of ship
   integrity), which lowers their ceiling and unlocks the battery fallback.
