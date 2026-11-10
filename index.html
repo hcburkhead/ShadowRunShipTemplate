@@ -724,7 +724,7 @@ function labelTexture(text) {
 }
 // each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
 // glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
-const FIG_SCALE = 2.2;
+const FIG_SCALE = 1.6;
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
@@ -755,7 +755,7 @@ function updateCrew() {
     grp.visible = !!a;
     if (!a) continue;
     const here = at[l], n = here.length, i = here.indexOf(k);
-    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 8 : 0;
+    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 6 : 0;
     grp.position.set(a.x + Math.cos(ang) * rr, a.y, a.z + Math.sin(ang) * rr);   // feet on the anchor
   }
 }
