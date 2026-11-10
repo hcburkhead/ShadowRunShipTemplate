@@ -104,8 +104,9 @@ code word on this channel — it's the GM's authorized path): `SD -T <secs>`,
 `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
 `DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
 `POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`,
-`BREAKER <6 digits>|RANDOM|LOCK|UNLOCK|OFF` (the sequence is masked in the
-log). Every executed
+`BREAKER <6 digits>|RANDOM|LOCK|UNLOCK|OFF`, `BREAKER TARGET <SYS>`,
+`RELAY <ENG|DRONES|WEAPONS|SHIELDS|TERM|ALL> <ONLINE|DAMAGED|OFFLINE>` (the
+sequence is masked in the log). Every executed
 command is echoed in the terminal log with a `▮ REMOTE >` prefix; there is also
 a local test hook — run `shipCommand('TIMER 5:00 CORE MELTDOWN')` in the
 browser console.
@@ -127,6 +128,34 @@ the DM uses **LOCK OUT / UNLOCK** to freeze the board, and **END** hides it.
 Every transmission is logged on the DM card. State syncs as `shipBreaker`,
 so all player screens share one board. Player controls: type 0–9, ←/→ select,
 ↑/↓ tune, Backspace clear, Enter transmit (or click the ▲▼ buttons).
+
+**System relays (unlocking player controls).** Each player-operated system —
+ENGINES, DRONES, WEAPONS, SHIELDS and the TERMINAL — has its own **relay**
+with the same **ONLINE / DAMAGED / OFFLINE** states as the rest of the ship.
+The DM sets them in DAMAGE CONTROL → SYSTEM-RELAY (or `RELAY <SYS> <state>`),
+and the relay gates that system's controls on the player view:
+- **OFFLINE** — every control for that system is locked.
+- **DAMAGED** — its SYSTEM POWER throttle and BATTERY routing unlock
+  (TERMINAL: the ship terminal input unlocks).
+- **ONLINE** — everything, including AUX routing (TERMINAL: OVERDRIVE).
+
+On the SIGNAL BREAKER card the DM picks the **challenge target** (which
+system's relay the current challenge is for); the player board shows
+`TARGET ▸ <SYSTEM> RELAY` plus every relay's status. Repairs run through
+**SERA**, the ship's AI:
+- **OFFLINE** — SERA brings the relay back **ONLINE on her own** as soon as
+  every ship sector (all damage-control areas, lift fans and shield panels) is
+  nominal. While any sector is damaged, a cracked challenge gets it to DAMAGED.
+  (So to keep a relay down, damage a sector first — otherwise SERA restores it
+  immediately.)
+- **DAMAGED** — takes **two** cracked challenges: the first lets SERA
+  **reinitialize** the system (`REINIT 1/2`), the second **re-engages** it →
+  ONLINE.
+
+Each step is flashed on the player board and logged to the ship terminal; the
+DM then arms the next challenge (RANDOM or a new sequence — the target and
+relay states carry over). All relays start ONLINE, so nothing is gated until
+the DM knocks one down.
 
 ## What the DM controls (operator.html)
 - **Core power** — read-only; it reflects the core reactor's state.
