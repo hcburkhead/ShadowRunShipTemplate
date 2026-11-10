@@ -208,8 +208,6 @@ export class BreakerBoard {
     this.root.innerHTML = `
       <div class="bk-target"></div>
       <div class="bk-status"></div>
-      <div class="bk-relay">${RELAY_SYSTEMS.map(([k, label]) =>
-        `<span class="bk-ch" data-k="${k}"><i></i>${label}<em></em></span>`).join('')}</div>
       <div class="bk-hud"><span>TRANSMISSIONS <b class="bk-count">0</b></span><span>NOMINAL <b class="bk-nom">0/${BK_NODES}</b></span></div>
       <div class="bk-log"></div>
       <div class="hint bk-hint">Enter a FULL sequence each transmission — NOMINAL nodes lock in.
@@ -222,7 +220,6 @@ export class BreakerBoard {
       status: q('.bk-status'), count: q('.bk-count'), nom: q('.bk-nom'), log: q('.bk-log'), tx: q('.bk-tx'),
       nodes: [...this.root.querySelectorAll('.bk-node')],
       target: q('.bk-target'),
-      chans: [...this.root.querySelectorAll('.bk-ch')],
     };
     this.el.cards = this.el.nodes.map(n => ({
       card: n, read: n.querySelector('.bk-read'), val: n.querySelector('.bk-val'),
@@ -320,12 +317,6 @@ export class BreakerBoard {
     const b = this.b || { relay: this.relay };
     this.el.target.textContent = `TARGET ▸ ${relayLabel(this.target)} RELAY · ${relayText(b, this.target)}`;
     this.el.target.className = 'bk-target bk-rs' + st;
-    this.el.chans.forEach(c => {
-      const k = c.dataset.k, s = this.relay[k] | 0;
-      c.className = 'bk-ch bk-rs' + s + (k === this.target ? ' bk-tgt' : '');
-      c.querySelector('em').textContent = relayText(b, k);
-      c.title = `${relayLabel(k)} relay ${RELAY_WORD[s]} — unlocked: ${relayUnlocks(k, s)}`;
-    });
   }
 
   _flash(msg, ms) {

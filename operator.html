@@ -252,26 +252,18 @@
   .bk-rs0{ color:var(--g1); } .bk-rs1{ color:var(--yellow); } .bk-rs2{ color:var(--red); }
   .bk-target{ font-size:12px; letter-spacing:3px; text-align:center; font-weight:bold; padding:4px;
     border:1px solid currentColor; border-radius:4px; background:rgba(0,0,0,.25); }
-  .bk-relay{ display:flex; flex-wrap:wrap; gap:4px; justify-content:center; }
-  .bk-ch{ font-size:8.5px; letter-spacing:1px; border:1px solid var(--edge); border-radius:3px; padding:2px 6px;
-    display:inline-flex; align-items:center; gap:4px; opacity:.75; }
-  .bk-ch i{ width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 5px currentColor; }
-  .bk-ch em{ font-style:normal; opacity:.8; }
-  .bk-ch.bk-tgt{ border-color:currentColor; opacity:1; font-weight:bold; }
   .bk-status.bk-st-active.bk-rs2{ color:var(--red); } .bk-status.bk-st-active.bk-rs1{ color:var(--yellow); }
   .relay-gated{ opacity:.45; }
   .rr-relay{ font-size:8px; margin-left:6px; }
   .relay-card{ grid-column:1/-1; }
-  .relay-grid{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px; }
-  @media (max-width:720px){ .relay-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); } }
-  .relay-cell{ border:1px solid currentColor; border-radius:4px; padding:5px 7px; display:flex; flex-direction:column;
-    gap:2px; background:rgba(0,0,0,.2); min-width:0; }
-  .relay-cell .rc-n{ font-size:10px; letter-spacing:2px; font-weight:bold; }
-  .relay-cell .rc-s{ font-size:9px; letter-spacing:1px; }
-  .relay-cell .rc-u{ font-size:8px; color:var(--dim); overflow-wrap:anywhere; }
-  .relay-cell .rc-t{ font-size:8px; color:var(--glint); letter-spacing:1px; }
-  .relay-cell.bk-rs2{ background:rgba(239,68,68,.10); } .relay-cell.bk-rs1{ background:rgba(250,204,21,.08); }
-  .relay-cell.tgt{ box-shadow:0 0 0 1px var(--glint), 0 0 8px rgba(190,249,210,.35); }
+  .relay-table{ width:100%; border-collapse:collapse; font-size:10px; letter-spacing:1px; }
+  .relay-table th{ text-align:left; font-size:8px; letter-spacing:2px; color:var(--dim); font-weight:normal;
+    padding:3px 8px; border-bottom:1px solid var(--edge); }
+  .relay-table td{ padding:4px 8px; border-bottom:1px solid rgba(30,77,30,.45); }
+  .relay-table td.rt-n{ color:var(--g2); font-weight:bold; letter-spacing:2px; white-space:nowrap; }
+  .relay-table tr.tgt td.rt-n{ color:var(--glint); }
+  .relay-table .rt-t{ font-size:8px; color:var(--glint); margin-left:6px; font-weight:normal; letter-spacing:1px; }
+  .relay-table tr.bk-rs2 td.rt-s{ background:rgba(239,68,68,.10); } .relay-table tr.bk-rs1 td.rt-s{ background:rgba(250,204,21,.08); }
   .bk-target-pick{ display:flex; flex-direction:column; gap:5px; padding:7px; border:1px dashed var(--glint);
     border-radius:4px; }
   .bk-target-pick .lbl{ font-size:10px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 8px; }
@@ -326,7 +318,10 @@
           <!-- SYSTEM-RELAY STATUS — every system's relay, always visible (DM + players) -->
           <div class="card relay-card" id="relay-card">
             <h2>⌁ SYSTEM-RELAY STATUS <span class="v" id="relay-sum">ALL ONLINE</span></h2>
-            <div class="relay-grid" id="relay-grid"></div>
+            <table class="relay-table">
+              <thead><tr><th scope="col">RELAY NAME</th><th scope="col">STATUS</th></tr></thead>
+              <tbody id="relay-rows"></tbody>
+            </table>
             <div class="hint">Each relay gates that system's controls: OFFLINE = locked · DAMAGED = throttle + battery
               (terminal input) · ONLINE = everything incl. AUX (overdrive). SERA brings OFFLINE relays back once all
               sectors are nominal; DAMAGED relays need two cracked SYSTEM-RELAY challenges.</div>
@@ -519,10 +514,10 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         normTimerLabel, firebaseDb } from './ship-model.js?v=3';
+         normTimerLabel, firebaseDb } from './ship-model.js?v=4';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
          RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
-         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=3';
+         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=4';
 // ?v=N busts the browser / GitHub Pages cache: a stale module missing a new export kills this
 // whole script (blank controls). BUMP N whenever ship-model.js or signal-breaker.js changes.
 
@@ -1093,29 +1088,33 @@ function seraCheck() {
 const targetBtns = {};
 RELAY_SYSTEMS.forEach(([k, label]) => {
   const b = document.createElement('button'); b.type = 'button';
-  b.innerHTML = `${label}<span class="rs"></span>`; b._rs = b.querySelector('.rs');
+  b.innerHTML = `${label} <span class="rs"></span>`; b._rs = b.querySelector('.rs');
   b.addEventListener('click', () => setBreakerTarget(k));
   $('bk-target-seg').appendChild(b);
   targetBtns[k] = b;
 });
 // always-visible relay status panel (top of the power block, DM + players)
-const relayCells = {};
+const relayRows = {};
 RELAY_SYSTEMS.forEach(([k, label]) => {
-  const c = document.createElement('div'); c.className = 'relay-cell';
-  c.innerHTML = `<span class="rc-n">${label}</span><span class="rc-s"></span><span class="rc-u"></span><span class="rc-t"></span>`;
-  $('relay-grid').appendChild(c);
-  relayCells[k] = { c, s: c.querySelector('.rc-s'), u: c.querySelector('.rc-u'), t: c.querySelector('.rc-t') };
+  const tr = document.createElement('tr');
+  const n = document.createElement('td'); n.className = 'rt-n'; n.textContent = label;
+  const t = document.createElement('span'); t.className = 'rt-t'; n.appendChild(t);
+  const st = document.createElement('td'); st.className = 'rt-s';
+  tr.append(n, st);
+  $('relay-rows').appendChild(tr);
+  relayRows[k] = { tr, t, st };
 });
 function renderRelayCard() {
   const b = state.breaker, live = b.status === 'active' || b.status === 'lockout';
   let down = 0;
   RELAY_KEYS.forEach(k => {
-    const rs = relaySt(k), el = relayCells[k], tgt = live && k === b.target;
+    const rs = relaySt(k), el = relayRows[k], tgt = live && k === b.target;
     if (rs) down++;
-    el.c.className = 'relay-cell bk-rs' + rs + (tgt ? ' tgt' : '');
-    el.s.textContent = '● ' + relayText(b, k);
-    el.u.textContent = 'UNLOCKED: ' + relayUnlocks(k, rs);
-    el.t.textContent = tgt ? '◂ ACTIVE PUZZLE TARGET' : '';
+    el.tr.className = 'bk-rs' + rs + (tgt ? ' tgt' : '');
+    el.st.textContent = relayText(b, k);
+    el.st.className = 'rt-s bk-rs' + rs;
+    el.t.textContent = tgt ? ' ◂ PUZZLE TARGET' : '';
+    el.tr.title = 'Unlocked: ' + relayUnlocks(k, rs);
   });
   const sum = $('relay-sum');
   sum.textContent = down ? down + ' RELAY' + (down > 1 ? 'S' : '') + ' DOWN' : 'ALL ONLINE';
