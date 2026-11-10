@@ -213,7 +213,8 @@ colour each) standing on a soft glow, with a faint name tag, on both the DM and
 player views, in all five ship views (the perspective copies slowly turn); players
 sharing an area spread out around it:
 - **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
-  through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
+  through, tusks, eyes glowing in the hood, long cloak, cyberdeck (its screen runs a
+  live, scrolling terminal / hack log) + datajack cable.
 - **Gimli** — the team's face, a dwarf: shorter but normally proportioned, in an
   open coat and jeans, with a groomed beard (one braid) and swept-back hair, a
   commlink in hand and a double-bladed axe strapped across his back.

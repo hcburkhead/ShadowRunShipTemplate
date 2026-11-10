@@ -8,7 +8,8 @@
 // index.html scales / places / spins them.
 //
 //   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
-//             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
+//             eyes glowing in the hood, long cloak, a cyberdeck (live scrolling terminal) +
+//             datajack cable
 //   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
 //             jeans, groomed beard with one braid, swept-back hair, commlink in hand,
 //             double-bladed axe strapped across his back
@@ -142,8 +143,15 @@ const BUILD = {
     line(g, [[-0.55, 3.71, 1.15], [0.55, 3.71, 1.15]], DECK);
     // screen hinged at the far edge, leaning back so it faces him (like an open laptop)
     box(g, 1.3, 0.75, 0.05, DECK, { p: [0, 4.03, 1.63], r: [0.3, 0, 0] });
-    box(g, 1.1, 0.55, 0.02, DECK, { p: [0, 4.03, 1.6], r: [0.3, 0, 0] });   // glowing display inset, toward him
+    // live terminal on the display: a scrolling command / log feed (canvas texture, shared by
+    // every Casper copy and advanced by userData.tick), on the face turned toward him
+    const scr = new THREE.Group(); scr.position.set(0, 4.03, 1.6); scr.rotation.x = 0.3;
+    const term = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.52), new THREE.MeshBasicMaterial({
+      map: deckTerminal().tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    term.position.z = -0.03; term.rotation.y = Math.PI;                  // front of the text faces him (−Z)
+    scr.add(term); g.add(scr);
     tube(g, [[0.3, 3.7, 1.0], [0.45, 4.4, 0.75], [0.3, 5.1, 0.45], [0.25, 5.55, 0.3]], 0.03, DECK); // datajack cable
+    g.userData.tick = t => updateDeckTerminal(t);
     return 6.95;
   },
 
@@ -297,6 +305,67 @@ const BUILD = {
     return 5.55;
   },
 };
+
+// ---- Casper's cyberdeck terminal: a tiny canvas that scrolls hacker log lines ----
+let deckTerm = null;
+const HEX = n => Array.from({ length: n }, () => '0123456789ABCDEF'[Math.random() * 16 | 0]).join('');
+const pick = a => a[Math.random() * a.length | 0];
+const TERM_LINES = [
+  () => '> jack-in node://' + HEX(4).toLowerCase() + '.' + HEX(2).toLowerCase(),
+  () => 'decrypt ' + HEX(4) + ':' + HEX(4) + ' .. OK',
+  () => '[ICE] probe deflected',
+  () => '[ICE] black ICE sig ' + HEX(3) + ' masked',
+  () => { const n = 10 + (Math.random() * 90 | 0), f = n / 10 | 0; return 'trace ' + '#'.repeat(f) + '.'.repeat(10 - f) + ' ' + n + '%'; },
+  () => 'GET /host/' + pick(['sec', 'cam', 'door', 'paydata', 'relay', 'ice']) + ' 200',
+  () => '0x' + HEX(6) + '  ' + HEX(2) + ' ' + HEX(2) + ' ' + HEX(2) + ' ' + HEX(2),
+  () => '> sudo override --' + pick(['relay', 'lock', 'cams', 'alarm', 'drones']),
+  () => '[SERA] handshake ' + pick(['ok', 'ok', 'retry', 'ok']),
+  () => 'spoof id ' + HEX(8) + ' accepted',
+  () => '> grep -r paydata /mnt/' + HEX(2).toLowerCase(),
+];
+function deckTerminal() {
+  if (deckTerm) return deckTerm;
+  const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  deckTerm = { canvas, ctx: canvas.getContext('2d'), tex, lines: [], next: 0, drawn: -1 };
+  for (let i = 0; i < 7; i++) deckTerm.lines.push(pick(TERM_LINES)());
+  drawDeckTerminal(0);
+  return deckTerm;
+}
+function drawDeckTerminal(t) {
+  const { ctx, lines, tex } = deckTerm, W = 256, H = 128, LH = 14;
+  ctx.fillStyle = 'rgb(2,22,14)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(109,243,255,0.28)'; ctx.fillRect(0, 0, W, 15);              // title bar
+  ctx.font = 'bold 11px "Courier New", monospace'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#bef9d2'; ctx.fillText('casper@deck:~  [MATRIX]', 5, 2);
+  ctx.font = '11px "Courier New", monospace';
+  const shown = lines.slice(-7);
+  shown.forEach((l, i) => {                                                           // older lines fade
+    ctx.globalAlpha = 0.4 + 0.6 * (i + 1) / shown.length;
+    ctx.fillStyle = l.startsWith('[ICE]') ? '#facc15' : l.startsWith('>') ? '#6df3ff' : '#4ade80';
+    ctx.fillText(l.slice(0, 38), 5, 19 + i * LH);
+  });
+  ctx.globalAlpha = 1;
+  if ((t * 2.5 | 0) % 2) {                                                            // blinking cursor
+    const last = shown[shown.length - 1] || '';
+    ctx.fillStyle = '#6df3ff'; ctx.fillRect(5 + Math.min(38, last.length) * 6.6 + 2, 19 + (shown.length - 1) * LH, 6, 11);
+  }
+  // scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  tex.needsUpdate = true;
+}
+function updateDeckTerminal(t) {
+  if (!deckTerm) return;
+  if (t >= deckTerm.next) {                                                           // a new line every ~0.3–0.7 s
+    deckTerm.lines.push(pick(TERM_LINES)());
+    if (deckTerm.lines.length > 40) deckTerm.lines.splice(0, deckTerm.lines.length - 40);
+    deckTerm.next = t + 0.3 + Math.random() * 0.4;
+  }
+  const frame = t * 10 | 0;                                                           // redraw at ~10 Hz
+  if (frame !== deckTerm.drawn) { deckTerm.drawn = frame; drawDeckTerminal(t); }
+}
 
 /** A new figure group for a crew key (casper/gimli/ganbold/ryu), feet at y = 0.
  *  Returns { group, height }. Unknown keys fall back to a simple glowing pillar.
