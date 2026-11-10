@@ -280,9 +280,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
+import { CREW, normCrew } from './ship-model.js?v=5';
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
-         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=4';   // ?v busts stale caches — bump on change
+         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=5';   // ?v busts stale caches — bump on change
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const PARAMS = new URLSearchParams(location.search);
@@ -608,6 +609,9 @@ const FAN_RF = 0.21;     // blade radius as a fraction of the hull beam
 
 // ---- operator-triggered damage dots (read-only / player view only, ?dots) ----
 const DOTS = PARAMS.has('dots');
+// operator view (?tint): instead of player dots, the affected parts of the ship's own wireframe
+// softly pulse yellow (damaged) / red (offline) as a reminder of what is hit
+const TINT = PARAMS.has('tint');
 if (PARAMS.has('bare')) document.body.classList.add('bare');  // player view: hide state readouts
 const LOGVIEW = PARAMS.has('log');                            // DM view only: left-rail system log
 if (LOGVIEW) document.body.classList.add('logview');
@@ -698,6 +702,129 @@ function updateMarkers(s) {
       m.mesh.userData.blink = r.color !== 0xef4444;   // yellow (damaged) blinks; red (offline) stays solid
       if (m.mesh.userData.blink) liveDots = true; }   // blinking dots keep the static views animating
   }
+}
+// ---- crew indicators (GM-set shipCrew; shown on the player AND operator views) ----
+// a small glowing white dot per player (like the drone cores) + a faint name tag. Hidden
+// until the GM places that player; players sharing an area spread out in a small ring.
+let crewAnchors = {}, crewMarks = [];
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+function labelTexture(text) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.font = 'bold 30px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillText(text, 128, 32);
+  return new THREE.CanvasTexture(c);
+}
+function buildCrew(zones, targets) {
+  crewAnchors = {}; crewMarks = [];
+  zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
+  const glow = glowTexture();
+  CREW.forEach(([k, name]) => {
+    const tag = labelTexture(name);
+    for (const t of targets) {
+      const grp = new THREE.Group(); grp.visible = false;
+      grp.add(new THREE.Mesh(new THREE.SphereGeometry(1.3, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffffff, transparent: true, opacity: 0.8,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+      halo.scale.set(7, 7, 1); grp.add(halo);
+      const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
+      lbl.scale.set(14, 3.5, 1); lbl.position.set(0, 4.2, 0); grp.add(lbl);
+      t.add(grp);
+      crewMarks.push({ k, grp });
+    }
+  });
+}
+function updateCrew() {
+  if (!crewMarks.length) return;
+  const crew = normCrew(readJSON('shipCrew', {}));
+  const at = {};                                   // area → players there (for spreading)
+  CREW.forEach(([k]) => { const l = crew[k]; if (l && crewAnchors[l]) (at[l] = at[l] || []).push(k); });
+  for (const { k, grp } of crewMarks) {
+    const l = crew[k], a = l && crewAnchors[l];
+    grp.visible = !!a;
+    if (!a) continue;
+    const here = at[l], n = here.length, i = here.indexOf(k);
+    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 4.5 : 0;
+    grp.position.set(a.x + Math.cos(ang) * rr, a.y + 3, a.z + Math.sin(ang) * rr);
+  }
+}
+
+// ---- operator wireframe tint (?tint) ----
+// every wireframe vertex within an area's radius is assigned to that area; while the area is
+// DAMAGED / OFFLINE its vertices pulse softly between their base colour and yellow / red.
+let tintZones = [], tintGeoms = [], liveTint = false, tintDirty = true, tintCrash = false, tintLast = 0;
+function buildTint(groups, zones) {
+  tintZones = zones.map(z => ({ eval: z.eval, r: z.r, center: new THREE.Vector3(...z.pos), col: null, sets: [] }));
+  const v = new THREE.Vector3();
+  for (const g of groups) {
+    g.updateWorldMatrix(true, true);
+    g.traverse(o => {
+      if (!o.isLineSegments || !o.geometry.attributes.position) return;
+      const pos = o.geometry.attributes.position, n = pos.count, per = tintZones.map(() => []);
+      for (let i = 0; i < n; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        let best = -1, bd = 1;
+        for (let zi = 0; zi < tintZones.length; zi++) {
+          const d = v.distanceTo(tintZones[zi].center) / tintZones[zi].r;
+          if (d < bd) { bd = d; best = zi; }
+        }
+        if (best >= 0) per[best].push(i);
+      }
+      if (!per.some(a => a.length)) return;
+      const base = o.material.color.clone();
+      const arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { arr[i * 3] = base.r; arr[i * 3 + 1] = base.g; arr[i * 3 + 2] = base.b; }
+      o.geometry.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      o.material.vertexColors = true;
+      o.material.color.setHex(0xffffff);     // the per-vertex colour now carries the base colour
+      o.material.needsUpdate = true;
+      const entry = { attr: o.geometry.attributes.color, base };
+      tintGeoms.push(entry);
+      per.forEach((idx, zi) => { if (idx.length) tintZones[zi].sets.push({ entry, idx: Int32Array.from(idx) }); });
+    });
+  }
+}
+function updateTint(s) {
+  for (const z of tintZones) { const r = z.eval(s); z.col = r && r.show ? new THREE.Color(r.color) : null; }
+  tintDirty = true;
+}
+const fillBase = e => { const a = e.attr.array, b = e.base;
+  for (let i = 0; i < a.length; i += 3) { a[i] = b.r; a[i + 1] = b.g; a[i + 2] = b.b; } e.attr.needsUpdate = true; };
+// returns true when it repainted (the static profile views only redraw on those frames)
+function paintTint(now) {
+  if (!tintGeoms.length) return false;
+  if (crashed) {          // crash paints materials red — keep vertex colours neutral so it reads pure red
+    if (!tintCrash) { for (const e of tintGeoms) { e.attr.array.fill(1); e.attr.needsUpdate = true; } tintCrash = true; return true; }
+    liveTint = false; return false;
+  }
+  if (tintCrash) { tintGeoms.forEach(fillBase); tintCrash = false; tintDirty = true; }
+  liveTint = tintZones.some(z => z.col);
+  if (!liveTint && !tintDirty) return false;
+  if (!tintDirty && now - tintLast < 66) return false;   // ~15 Hz is plenty for a slow pulse
+  tintLast = now;
+  // soft ~3s pulse in BRIGHTNESS only — the hue stays pure yellow / red (fading from the green
+  // hull to red would pass through yellow and blur the two states)
+  const k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 520));
+  for (const z of tintZones) {
+    if (!z.col && !tintDirty) continue;
+    for (const { entry, idx } of z.sets) {
+      const a = entry.attr.array, b = entry.base;
+      const r = z.col ? z.col.r * k : b.r;
+      const g = z.col ? z.col.g * k : b.g;
+      const bl = z.col ? z.col.b * k : b.b;
+      for (let j = 0; j < idx.length; j++) { const i = idx[j] * 3; a[i] = r; a[i + 1] = g; a[i + 2] = bl; }
+      entry.attr.needsUpdate = true;
+    }
+  }
+  tintDirty = false;
+  return true;
 }
 const dotEngine = i => s => { const v = s.engines[i]; return v > 66 ? { show: false } : { show: true, color: v > 33 ? 0xfacc15 : 0xef4444 }; };
 const dotWhen   = (cond, color) => s => cond(s) ? { show: true, color } : { show: false };
@@ -878,23 +1005,31 @@ loader.load(MODEL_URL, (res) => {
   const sw1 = buildDroneSwarm(...dPos, dSpread); perspLift.add(sw1); droneSwarms.push(sw1);
   if (top) { const sw2 = buildDroneSwarm(...dPos, dSpread); top.scene.add(sw2); droneSwarms.push(sw2); }
 
-  // operator-triggered damage dots at each area's location (read-only view only),
-  // shown in the perspective AND all four profile views
-  if (DOTS) {
+  // each damageable area's location on the hull. Players get blinking dots there (?dots);
+  // the operator gets the surrounding wireframe tinted instead (?tint).
+  const maxDim = Math.max(sz.x, sz.z);
+  const zones = [];
+  const FAN_KEYS = ['fanFP', 'fanFS', 'fanAP', 'fanAS'];
+  centres.forEach((c, i) => zones.push({ key: FAN_KEYS[i], pos: [c[0], c[1] + 4, c[2]], r: FR * 1.3, eval: dotEngine(i) }));  // 4 lift fans
+  const Z = (along, beam, up, key, sys, rk) => zones.push({ key, pos: apos(along, beam, up), r: maxDim * rk, eval: dotArea(key, sys) });
+  Z(-0.85,  0.38, 0.32, 'boostP', 'eng', 0.09); Z(-0.85, -0.38, 0.32, 'boostS', 'eng', 0.09);   // boosters ← ENGINES slider
+  Z( 0.05,  0,    0.92, 'bridge', null, 0.08);  Z(-0.04, 0,     0.6,  'aiCore', null, 0.06);   // command
+  Z( 0.34,  0,    0.32, 'reactor', null, 0.07); Z(-0.12, 0,     0.42, 'droneBay', 'drones', 0.07); // power / internal
+  Z( 0.5,   0.12, 0.62, 'wpnFwd', 'weapons', 0.07); Z(-0.62, 0.12, 0.62, 'wpnAft', 'weapons', 0.07); // weapons
+
+  if (DOTS) {   // shown in the perspective AND all four profile views
     damageMarkers = [];
-    const locs = [];
-    centres.forEach((c, i) => locs.push({ pos: [c[0], c[1] + 4, c[2]], eval: dotEngine(i) }));  // 4 lift fans
-    const M = (along, beam, up, key, sys) => locs.push({ pos: apos(along, beam, up), eval: dotArea(key, sys) });
-    M(-0.85,  0.38, 0.32, 'boostP', 'eng'); M(-0.85, -0.38, 0.32, 'boostS', 'eng');   // boosters ← ENGINES slider
-    M( 0.05,  0,    0.92, 'bridge');  M(-0.04, 0,     0.6,  'aiCore');   // command
-    M( 0.34,  0,    0.32, 'reactor'); M(-0.12, 0,     0.42, 'droneBay', 'drones'); // power / internal
-    M( 0.5,   0.12, 0.62, 'wpnFwd', 'weapons');  M(-0.62, 0.12,  0.62, 'wpnAft', 'weapons');   // weapons
+    const locs = zones.slice();
     locs.push({ pos: apos(0, 0, 0.5), eval: s =>
       (s.hull === 'CRITICAL' || s.hull === 'OFFLINE') ? { show: true, color: 0xef4444 }
         : s.hull === 'DAMAGED' ? { show: true, color: 0xfacc15 } : { show: false } });   // hull breach
     const targets = [perspLift, top && top.scene, port && port.scene, fore && fore.scene, aft && aft.scene].filter(Boolean);
     for (const t of targets) for (const L of locs) addMarker(t, L.pos[0], L.pos[1], L.pos[2], L.eval);
   }
+  // the profile views share the model's geometry (clones), so tinting it covers all four
+  if (TINT) buildTint([model, detailed], zones);
+  // crew indicators (both views): one glowing white dot per player, anchored at the area the GM picked
+  buildCrew(zones, [perspLift, top && top.scene, port && port.scene, fore && fore.scene, aft && aft.scene].filter(Boolean));
 
   configureOrthos(model, axes);
 
@@ -950,7 +1085,8 @@ function tick() {
     const pulse = 0.7 + 0.3 * Math.sin(now / 700);
     for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
   }
-  const renderStatic = liveDots || staticFrames > 0;   // static views idle between changes
+  const tinted = TINT && paintTint(now);
+  const renderStatic = liveDots || tinted || staticFrames > 0;   // static views idle between changes
   if (staticFrames > 0) staticFrames--;
   for (const v of views) if (renderStatic || !v.isStatic) v.renderer.render(v.scene, v.cam);
 }
@@ -1154,6 +1290,7 @@ function render(force) {
   lastRaw = raw;
 
   readTimer();
+  updateCrew();                        // crew dots (not state-coloured, so they show even mid-crash)
   const s = readState();
   logDiff(s);
 
@@ -1230,6 +1367,7 @@ function render(force) {
   if (crashed) return;                 // crash latches every view red — don't repaint over it
   applyShield(s.shields, s.panels);    // effective shield power (core + reserves)
   updateMarkers(s);
+  if (TINT) updateTint(s);
   updateDrones(s);
 }
 render(true);

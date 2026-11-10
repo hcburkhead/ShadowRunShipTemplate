@@ -256,6 +256,13 @@
   .relay-gated{ opacity:.45; }
   .rr-relay{ font-size:8px; margin-left:6px; }
   .relay-card{ grid-column:1/-1; }
+  .crew-rows{ display:flex; flex-direction:column; gap:6px; }
+  .crew-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:10px; letter-spacing:2px; }
+  .crew-row .cn{ color:var(--glint); display:flex; align-items:center; gap:6px; }
+  .crew-row .cn i{ width:7px; height:7px; border-radius:50%; background:#fff; box-shadow:0 0 6px #fff; opacity:.25; }
+  .crew-row.on .cn i{ opacity:1; }
+  .crew-row select{ font:inherit; font-size:10px; letter-spacing:1px; background:var(--panel2); color:var(--g1);
+    border:1px solid var(--edge); border-radius:4px; padding:4px 6px; min-width:150px; }
   .relay-table{ width:100%; border-collapse:collapse; font-size:10px; letter-spacing:1px; }
   .relay-table th{ text-align:left; font-size:8px; letter-spacing:2px; color:var(--dim); font-weight:normal;
     padding:3px 8px; border-bottom:1px solid var(--edge); }
@@ -444,6 +451,20 @@
         </div>
       </section>
 
+      <!-- ============ CREW ============ -->
+      <section class="block">
+        <h3 class="block-title">⌖ CREW</h3>
+        <div class="block-grid compact">
+          <div class="card">
+            <h2>CREW LOCATIONS <span class="v" id="crew-sum">NONE SHOWN</span></h2>
+            <div id="crew-rows" class="crew-rows"></div>
+            <div class="hint">DM only. Place each player on the ship — they show as small glowing white dots
+              (with their name) on the ship display for everyone, players included. "— NOT SHOWN" hides that
+              player. Players in the same area spread out around it. Remote: CREW &lt;NAME&gt; &lt;AREA|OFF&gt;.</div>
+          </div>
+        </div>
+      </section>
+
       <!-- ============ FLIGHT ============ -->
       <section class="block">
         <h3 class="block-title">✈ FLIGHT</h3>
@@ -516,10 +537,10 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         normTimerLabel, firebaseDb } from './ship-model.js?v=4';
+         normTimerLabel, firebaseDb, CREW, CREW_LOCS, normCrew } from './ship-model.js?v=5';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
          RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
-         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=4';
+         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=5';
 // ?v=N busts the browser / GitHub Pages cache: a stale module missing a new export kills this
 // whole script (blank controls). BUMP N whenever ship-model.js or signal-breaker.js changes.
 
@@ -1221,6 +1242,31 @@ $('bk-end').addEventListener('click', () => setBreakerStatus('off'));
   ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => peek.addEventListener(ev, show(false)));
 }
 
+// ---- crew locations (GM places the 4 players; display shows white dots — see ship-model.js) ----
+state.crew = normCrew(load('shipCrew', {}));
+const saveCrew = () => pushKey('shipCrew', state.crew);
+const crewSel = {};
+CREW.forEach(([k, name]) => {
+  const row = document.createElement('div'); row.className = 'crew-row';
+  const cn = document.createElement('span'); cn.className = 'cn';
+  cn.append(document.createElement('i'), name);
+  const sel = document.createElement('select'); sel.setAttribute('aria-label', name + ' location');
+  CREW_LOCS.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
+  sel.addEventListener('change', () => { state.crew[k] = sel.value; saveCrew(); renderCrew(); });
+  row.append(cn, sel); $('crew-rows').appendChild(row);
+  crewSel[k] = { row, sel };
+});
+function renderCrew() {
+  let shown = 0;
+  CREW.forEach(([k]) => {
+    const { row, sel } = crewSel[k], v = state.crew[k] || '';
+    if (document.activeElement !== sel) sel.value = v;
+    row.classList.toggle('on', !!v);
+    if (v) shown++;
+  });
+  $('crew-sum').textContent = shown ? shown + ' / ' + CREW.length + ' SHOWN' : 'NONE SHOWN';
+}
+
 // ---- remote command channel (Google Apps Script / Sheets → ship) ----
 // external tools PUT { id, at, cmd } to the shipCommand key in Firebase (see
 // gas/ship-commands.gs); every open console executes new commands and logs
@@ -1319,6 +1365,13 @@ function execRemote(cmd) {
     setRelays(ks, v);   // SERA may bring an OFFLINE relay straight back if every sector is nominal
     return '⌁ ' + m[1] + ' RELAY → ' + RELAY_WORD[v];
   }
+  if ((m = raw.match(/^CREW (\w+) (\w+)$/))) {   // place a player: CREW RYU REACTOR · CREW RYU OFF
+    const who = CREW.find(([k, n]) => n === m[1]);
+    const loc = /^(OFF|NONE|HIDE)$/.test(m[2]) ? '' : AREA_KEYS[m[2]];
+    if (!who || loc === undefined) return '✖ CREW needs a name (' + CREW.map(c => c[1]).join('/') + ') and an area or OFF';
+    state.crew[who[0]] = loc; saveCrew(); renderCrew();
+    return '⌖ ' + who[1] + (loc ? ' → ' + CREW_LOCS.find(([v]) => v === loc)[1] : ' hidden');
+  }
   if ((m = raw.match(/^ALT (\d{1,3})$/))) {
     state.altitude = clamp(+m[1], 0, 100);
     renderAlt(); saveAlt();
@@ -1347,13 +1400,14 @@ function handleRemoteCommand(d) {
 window.shipCommand = cmd => handleRemoteCommand(
   cmd && typeof cmd === 'object' ? cmd : { id: 'local-' + Date.now() + '-' + Math.random(), at: Date.now(), cmd });
 
-function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); renderDestruct(); renderBreaker(); }
+function renderAll() { renderCrew(); renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); renderDestruct(); renderBreaker(); }
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
 // players see the operator-triggered damage dots but no state readouts (bare)
 // the DM's embedded display carries the system log (?log=1); players never do
-$('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1&dots=1';   // both views show damage dots
+// players get blinking damage dots; the DM's view tints the affected wireframe areas instead
+$('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1&tint=1';
 if (PLAYER) {
   document.body.classList.add('player');
   $('con-title').textContent = 'PLAYER VIEW';
@@ -1386,6 +1440,7 @@ addEventListener('storage', () => {
   state.term = normTerm(load('shipTerminal', state.term));
   state.destruct = normDestruct(load('shipDestruct', state.destruct));
   state.breaker = normBreaker(load('shipBreaker', state.breaker));
+  state.crew = normCrew(load('shipCrew', state.crew));
   renderAll();
 });
 
@@ -1412,6 +1467,7 @@ addEventListener('storage', () => {
     onValue(ref(db, 'shipAux'),         s => { const d = s.val(); if (d) { mirrorLocal('shipAux', d); state.aux = normAux(d); renderRoute(); renderHull(); } });
     onValue(ref(db, 'shipTerminal'),    s => { const d = s.val(); if (d) { mirrorLocal('shipTerminal', d); state.term = normTerm(d); renderTerm(); } });
     onValue(ref(db, 'shipDestruct'),    s => { const d = s.val(); if (d) { mirrorLocal('shipDestruct', d); state.destruct = normDestruct(d); renderDestruct(); } });
+    onValue(ref(db, 'shipCrew'),        s => { const d = s.val(); if (d) { mirrorLocal('shipCrew', d); state.crew = normCrew(d); renderCrew(); } });
     onValue(ref(db, 'shipBreaker'),     s => { const d = s.val(); if (d) { mirrorLocal('shipBreaker', d); state.breaker = normBreaker(d); renderBreaker(); } });
     onValue(ref(db, 'shipCommand'),     s => handleRemoteCommand(s.val()));   // GAS / Sheets remote commands
   } catch (e) {
