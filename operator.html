@@ -322,9 +322,11 @@
               <thead><tr><th scope="col">RELAY NAME</th><th scope="col">STATUS</th></tr></thead>
               <tbody id="relay-rows"></tbody>
             </table>
-            <div class="hint">Each relay gates that system's controls: OFFLINE = locked · DAMAGED = throttle + battery
-              (terminal input) · ONLINE = everything incl. AUX (overdrive). SERA brings OFFLINE relays back once all
-              sectors are nominal; DAMAGED relays need two cracked SYSTEM-RELAY challenges.</div>
+            <!-- player-visible: written in SERA's (ship AI) voice to keep it in-world -->
+            <div class="hint">SERA // RELAY PROTOCOL — OFFLINE: control channels sealed · DAMAGED: throttle + battery
+              channels open (terminal: command input) · ONLINE: full control incl. AUX (terminal: overdrive).
+              OFFLINE relays auto-restore on an all-sector nominal report. DAMAGED relays require manual relay
+              override: SERA reinitializes the system, then re-engages it.</div>
           </div>
 
           <!-- CORE POWER (produced by the core reactor — its own system) -->
@@ -1126,10 +1128,10 @@ function renderRelayLocks() {
   const sysDown = RELAY_KEYS.filter(k => k !== 'term' && relaySt(k) === 2);
   const auxDown = RELAY_KEYS.filter(k => k !== 'term' && relaySt(k) >= 1);
   const show = (id, on, msg) => { const el = $(id); el.hidden = !(PLAYER && on); if (on) el.textContent = msg; };
-  show('relay-lock-sys', sysDown.length, '⚠ RELAY OFFLINE: ' + names(sysDown) + ' — controls locked. SERA restores it once all sectors are nominal, or crack the SYSTEM-RELAY.');
-  show('relay-lock-route', auxDown.length, '⚠ AUX locked until the relay is ONLINE: ' + names(auxDown)
-    + (sysDown.length ? ' · BATTERY locked (relay OFFLINE): ' + names(sysDown) : ''));
-  show('relay-lock-term', relaySt('term') === 2, '⚠ TERMINAL RELAY OFFLINE — command input locked. SERA restores it once all sectors are nominal, or crack the SYSTEM-RELAY.');
+  show('relay-lock-sys', sysDown.length, '⚠ SERA: ' + names(sysDown) + (sysDown.length > 1 ? ' RELAYS' : ' RELAY') + ' OFFLINE — CONTROL CHANNELS SEALED. AUTO-RESTORE PENDING ALL-SECTOR NOMINAL REPORT, OR MANUAL RELAY OVERRIDE REQUIRED.');
+  show('relay-lock-route', auxDown.length, '⚠ SERA: AUX CHANNELS SEALED PENDING RELAY ONLINE — ' + names(auxDown)
+    + (sysDown.length ? ' · BATTERY CHANNELS SEALED, RELAY OFFLINE — ' + names(sysDown) : ''));
+  show('relay-lock-term', relaySt('term') === 2, '⚠ SERA: TERMINAL RELAY OFFLINE — COMMAND INPUT SEALED. AUTO-RESTORE PENDING ALL-SECTOR NOMINAL REPORT, OR MANUAL RELAY OVERRIDE REQUIRED.');
 }
 function renderBreaker() {
   const b = state.breaker;
