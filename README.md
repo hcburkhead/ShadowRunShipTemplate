@@ -214,12 +214,16 @@ player views, in all five ship views (the perspective copies slowly turn); playe
 sharing an area spread out around it:
 - **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
   through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
-- **Gimli** — stocky dwarf warrior: braided beard and moustache, crested half-helm
-  with nasal / cheek guards, pauldrons, belt buckle, double-bladed axe.
-- **Ganbold** — tall hitman: long belted coat with popped collar, fur ushanka,
-  shades, suppressed scoped rifle at the ready.
-- **Ryu** — lean street samurai: cyber arm, visor, topknot, collared jacket,
-  katana across the back, thigh holster.
+- **Gimli** — the team's face, a dwarf: shorter but normally proportioned, in an
+  open coat and jeans, with a groomed beard (one braid) and swept-back hair, a
+  commlink in hand and a double-bladed axe strapped across his back.
+- **Ganbold** — tall, augmented hitman: long belted coat with popped collar, fur
+  ushanka, shades over a red cybereye, neck ports, a cyber left arm with a
+  smartlink cable to his suppressed scoped rifle.
+- **Ryu** — stocky, heavily augmented weapons specialist: two cyber arms,
+  armoured chest plate and shoulder pads, spinal nodes, shin plates, visor,
+  topknot, katana across the back, heavy thigh holster, and two small
+  quad-rotor drones hovering at his shoulders.
 
 All four share one posable humanoid body (contoured torso, jointed arms and legs
 with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.

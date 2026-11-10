@@ -281,7 +281,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
 import { CREW, normCrew } from './ship-model.js?v=5';
-import { buildFigure } from './crew-figures.js?v=4';   // bump ?v when crew-figures.js changes
+import { buildFigure } from './crew-figures.js?v=9';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
          normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=5';   // ?v busts stale caches — bump on change
@@ -724,7 +724,7 @@ function labelTexture(text) {
 }
 // each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
 // glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
-const FIG_SCALE = 2.2;
+const FIG_SCALE = 1.6;
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
@@ -755,7 +755,7 @@ function updateCrew() {
     grp.visible = !!a;
     if (!a) continue;
     const here = at[l], n = here.length, i = here.indexOf(k);
-    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 8 : 0;
+    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 6 : 0;
     grp.position.set(a.x + Math.cos(ang) * rr, a.y, a.z + Math.sin(ang) * rr);   // feet on the anchor
   }
 }
@@ -1089,7 +1089,10 @@ function tick() {
     const sp = crashed ? 0 : dt * 4.5 * (fanSpeed[idx] || 0);   // everything stops once crashed
     g.userData.sets[0].rotation.y += sp; g.userData.sets[1].rotation.y -= sp;
   }
-  for (const m of crewMarks) if (m.spin && m.grp.visible) m.fig.rotation.y += dt * 0.6;   // crew turntable (perspective only)
+  for (const m of crewMarks) if (m.spin && m.grp.visible) {           // crew turntable + moving parts (perspective only)
+    m.fig.rotation.y += dt * 0.6;
+    if (m.fig.userData.tick) m.fig.userData.tick(now / 1000);           // e.g. Ryu's hovering drones
+  }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
     if (!sw.visible || crashed) continue;
     const act = sw.userData.active;
