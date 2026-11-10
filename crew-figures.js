@@ -14,7 +14,7 @@
 //   ganbold — tall hitman: long belted coat with popped collar, fur ushanka, square jaw,
 //             shades, suppressed scoped rifle at the ready
 //   ryu     — lean street samurai: jacket with collar, cyber arm, visor, topknot, katana
-//             across the back, thigh holster
+//             across the back, thigh holster, two small drones hovering at his shoulders
 
 import * as THREE from './vendor/three.module.js';
 
@@ -116,13 +116,13 @@ const BUILD = {
     });
     // the hood: a rounded hoodie cowl — a soft dome open at the front (gap centred on +Z),
     // a rolled rim framing the face, and the hood's bunched fold at the back of the neck
-    const OPEN = 1.5;                                                    // face opening width (radians)
-    solid(g, new THREE.SphereGeometry(0.6, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
-      W, { p: [0, 5.82, -0.08], s: [1, 1.12, 1.1] }, 8);                  // low edge angle → visible panel lines
-    ring(g, [0, 5.78, 0.42], 0.4, 0.05, W, [0, 0, 0], [1, 1.25, 1]);    // rolled rim around the face
-    ring(g, [0, 5.2, -0.05], 0.5, 0.1, W, undefined, [1, 0.85, 1]);     // bunched fold at the neck
-    line(g, [[0, 6.5, 0.2], [0, 6.47, -0.25], [0, 6.1, -0.68], [0, 5.5, -0.7]], W);   // centre seam over the crown
-    line(g, [[-0.12, 5.42, 0.44], [-0.14, 5.1, 0.5], [-0.12, 4.85, 0.5]], W);         // drawstrings
+    const OPEN = 1.45;                                                   // face opening width (radians)
+    solid(g, new THREE.SphereGeometry(0.5, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
+      W, { p: [0, 5.82, -0.06], s: [0.88, 1.28, 1.1] }, 8);               // slim, tall dome; low edge angle → panel lines
+    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]); // rolled rim around the face
+    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);    // bunched fold at the neck
+    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W);  // centre seam over the crown
+    line(g, [[-0.1, 5.4, 0.38], [-0.12, 5.1, 0.44], [-0.1, 4.85, 0.44]], W);           // drawstrings
     line(g, [[0.12, 5.42, 0.44], [0.14, 5.1, 0.5], [0.12, 4.85, 0.5]], W);
     solid(g, new THREE.CylinderGeometry(0.72, 1.05, 3.3, 12, 1, true, Math.PI * 0.6, Math.PI * 0.8), W, { p: [0, 3.55, -0.08] }); // cloak (back)
     solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [-0.62, 6.15, -0.05], r: [0, 0, 1.0] }); // horns through the hood
@@ -133,8 +133,12 @@ const BUILD = {
     ring(g, [0, 3.15, 0], 0.46, 0.04, W, undefined, [1, 0.68, 1]);      // belt
     box(g, 0.28, 0.3, 0.16, W, { p: [0.38, 3.0, 0.25] });               // belt pouches
     box(g, 0.28, 0.3, 0.16, W, { p: [-0.38, 3.0, 0.25] });
-    box(g, 1.4, 0.1, 0.8, DECK, { p: [0, 3.65, 1.15] });                // cyberdeck
-    box(g, 1.2, 0.7, 0.05, DECK, { p: [0, 4.05, 0.82], r: [-0.35, 0, 0] });   // its screen
+    box(g, 1.4, 0.1, 0.8, DECK, { p: [0, 3.65, 1.15] });                // cyberdeck (keyboard half)
+    line(g, [[-0.55, 3.71, 0.95], [0.55, 3.71, 0.95]], DECK);           // key rows
+    line(g, [[-0.55, 3.71, 1.15], [0.55, 3.71, 1.15]], DECK);
+    // screen hinged at the far edge, leaning back so it faces him (like an open laptop)
+    box(g, 1.3, 0.75, 0.05, DECK, { p: [0, 4.03, 1.63], r: [0.3, 0, 0] });
+    box(g, 1.1, 0.55, 0.02, DECK, { p: [0, 4.03, 1.6], r: [0.3, 0, 0] });   // glowing display inset, toward him
     tube(g, [[0.3, 3.7, 1.0], [0.45, 4.4, 0.75], [0.3, 5.1, 0.45], [0.25, 5.55, 0.3]], 0.03, DECK); // datajack cable
     return 6.95;
   },
@@ -235,12 +239,38 @@ const BUILD = {
     rod(g, [-0.8, 4.9, -0.48], [-1.12, 5.29, -0.48], 0.065, 0.065, W, 6);
     // thigh holster
     box(g, 0.2, 0.55, 0.32, W, { p: [0.62, 2.1, 0.08], r: [0, 0, 0.08] });
+    // two small quad-rotor drones hovering at his shoulders (bob + spin rotors via userData.tick)
+    const drones = [-1, 1].map(side => {
+      const d = new THREE.Group();
+      d.position.set(side * 1.45, 4.9, 0.15);
+      box(d, 0.36, 0.12, 0.36, W);                                        // body
+      ball(d, [0, -0.02, 0], 0.1, BLADE);                                 // glowing core
+      box(d, 0.16, 0.05, 0.05, BLADE, { p: [0, -0.02, 0.2] });            // sensor eye, facing forward
+      const rotors = [[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([x, z]) => {
+        rod(d, [0, 0.03, 0], [x * 0.3, 0.06, z * 0.3], 0.025, 0.025, W, 4);   // arms
+        const r = new THREE.Group(); r.position.set(x * 0.3, 0.09, z * 0.3);
+        ring(r, [0, 0, 0], 0.15, 0.015, NEON);                              // rotor guard
+        rod(r, [-0.13, 0, 0], [0.13, 0, 0], 0.012, 0.012, W, 3);            // blade
+        d.add(r);
+        return r;
+      });
+      g.add(d);
+      return { d, rotors, side, y0: d.position.y };
+    });
+    g.userData.tick = t => {                                              // called each frame by index.html
+      for (const { d, rotors, side, y0 } of drones) {
+        d.position.y = y0 + Math.sin(t * 2.2 + side) * 0.12;
+        d.rotation.y = Math.sin(t * 0.7 + side) * 0.25;
+        rotors.forEach((r, i) => { r.rotation.y = t * 30 * (i % 2 ? 1 : -1); });
+      }
+    };
     return 5.55;
   },
 };
 
 /** A new figure group for a crew key (casper/gimli/ganbold/ryu), feet at y = 0.
- *  Returns { group, height }. Unknown keys fall back to a simple glowing pillar. */
+ *  Returns { group, height }. Unknown keys fall back to a simple glowing pillar.
+ *  A figure with moving parts sets group.userData.tick(seconds) — call it each frame. */
 export function buildFigure(key) {
   const group = new THREE.Group();
   const height = BUILD[key] ? BUILD[key](group) : (solid(group, new THREE.CylinderGeometry(0.5, 0.5, 5, 8), W, { p: [0, 2.5, 0] }), 5);

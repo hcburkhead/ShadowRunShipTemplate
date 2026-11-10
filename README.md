@@ -219,7 +219,8 @@ sharing an area spread out around it:
 - **Ganbold** — tall hitman: long belted coat with popped collar, fur ushanka,
   shades, suppressed scoped rifle at the ready.
 - **Ryu** — lean street samurai: cyber arm, visor, topknot, collared jacket,
-  katana across the back, thigh holster.
+  katana across the back, thigh holster, and two small quad-rotor drones
+  hovering at his shoulders.
 
 All four share one posable humanoid body (contoured torso, jointed arms and legs
 with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.
