@@ -17,8 +17,9 @@
 //             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
 //             suppressed scoped rifle at the ready
 //   ryu     — stocky, heavily augmented weapons specialist: two cyber arms, armoured chest
-//             plate + shoulder pads, spinal nodes, shin plates, visor (live terminal HUD),
-//             topknot, katana across the back, heavy thigh holster, two small drones at his shoulders
+//             plate + shoulder pads with twin red shoulder cannons, spinal nodes, shin plates,
+//             visor (live terminal HUD), topknot, katana across the back, heavy thigh holster,
+//             two small drones at his shoulders
 
 import * as THREE from './vendor/three.module.js';
 
@@ -278,7 +279,7 @@ const BUILD = {
 
   // ---- street samurai: lean, cyber arm, visor, topknot, katana on the back ----
   ryu(g) {
-    const NEON = 0xb99cff, BLADE = 0x6df3ff;
+    const NEON = 0xb99cff, BLADE = 0x6df3ff, CANNON = 0xef4444;
     // stocky, heavily augmented weapons specialist: broad frame, thick limbs, BOTH arms cybernetic
     humanoid(g, {
       thigh: 0.34, arm: 0.25, foot: 0.8, armColor: [NEON, NEON],
@@ -294,6 +295,14 @@ const BUILD = {
     line(g, [[-0.45, 3.75, 0.68], [0.45, 3.75, 0.68]], NEON);
     solid(g, new THREE.SphereGeometry(0.42, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), NEON, { p: [-0.98, 4.18, 0], r: [0, 0, 0.4] });
     solid(g, new THREE.SphereGeometry(0.42, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), NEON, { p: [0.98, 4.18, 0], r: [0, 0, -0.4] });
+
+    // twin red shoulder cannons (mounted on top of shoulder pads, facing forward)
+    [-0.98, 0.98].forEach(x => {
+      box(g, 0.18, 0.14, 0.28, CANNON, { p: [x, 4.48, 0.02] });                          // swivel mount
+      rod(g, [x, 4.48, 0.1], [x, 4.48, 0.48], 0.045, 0.035, CANNON, 6);                 // cannon barrel
+      ring(g, [x, 4.48, 0.48], 0.05, 0.015, CANNON, [0, 0, 0]);                          // muzzle ring
+    });
+
     // cyber arms: joint rings at elbow + forearm on both sides
     ring(g, [-1.15, 3.35, 0.15], 0.24, 0.04, NEON, [0, 0, Math.PI / 2]);
     ring(g, [1.2, 3.4, 0.25], 0.24, 0.04, NEON, [0, 0, Math.PI / 2]);
