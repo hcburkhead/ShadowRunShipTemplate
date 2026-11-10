@@ -724,7 +724,7 @@ function labelTexture(text) {
 }
 // each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
 // glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
-const FIG_SCALE = 1.6;
+const FIG_SCALE = 0.8;   // close to true scale against the ship (zoom in for detail)
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
@@ -737,7 +737,7 @@ function buildCrew(zones, targets) {
       fig.scale.setScalar(FIG_SCALE); grp.add(fig);
       const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: glow, color: 0xffffff,
         transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-      disc.rotation.x = -Math.PI / 2; disc.scale.set(7, 7, 1); disc.position.y = 0.05; grp.add(disc);
+      disc.rotation.x = -Math.PI / 2; disc.scale.set(4.4 * FIG_SCALE, 4.4 * FIG_SCALE, 1); disc.position.y = 0.05; grp.add(disc);
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
       lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.6, 0); grp.add(lbl);
       t.add(grp);
@@ -755,7 +755,7 @@ function updateCrew() {
     grp.visible = !!a;
     if (!a) continue;
     const here = at[l], n = here.length, i = here.indexOf(k);
-    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 6 : 0;
+    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 3.75 * FIG_SCALE : 0;
     grp.position.set(a.x + Math.cos(ang) * rr, a.y, a.z + Math.sin(ang) * rr);   // feet on the anchor
   }
 }
@@ -864,7 +864,7 @@ const persp = makeView('cv-persp', (v) => {
   v.controls.autoRotate = true; v.controls.autoRotateSpeed = 0.7;
   // zoom right in on a crew member: wheel / pinch zooms toward the cursor (the orbit pivot follows),
   // right-drag / two-finger drag pans; double-click resets the view
-  v.controls.minDistance = 6; v.controls.maxDistance = 520;
+  v.controls.minDistance = 3; v.controls.maxDistance = 520;
   v.controls.zoomToCursor = true; v.controls.enablePan = true; v.controls.screenSpacePanning = true;
   v.controls.target.set(0, 0, 0);
   v.renderer.domElement.addEventListener('dblclick', () => {
