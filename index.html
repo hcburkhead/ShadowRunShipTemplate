@@ -741,7 +741,7 @@ function buildCrew(zones, targets) {
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
       lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.6, 0); grp.add(lbl);
       t.add(grp);
-      crewMarks.push({ k, grp, fig, spin: ti === 0 });   // targets[0] = the perspective view
+      crewMarks.push({ k, grp, fig, lbl, top: height * FIG_SCALE, spin: ti === 0 });   // targets[0] = the perspective view
     });
   });
 }
@@ -875,6 +875,7 @@ const persp = makeView('cv-persp', (v) => {
 // the slow auto-spin pauses while zoomed in (so a crew member stays in front of you) and
 // resumes once zoomed back out; a crash always stops it
 const AUTOSPIN_DIST = 100;
+const _tagPos = new THREE.Vector3();
 function orthoView(id, role) {
   const v = makeView(id, () => new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -3000, 5000));
   if (v) v.role = role;
@@ -1103,6 +1104,11 @@ function tick() {
   }
   for (const m of crewMarks) if (m.spin && m.grp.visible) {           // crew turntable + moving parts (perspective only)
     m.fig.rotation.y += dt * 0.6;
+    // name tag shrinks as the camera closes in (full size from ~180 units out, down to ~15%)
+    m.lbl.getWorldPosition(_tagPos);
+    const k = Math.max(0.15, Math.min(1, persp.cam.position.distanceTo(_tagPos) / 180));
+    m.lbl.scale.set(14 * k, 3.5 * k, 1);
+    m.lbl.position.y = m.top + 0.4 + 1.2 * k;                          // and hugs the head when small
     if (m.fig.userData.tick) m.fig.userData.tick(now / 1000);           // e.g. Ryu's hovering drones
   }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
