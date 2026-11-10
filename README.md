@@ -195,6 +195,11 @@ the DM knocks one down.
   until the DM resets it.
 
 ## On the display (index.html)
+**Camera (perspective view):** drag to orbit; the **mouse wheel / pinch zooms toward
+the cursor** (all the way in on a crew member); right-drag / two-finger drag pans;
+**double-click resets** the view. Crew name tags shrink as you zoom in. The slow auto-spin pauses while zoomed in and resumes
+when you zoom back out.
+
 **One status colour rule for every system:** OFFLINE = **red**, DAMAGED =
 **yellow**, ONLINE = normal. Damage-control areas use their ONLINE / DAMAGED /
 OFFLINE state; power percentages (system sliders, effective power) are banded

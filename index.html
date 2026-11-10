@@ -741,7 +741,7 @@ function buildCrew(zones, targets) {
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
       lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.6, 0); grp.add(lbl);
       t.add(grp);
-      crewMarks.push({ k, grp, fig, spin: ti === 0 });   // targets[0] = the perspective view
+      crewMarks.push({ k, grp, fig, lbl, top: height * FIG_SCALE, spin: ti === 0 });   // targets[0] = the perspective view
     });
   });
 }
@@ -857,15 +857,25 @@ const dotArea   = (key, sys) => s => {
 };
 
 const persp = makeView('cv-persp', (v) => {
-  const c = new THREE.PerspectiveCamera(42, 1, 1, 6000);
+  const c = new THREE.PerspectiveCamera(42, 1, 0.2, 6000);   // small near plane: close zoom on the crew
   c.position.set(150, 92, 168);
   v.controls = new OrbitControls(c, v.renderer.domElement);
-  v.controls.enableDamping = true; v.controls.enablePan = false;
+  v.controls.enableDamping = true;
   v.controls.autoRotate = true; v.controls.autoRotateSpeed = 0.7;
-  v.controls.minDistance = 110; v.controls.maxDistance = 520;
+  // zoom right in on a crew member: wheel / pinch zooms toward the cursor (the orbit pivot follows),
+  // right-drag / two-finger drag pans; double-click resets the view
+  v.controls.minDistance = 6; v.controls.maxDistance = 520;
+  v.controls.zoomToCursor = true; v.controls.enablePan = true; v.controls.screenSpacePanning = true;
   v.controls.target.set(0, 0, 0);
+  v.renderer.domElement.addEventListener('dblclick', () => {
+    v.controls.target.set(0, 0, 0); c.position.set(150, 92, 168); v.controls.update();
+  });
   return c;
 });
+// the slow auto-spin pauses while zoomed in (so a crew member stays in front of you) and
+// resumes once zoomed back out; a crash always stops it
+const AUTOSPIN_DIST = 100;
+const _tagPos = new THREE.Vector3();
 function orthoView(id, role) {
   const v = makeView(id, () => new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, -3000, 5000));
   if (v) v.role = role;
@@ -1083,7 +1093,10 @@ let lastT = performance.now();
 function tick() {
   requestAnimationFrame(tick);
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
-  if (persp && persp.controls) persp.controls.update();
+  if (persp && persp.controls) {
+    if (!crashed) persp.controls.autoRotate = persp.controls.getDistance() > AUTOSPIN_DIST;
+    persp.controls.update();
+  }
   updateFlight(dt);                                      // altitude + bank/pitch from lift-fan failures
   for (const { g, idx } of fanGroups) {                  // counter-rotating sets, per mag-lev cohesion
     const sp = crashed ? 0 : dt * 4.5 * (fanSpeed[idx] || 0);   // everything stops once crashed
@@ -1091,6 +1104,11 @@ function tick() {
   }
   for (const m of crewMarks) if (m.spin && m.grp.visible) {           // crew turntable + moving parts (perspective only)
     m.fig.rotation.y += dt * 0.6;
+    // name tag shrinks as the camera closes in (full size from ~180 units out, down to ~15%)
+    m.lbl.getWorldPosition(_tagPos);
+    const k = Math.max(0.15, Math.min(1, persp.cam.position.distanceTo(_tagPos) / 180));
+    m.lbl.scale.set(14 * k, 3.5 * k, 1);
+    m.lbl.position.y = m.top + 0.4 + 1.2 * k;                          // and hugs the head when small
     if (m.fig.userData.tick) m.fig.userData.tick(now / 1000);           // e.g. Ryu's hovering drones
   }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
