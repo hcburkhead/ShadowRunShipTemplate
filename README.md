@@ -213,19 +213,16 @@ colour each) standing on a soft glow, with a faint name tag, on both the DM and
 player views, in all five ship views (the perspective copies slowly turn); players
 sharing an area spread out around it:
 - **Casper** — tall, slender troll hacker: deep peaked hood with horns poking
-  through, tusks, eyes glowing in the hood, a glowing cyberdeck.
-- **Gimli** — stocky dwarf warrior: big braided beard, conical helm, axe.
-- **Ganbold** — tall hitman: long coat, fur ushanka, shades, suppressed rifle.
-- **Ryu** — lean street samurai: cyber visor, topknot, katana across the back. Synced as
-`shipCrew`; remote: `CREW <NAME> <AREA|OFF>` (e.g. `CREW RYU REACTOR`).
-- Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
-- The hull **kerns** — banks/pitches toward failing lift fans.
-- Directional shields, a floor shield ring, drone swarm, and blinking damage
-  dots, all colored by state.
-- The drone swarm shows the worse of the DRONE BAY state and the DRONES power
-  slider (67–100% = ONLINE, 34–66% = DAMAGED, 0–33% = OFFLINE): ONLINE = normal colours
-  and moving, DAMAGED = yellow and frozen, OFFLINE = red and frozen (always shown).
-- A left-rail **system log** (DM view only) recording every state change.
+  through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
+- **Gimli** — stocky dwarf warrior: braided beard and moustache, crested half-helm
+  with nasal / cheek guards, pauldrons, belt buckle, double-bladed axe.
+- **Ganbold** — tall hitman: long belted coat with popped collar, fur ushanka,
+  shades, suppressed scoped rifle at the ready.
+- **Ryu** — lean street samurai: cyber arm, visor, topknot, collared jacket,
+  katana across the back, thigh holster.
+
+All four share one posable humanoid body (contoured torso, jointed arms and legs
+with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.
 
 ## Views
 - `operator.html` — DM console.
