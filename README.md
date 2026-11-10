@@ -216,11 +216,13 @@ sharing an area spread out around it:
   through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
 - **Gimli** — stocky dwarf warrior: braided beard and moustache, crested half-helm
   with nasal / cheek guards, pauldrons, belt buckle, double-bladed axe.
-- **Ganbold** — tall hitman: long belted coat with popped collar, fur ushanka,
-  shades, suppressed scoped rifle at the ready.
-- **Ryu** — lean street samurai: cyber arm, visor, topknot, collared jacket,
-  katana across the back, thigh holster, and two small quad-rotor drones
-  hovering at his shoulders.
+- **Ganbold** — tall, augmented hitman: long belted coat with popped collar, fur
+  ushanka, shades over a red cybereye, neck ports, a cyber left arm with a
+  smartlink cable to his suppressed scoped rifle.
+- **Ryu** — stocky, heavily augmented weapons specialist: two cyber arms,
+  armoured chest plate and shoulder pads, spinal nodes, shin plates, visor,
+  topknot, katana across the back, heavy thigh holster, and two small
+  quad-rotor drones hovering at his shoulders.
 
 All four share one posable humanoid body (contoured torso, jointed arms and legs
 with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.

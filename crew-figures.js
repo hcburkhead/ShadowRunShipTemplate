@@ -11,10 +11,12 @@
 //             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
 //   gimli   — stocky dwarf warrior: braided beard + moustache, crested half-helm with
 //             nasal / cheek guards, pauldrons, belt + buckle, double-bladed axe
-//   ganbold — tall hitman: long belted coat with popped collar, fur ushanka, square jaw,
-//             shades, suppressed scoped rifle at the ready
-//   ryu     — lean street samurai: jacket with collar, cyber arm, visor, topknot, katana
-//             across the back, thigh holster, two small drones hovering at his shoulders
+//   ganbold — tall augmented hitman: long belted coat with popped collar, fur ushanka,
+//             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
+//             suppressed scoped rifle at the ready
+//   ryu     — stocky, heavily augmented weapons specialist: two cyber arms, armoured chest
+//             plate + shoulder pads, spinal nodes, shin plates, visor, topknot, katana
+//             across the back, heavy thigh holster, two small drones at his shoulders
 
 import * as THREE from './vendor/three.module.js';
 
@@ -183,9 +185,9 @@ const BUILD = {
 
   // ---- hitman: tall, long coat, ushanka, shades, suppressed rifle ----
   ganbold(g) {
-    const FUR = 0xd6c3a5, GUN = 0xef4444, GLASS = 0x6df3ff;
+    const FUR = 0xd6c3a5, GUN = 0xef4444, GLASS = 0x6df3ff, AUG = 0xb99cff;
     humanoid(g, {
-      thigh: 0.26, arm: 0.18, foot: 0.75,
+      thigh: 0.26, arm: 0.18, foot: 0.75, armColor: [AUG, W],
       legs: [[[-0.3, 2.9, 0], [-0.34, 1.6, 0.1], [-0.32, 0.4, 0]], [[0.3, 2.9, 0], [0.38, 1.6, 0.05], [0.36, 0.4, -0.05]]],
       arms: [[[-0.75, 4.45, 0], [-0.9, 3.85, 0.45], [-0.3, 3.95, 1.3]], [[0.75, 4.45, 0], [0.95, 3.7, 0.3], [0.48, 3.55, 0.7]]],
       torsoY: 2.85, torsoZ: 0.7, torso: [[0.5, 0], [0.48, 0.5], [0.6, 1.1], [0.72, 1.5], [0.6, 1.75], [0.25, 1.95]],
@@ -204,6 +206,14 @@ const BUILD = {
     box(g, 0.14, 0.5, 0.45, FUR, { p: [-0.46, 5.12, 0] });
     box(g, 0.14, 0.5, 0.45, FUR, { p: [0.46, 5.12, 0] });
     box(g, 0.62, 0.11, 0.06, GLASS, { p: [0, 5.22, 0.36] });
+    // augments: red cybereye glowing behind the right lens, neck interface ports,
+    // a cybernetic left arm (rings + plating) and a smartlink cable from that hand to the rifle
+    box(g, 0.12, 0.08, 0.04, GUN, { p: [0.15, 5.22, 0.4] });
+    [[-0.12, 4.88], [0.12, 4.88]].forEach(([x, y]) => box(g, 0.07, 0.07, 0.07, AUG, { p: [x, y, 0.17] }));
+    ring(g, [-0.9, 3.85, 0.45], 0.19, 0.035, AUG, [0, 0, Math.PI / 2]);
+    ring(g, [-0.6, 3.9, 0.88], 0.16, 0.03, AUG, [0, 1.0, Math.PI / 2]);
+    box(g, 0.2, 0.08, 0.5, AUG, { p: [-0.62, 4.0, 0.85], r: [0, 0.95, 0] });
+    tube(g, [[-0.3, 3.95, 1.3], [-0.15, 3.75, 1.2], [0.05, 3.72, 1.05], [0.2, 3.62, 0.85]], 0.025, AUG);
     // suppressed, scoped rifle held at the ready
     rod(g, [0.55, 3.45, 0.45], [-0.25, 3.95, 1.55], 0.09, 0.09, GUN, 6);          // receiver / barrel
     rod(g, [-0.25, 3.95, 1.55], [-0.55, 4.13, 1.98], 0.13, 0.13, GUN, 8);         // suppressor
@@ -216,33 +226,45 @@ const BUILD = {
   // ---- street samurai: lean, cyber arm, visor, topknot, katana on the back ----
   ryu(g) {
     const NEON = 0xb99cff, BLADE = 0x6df3ff;
+    // stocky, heavily augmented weapons specialist: broad frame, thick limbs, BOTH arms cybernetic
     humanoid(g, {
-      thigh: 0.25, arm: 0.17, foot: 0.7, armColor: [W, NEON],
-      legs: [[[-0.3, 2.65, 0], [-0.42, 1.45, 0.2], [-0.44, 0.4, 0.05]], [[0.3, 2.65, 0], [0.42, 1.45, 0.05], [0.46, 0.4, -0.12]]],
-      arms: [[[-0.65, 4.2, 0], [-0.8, 3.4, 0.15], [-0.62, 2.75, 0.4]], [[0.65, 4.2, 0], [0.85, 3.45, 0.25], [0.6, 2.9, 0.6]]],
-      torsoY: 2.55, torsoZ: 0.65, torso: [[0.46, 0], [0.42, 0.4], [0.38, 0.75], [0.56, 1.3], [0.64, 1.65], [0.5, 1.85], [0.2, 2.0]],
-      neck: [4.5, 4.72, 0.14], head: { p: [0, 4.98, 0.02], r: 0.34 },
+      thigh: 0.34, arm: 0.25, foot: 0.8, armColor: [NEON, NEON],
+      legs: [[[-0.4, 2.55, 0], [-0.55, 1.4, 0.18], [-0.56, 0.42, 0.05]], [[0.4, 2.55, 0], [0.55, 1.4, 0.05], [0.58, 0.42, -0.1]]],
+      arms: [[[-0.95, 4.2, 0], [-1.15, 3.35, 0.15], [-0.92, 2.7, 0.4]], [[0.95, 4.2, 0], [1.2, 3.4, 0.25], [0.9, 2.85, 0.6]]],
+      torsoY: 2.45, torsoZ: 0.78, torso: [[0.62, 0], [0.6, 0.4], [0.58, 0.7], [0.8, 1.25], [0.9, 1.65], [0.72, 1.88], [0.3, 2.02]],
+      neck: [4.42, 4.66, 0.21], head: { p: [0, 4.95, 0.03], r: 0.36 },
     });
-    // jacket: short flared hem + standing collar
-    lathe(g, [[0.6, 0], [0.5, 0.35], [0.44, 0.6]], W, { p: [0, 2.35, 0], s: [1, 1, 0.75] }, 10);
-    lathe(g, [[0.22, 0], [0.3, 0.25]], W, { p: [0, 4.48, 0], s: [1, 1, 0.9] }, 10);
-    // cyber arm detail: joint rings
-    ring(g, [0.85, 3.45, 0.25], 0.17, 0.035, NEON, [0, 0, Math.PI / 2]);
-    ring(g, [0.72, 3.8, 0.12], 0.17, 0.03, NEON, [0.2, 0, Math.PI / 2 - 0.3]);
+    // armoured jacket: flared hem, high collar, chest plate, shoulder pads
+    lathe(g, [[0.76, 0], [0.66, 0.35], [0.6, 0.6]], W, { p: [0, 2.25, 0], s: [1, 1, 0.8] }, 10);
+    lathe(g, [[0.3, 0], [0.38, 0.28]], W, { p: [0, 4.4, 0], s: [1, 1, 0.9] }, 10);
+    box(g, 1.15, 0.85, 0.12, NEON, { p: [0, 3.75, 0.6], r: [-0.12, 0, 0] });   // armoured chest plate
+    line(g, [[-0.45, 3.75, 0.68], [0.45, 3.75, 0.68]], NEON);
+    solid(g, new THREE.SphereGeometry(0.42, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), NEON, { p: [-0.98, 4.18, 0], r: [0, 0, 0.4] });
+    solid(g, new THREE.SphereGeometry(0.42, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), NEON, { p: [0.98, 4.18, 0], r: [0, 0, -0.4] });
+    // cyber arms: joint rings at elbow + forearm on both sides
+    ring(g, [-1.15, 3.35, 0.15], 0.24, 0.04, NEON, [0, 0, Math.PI / 2]);
+    ring(g, [1.2, 3.4, 0.25], 0.24, 0.04, NEON, [0, 0, Math.PI / 2]);
+    ring(g, [-1.03, 3.0, 0.28], 0.21, 0.03, NEON, [0.5, 0, Math.PI / 2 - 0.2]);
+    ring(g, [1.05, 3.12, 0.42], 0.21, 0.03, NEON, [0.5, 0, Math.PI / 2 + 0.2]);
+    // spinal augment: a ridge of nodes down the back
+    [4.3, 3.95, 3.6, 3.25, 2.9].forEach(y => box(g, 0.16, 0.12, 0.14, NEON, { p: [0, y, -0.6] }));
+    // reinforced shin plates
+    box(g, 0.32, 0.65, 0.1, NEON, { p: [-0.56, 0.95, 0.28], r: [0.05, 0, 0] });
+    box(g, 0.32, 0.65, 0.1, NEON, { p: [0.58, 0.95, 0.12], r: [-0.08, 0, 0] });
     // visor, topknot
-    box(g, 0.66, 0.12, 0.1, NEON, { p: [0, 5.02, 0.3] });
-    ball(g, [0, 5.45, -0.12], 0.13);
-    ring(g, [0, 5.36, -0.1], 0.1, 0.03, NEON);
+    box(g, 0.7, 0.13, 0.1, NEON, { p: [0, 5.0, 0.32] });
+    ball(g, [0, 5.43, -0.12], 0.14);
+    ring(g, [0, 5.34, -0.1], 0.11, 0.03, NEON);
     // katana across the back: blade, guard, wrapped grip
-    rod(g, [0.95, 2.75, -0.48], [-0.72, 4.8, -0.48], 0.045, 0.03, BLADE, 5);
-    ring(g, [-0.76, 4.85, -0.48], 0.14, 0.035, W, [0, Math.PI / 2, 0.68]);
-    rod(g, [-0.8, 4.9, -0.48], [-1.12, 5.29, -0.48], 0.065, 0.065, W, 6);
-    // thigh holster
-    box(g, 0.2, 0.55, 0.32, W, { p: [0.62, 2.1, 0.08], r: [0, 0, 0.08] });
+    rod(g, [1.05, 2.7, -0.66], [-0.8, 4.85, -0.66], 0.045, 0.03, BLADE, 5);
+    ring(g, [-0.84, 4.9, -0.66], 0.15, 0.035, W, [0, Math.PI / 2, 0.68]);
+    rod(g, [-0.88, 4.95, -0.66], [-1.2, 5.34, -0.66], 0.07, 0.07, W, 6);
+    // heavy thigh holster
+    box(g, 0.26, 0.6, 0.38, W, { p: [0.82, 2.05, 0.08], r: [0, 0, 0.08] });
     // two small quad-rotor drones hovering at his shoulders (bob + spin rotors via userData.tick)
     const drones = [-1, 1].map(side => {
       const d = new THREE.Group();
-      d.position.set(side * 1.45, 4.9, 0.15);
+      d.position.set(side * 1.75, 4.95, 0.15);
       box(d, 0.36, 0.12, 0.36, W);                                        // body
       ball(d, [0, -0.02, 0], 0.1, BLADE);                                 // glowing core
       box(d, 0.16, 0.05, 0.05, BLADE, { p: [0, -0.02, 0.2] });            // sensor eye, facing forward
