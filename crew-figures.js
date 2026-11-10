@@ -5,7 +5,7 @@
 // one accent colour per character. Units: feet at y = 0, facing +Z, ~4.5–7 units
 // tall (the ship is ~160 long). index.html scales / places / spins them.
 //
-//   casper  — hulking, hunched troll hacker: horns, tusks, a glowing cyberdeck + jack cable
+//   casper  — tall, slender troll hacker: deep hood, horns through it, tusks, cyberdeck + jack cable
 //   gimli   — stocky dwarf warrior: braided beard, conical helm, long-hafted axe
 //   ganbold — tall hitman: long coat, fur ushanka, shades, suppressed rifle
 //   ryu     — lean street samurai: cyber visor, topknot, katana across the back, cyber arm
@@ -40,25 +40,32 @@ const cone = (r, h, s = 8) => new THREE.ConeGeometry(r, h, s);
 const sph = (r, ws = 8, hs = 6) => new THREE.SphereGeometry(r, ws, hs);
 
 const BUILD = {
-  // ---- troll hacker: big, hunched, horns + tusks, cyberdeck glowing cyan ----
+  // ---- troll hacker: tall and slender, deep hood with horns poking through, tusks,
+  //      eyes glowing in the hood's shadow, a cyberdeck held out front ----
   casper(g) {
     const DECK = 0x6df3ff;
-    part(g, box(0.95, 1.9, 0.95), W, [-0.65, 0.95, 0]);                       // legs
-    part(g, box(0.95, 1.9, 0.95), W, [0.65, 0.95, 0]);
-    part(g, box(2.7, 2.3, 1.7), W, [0, 3.0, 0.15], [0.28, 0, 0]);             // hunched torso
-    part(g, sph(0.8), W, [-1.55, 3.85, 0.3]);                                 // shoulders
-    part(g, sph(0.8), W, [1.55, 3.85, 0.3]);
-    part(g, box(1.05, 0.95, 1.05), W, [0, 4.55, 0.75]);                       // jutting head
-    part(g, cone(0.2, 1.0, 6), W, [-0.42, 5.25, 0.55], [-0.5, 0, 0.45]);      // horns
-    part(g, cone(0.2, 1.0, 6), W, [0.42, 5.25, 0.55], [-0.5, 0, -0.45]);
-    part(g, cone(0.09, 0.35, 5), W, [-0.25, 4.25, 1.3]);                      // tusks
-    part(g, cone(0.09, 0.35, 5), W, [0.25, 4.25, 1.3]);
-    part(g, cyl(0.42, 0.36, 2.7), W, [-1.75, 2.5, 0.75], [0.45, 0, 0.12]);    // long arms reaching to the deck
-    part(g, cyl(0.42, 0.36, 2.7), W, [1.75, 2.5, 0.75], [0.45, 0, -0.12]);
-    part(g, box(1.9, 0.16, 1.1), DECK, [0, 2.05, 1.7]);                       // cyberdeck
-    part(g, box(1.6, 0.9, 0.06), DECK, [0, 2.55, 1.25], [-0.35, 0, 0]);       // its screen
-    line(g, [[0, 2.2, 1.4], [0.4, 3.2, 1.3], [0.55, 4.4, 1.1]], DECK);        // datajack cable to the head
-    return 5.9;
+    part(g, cyl(0.26, 0.22, 3.0, 6), W, [-0.32, 1.5, 0]);                     // long legs
+    part(g, cyl(0.26, 0.22, 3.0, 6), W, [0.32, 1.5, 0]);
+    part(g, cyl(0.62, 0.48, 2.3, 6), W, [0, 4.15, 0]);                        // slender torso
+    part(g, cyl(0.6, 0.85, 0.6, 8), W, [0, 5.3, 0]);                          // hood's shoulder drape
+    part(g, sph(0.42), W, [0, 5.85, 0.05]);                                   // head
+    // the hood: a peaked cowl, open at the front (the gap is centred on +Z)
+    part(g, new THREE.CylinderGeometry(0.12, 0.8, 1.45, 12, 1, true, 0.6, Math.PI * 2 - 1.2),
+      W, [0, 6.05, -0.05]);
+    part(g, cone(0.14, 0.45, 6), W, [0, 6.85, -0.28], [-0.6, 0, 0]);          // hood tip, swept back
+    part(g, cone(0.1, 0.7, 5), W, [-0.62, 6.25, -0.05], [0, 0, 1.0]);         // horns through the hood
+    part(g, cone(0.1, 0.7, 5), W, [0.62, 6.25, -0.05], [0, 0, -1.0]);
+    part(g, box(0.5, 0.07, 0.05), DECK, [0, 5.9, 0.42]);                      // eyes glowing in the shadow
+    part(g, cone(0.06, 0.25, 4), W, [-0.15, 5.62, 0.4]);                      // tusks
+    part(g, cone(0.06, 0.25, 4), W, [0.15, 5.62, 0.4]);
+    part(g, cyl(0.15, 0.13, 1.4, 6), W, [-0.78, 4.55, 0], [0, 0, -0.08]);     // long thin arms: upper arms hang…
+    part(g, cyl(0.15, 0.13, 1.4, 6), W, [0.78, 4.55, 0], [0, 0, 0.08]);
+    part(g, cyl(0.13, 0.11, 1.3, 6), W, [-0.7, 3.75, 0.55], [1.15, 0, 0]);    // …forearms reach out to the deck
+    part(g, cyl(0.13, 0.11, 1.3, 6), W, [0.7, 3.75, 0.55], [1.15, 0, 0]);
+    part(g, box(1.4, 0.12, 0.8), DECK, [0, 3.35, 1.1]);                       // cyberdeck
+    part(g, box(1.2, 0.7, 0.05), DECK, [0, 3.75, 0.78], [-0.35, 0, 0]);       // its screen
+    line(g, [[0, 3.45, 0.95], [0.25, 4.6, 0.7], [0.3, 5.6, 0.25]], DECK);     // datajack cable to the head
+    return 7.0;
   },
   // ---- dwarf warrior: short and broad, braided beard, conical helm, axe ----
   gimli(g) {

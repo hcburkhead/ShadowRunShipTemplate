@@ -212,7 +212,8 @@ small **hologram figurine** (`crew-figures.js`, wireframe like the ship, one acc
 colour each) standing on a soft glow, with a faint name tag, on both the DM and
 player views, in all five ship views (the perspective copies slowly turn); players
 sharing an area spread out around it:
-- **Casper** — hulking, hunched troll hacker: horns, tusks, a glowing cyberdeck.
+- **Casper** — tall, slender troll hacker: deep peaked hood with horns poking
+  through, tusks, eyes glowing in the hood, a glowing cyberdeck.
 - **Gimli** — stocky dwarf warrior: big braided beard, conical helm, axe.
 - **Ganbold** — tall hitman: long coat, fur ushanka, shades, suppressed rifle.
 - **Ryu** — lean street samurai: cyber visor, topknot, katana across the back. Synced as
