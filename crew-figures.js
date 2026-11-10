@@ -9,9 +9,8 @@
 //
 //   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
 //             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
-//   gimli   — the team's face, a dwarf: shorter, normal proportions, tailored suit with a
-//             gold tie + pocket square, groomed beard with a gold-ringed braid, swept-back
-//             hair, commlink in hand
+//   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
+//             jeans, groomed beard with one braid, swept-back hair
 //   ganbold — tall augmented hitman: long belted coat with popped collar, fur ushanka,
 //             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
 //             suppressed scoped rifle at the ready
@@ -68,10 +67,11 @@ const box = (g, w, h, d, color, t) => solid(g, new THREE.BoxGeometry(w, h, d), c
 // o.legs / o.arms: [[root, joint, end], [root, joint, end]] (left, right)
 function humanoid(g, o) {
   const c = o.color || W;
+  const lc = o.legColor || c;                                     // e.g. denim for jeans
   o.legs.forEach(([hip, knee, ankle]) => {
-    rod(g, hip, knee, o.thigh, o.thigh * 0.8, c);
-    ball(g, knee, o.thigh * 0.82, c);
-    rod(g, knee, ankle, o.thigh * 0.78, o.thigh * 0.55, c);
+    rod(g, hip, knee, o.thigh, o.thigh * 0.8, lc);
+    ball(g, knee, o.thigh * 0.82, lc);
+    rod(g, knee, ankle, o.thigh * 0.78, o.thigh * 0.55, lc);
     const fl = o.foot || 0.65;                                    // boot: sole + toe cap
     box(g, o.thigh * 1.25, 0.22, fl, c, { p: [ankle[0], 0.11, ankle[2] + fl * 0.3] });
     box(g, o.thigh * 1.1, 0.28, o.thigh * 1.2, c, { p: [ankle[0], 0.3, ankle[2]] });
@@ -134,37 +134,34 @@ const BUILD = {
     return 6.95;
   },
 
-  // ---- dwarf face: shorter than the others but normal proportions, sharp suit,
-  //      groomed beard with one gold-ringed braid, swept-back hair, commlink in hand ----
+  // ---- dwarf face: shorter than the others but normal proportions, casual —
+  //      an open coat over a plain top, jeans, groomed beard, swept-back hair ----
   gimli(g) {
-    const GOLD = 0xfacc15, LINK = 0x6df3ff;
+    const DENIM = 0x60a5fa;
     humanoid(g, {
-      thigh: 0.27, arm: 0.19, foot: 0.68,
+      thigh: 0.27, arm: 0.19, foot: 0.68, legColor: DENIM,
       legs: [[[-0.3, 1.75, 0], [-0.34, 0.98, 0.1], [-0.32, 0.38, 0]], [[0.3, 1.75, 0], [0.36, 0.98, 0.06], [0.35, 0.38, -0.04]]],
-      arms: [[[-0.7, 3.35, 0], [-0.82, 2.7, 0.12], [-0.64, 2.15, 0.3]], [[0.7, 3.35, 0], [0.88, 2.78, 0.3], [0.55, 3.0, 0.68]]],
+      arms: [[[-0.7, 3.35, 0], [-0.82, 2.7, 0.12], [-0.64, 2.15, 0.3]], [[0.7, 3.35, 0], [0.84, 2.7, 0.1], [0.66, 2.15, 0.28]]],
       torsoY: 1.6, torsoZ: 0.72, torso: [[0.55, 0], [0.52, 0.35], [0.5, 0.6], [0.62, 1.1], [0.68, 1.45], [0.52, 1.65], [0.22, 1.78]],
       neck: [3.36, 3.55, 0.17], head: { p: [0, 3.84, 0.03], r: 0.4 },
     });
-    // tailored suit: jacket hem, shirt collar, lapels, gold tie + pocket square, buttons
-    lathe(g, [[0.64, 0], [0.57, 0.35], [0.52, 0.55]], W, { p: [0, 1.45, 0], s: [1, 1, 0.78] }, 10);
-    lathe(g, [[0.2, 0], [0.24, 0.16]], W, { p: [0, 3.32, 0.02], s: [1, 1, 0.9] }, 10);
-    line(g, [[-0.18, 3.35, 0.36], [-0.36, 2.85, 0.48], [-0.08, 2.3, 0.46]], W);   // lapels
-    line(g, [[0.18, 3.35, 0.36], [0.36, 2.85, 0.48], [0.08, 2.3, 0.46]], W);
-    box(g, 0.12, 0.75, 0.04, GOLD, { p: [0, 2.9, 0.47], r: [-0.12, 0, 0] });      // tie
-    box(g, 0.16, 0.1, 0.04, GOLD, { p: [0, 3.28, 0.42] });                        // knot
-    box(g, 0.18, 0.08, 0.04, GOLD, { p: [-0.38, 2.95, 0.5] });                    // pocket square
-    ball(g, [0, 2.2, 0.46], 0.04); ball(g, [0, 2.0, 0.45], 0.04);                 // buttons
-    // groomed beard, one braid with a gold ring, neat moustache
+    // jeans: waistband + belt line, side seams, front pockets
+    ring(g, [0, 1.75, 0], 0.55, 0.04, DENIM, undefined, [1, 0.72, 1]);
+    line(g, [[-0.58, 1.72, 0], [-0.62, 0.98, 0], [-0.5, 0.5, 0]], DENIM);
+    line(g, [[0.58, 1.72, 0], [0.64, 0.98, 0], [0.52, 0.5, 0]], DENIM);
+    line(g, [[-0.42, 1.72, 0.36], [-0.3, 1.5, 0.4], [-0.15, 1.7, 0.4]], DENIM);
+    line(g, [[0.42, 1.72, 0.36], [0.3, 1.5, 0.4], [0.15, 1.7, 0.4]], DENIM);
+    // open coat to mid-thigh: a flared shell open at the front, with a turned-down collar
+    solid(g, new THREE.CylinderGeometry(0.66, 0.78, 2.05, 12, 1, true, 0.55, Math.PI * 2 - 1.1), W, { p: [0, 2.32, 0], s: [1, 1, 0.82] });
+    lathe(g, [[0.24, 0], [0.36, 0.14], [0.3, 0.24]], W, { p: [0, 3.3, -0.02], s: [1, 1, 0.9] }, 10);
+    line(g, [[-0.22, 3.32, 0.38], [-0.32, 2.9, 0.5], [-0.3, 1.35, 0.55]], W);    // coat front edges
+    line(g, [[0.22, 3.32, 0.38], [0.32, 2.9, 0.5], [0.3, 1.35, 0.55]], W);
+    // groomed beard with one braid, neat moustache, swept-back hair
     solid(g, new THREE.ConeGeometry(0.34, 0.55, 8), W, { p: [0, 3.42, 0.3], r: [Math.PI + 0.25, 0, 0] });
     tube(g, [[0, 3.2, 0.42], [0, 2.98, 0.48], [0, 2.82, 0.47]], 0.05);
-    ring(g, [0, 2.93, 0.48], 0.07, 0.025, GOLD);
     solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [-0.14, 3.68, 0.36], r: [0, 0, 1.3] });
     solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [0.14, 3.68, 0.36], r: [0, 0, -1.3] });
-    // swept-back hair
     lathe(g, [[0.38, 0], [0.41, 0.14], [0.34, 0.3], [0.12, 0.38], [0, 0.39]], W, { p: [0, 3.9, -0.05], s: [1, 1, 1.12] }, 10);
-    // commlink held up in the right hand, gold signet ring on the left
-    box(g, 0.28, 0.42, 0.05, LINK, { p: [0.52, 3.1, 0.75], r: [-0.4, -0.3, 0] });
-    ring(g, [-0.64, 2.12, 0.33], 0.06, 0.02, GOLD);
     return 4.3;
   },
 
