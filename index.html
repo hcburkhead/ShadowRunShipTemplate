@@ -645,7 +645,10 @@ function updateFans(s) {
     for (const m of g.userData.mats) m.color.setHex(col);   // colour both blade sets
   }
 }
-// drones follow the DRONE BAY area like every other system (+ the DM's DRONES power toggle):
+// drones show the WORSE of two statuses, like every other system:
+//   the DRONE BAY area (Damage Control: ONLINE / DAMAGED / OFFLINE), and
+//   the DRONES power slider (System Power): 100% = ONLINE · 1–99% = DAMAGED · 0% = OFFLINE
+// which render as
 //   ONLINE  → normal colours, rotors spin, drones bob
 //   DAMAGED → yellow, frozen
 //   OFFLINE → red, frozen (still shown — never hidden)
@@ -653,8 +656,9 @@ function updateFans(s) {
 // an ONLINE bay red.
 function droneState(s) {
   const bay = clamp((s.areas.droneBay || 0) | 0, 0, 2);
-  const powerCut = ((s.throttle && s.throttle.drones) | 0) <= 0;   // DAMAGE CONTROL → SUBSYSTEMS → DRONES OFFLINE
-  return powerCut ? 2 : bay;
+  const pwr = clamp((s.throttle && s.throttle.drones) | 0, 0, 100);
+  const slider = pwr >= 100 ? 0 : pwr > 0 ? 1 : 2;
+  return Math.max(bay, slider);
 }
 function updateDrones(s) {
   if (!droneSwarms.length) return;
