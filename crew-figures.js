@@ -7,7 +7,7 @@
 // Units: feet at y = 0, facing +Z, ~4.5–7 units tall (the ship is ~160 long);
 // index.html scales / places / spins them.
 //
-//   casper  — tall, slender troll hacker: deep peaked hood with horns through it, tusks,
+//   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
 //             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
 //   gimli   — stocky dwarf warrior: braided beard + moustache, crested half-helm with
 //             nasal / cheek guards, pauldrons, belt + buckle, double-bladed axe
@@ -114,9 +114,16 @@ const BUILD = {
       torsoY: 3.05, torsoZ: 0.65, torso: [[0.42, 0], [0.4, 0.4], [0.36, 0.8], [0.5, 1.4], [0.6, 1.8], [0.5, 2.0], [0.2, 2.15]],
       neck: [5.15, 5.45, 0.13], head: { p: [0, 5.75, 0.05], r: 0.36 },
     });
-    // the hood: a peaked cowl, open at the front (the gap is centred on +Z), and a long cloak
-    solid(g, new THREE.CylinderGeometry(0.12, 0.78, 1.45, 12, 1, true, 0.6, Math.PI * 2 - 1.2), W, { p: [0, 5.95, -0.05] });
-    solid(g, new THREE.ConeGeometry(0.14, 0.45, 6), W, { p: [0, 6.75, -0.28], r: [-0.6, 0, 0] });
+    // the hood: a rounded hoodie cowl — a soft dome open at the front (gap centred on +Z),
+    // a rolled rim framing the face, and the hood's bunched fold at the back of the neck
+    const OPEN = 1.5;                                                    // face opening width (radians)
+    solid(g, new THREE.SphereGeometry(0.6, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
+      W, { p: [0, 5.82, -0.08], s: [1, 1.12, 1.1] }, 8);                  // low edge angle → visible panel lines
+    ring(g, [0, 5.78, 0.42], 0.4, 0.05, W, [0, 0, 0], [1, 1.25, 1]);    // rolled rim around the face
+    ring(g, [0, 5.2, -0.05], 0.5, 0.1, W, undefined, [1, 0.85, 1]);     // bunched fold at the neck
+    line(g, [[0, 6.5, 0.2], [0, 6.47, -0.25], [0, 6.1, -0.68], [0, 5.5, -0.7]], W);   // centre seam over the crown
+    line(g, [[-0.12, 5.42, 0.44], [-0.14, 5.1, 0.5], [-0.12, 4.85, 0.5]], W);         // drawstrings
+    line(g, [[0.12, 5.42, 0.44], [0.14, 5.1, 0.5], [0.12, 4.85, 0.5]], W);
     solid(g, new THREE.CylinderGeometry(0.72, 1.05, 3.3, 12, 1, true, Math.PI * 0.6, Math.PI * 0.8), W, { p: [0, 3.55, -0.08] }); // cloak (back)
     solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [-0.62, 6.15, -0.05], r: [0, 0, 1.0] }); // horns through the hood
     solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [0.62, 6.15, -0.05], r: [0, 0, -1.0] });
