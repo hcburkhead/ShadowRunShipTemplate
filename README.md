@@ -186,6 +186,14 @@ the DM knocks one down.
   until the DM resets it.
 
 ## On the display (index.html)
+**One status colour rule for every system:** OFFLINE = **red**, DAMAGED =
+**yellow**, ONLINE = normal. Damage-control areas use their ONLINE / DAMAGED /
+OFFLINE state; power percentages (system sliders, effective power) are banded
+**67–100% ONLINE · 34–66% DAMAGED · 0–33% OFFLINE**, the same as the lift fans.
+Where an area belongs to a powered system, it shows the worse of the two: weapon
+batteries ← WEAPONS slider, boosters ← ENGINES slider, drone bay / drones ← DRONES
+slider, shield arcs ← panel state and shield power. Damage dots show on both the
+DM console's ship view and the player view.
 - Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
 - The hull **kerns** — banks/pitches toward failing lift fans.
 - Directional shields, a floor shield ring, drone swarm, and blinking damage

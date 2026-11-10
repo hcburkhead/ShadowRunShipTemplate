@@ -610,7 +610,7 @@ function renderPower() {
 }
 KEYS.forEach(k => $('sl-' + k).addEventListener('input', () => {
   state.power[k] = +$('sl-' + k).value;
-  renderPower(); renderRoute(); savePower();
+  renderPower(); renderRoute(); renderPowerSubs(); savePower();
 }));
 
 // ---- aux / battery routing (players): per-system reserves, DM-damageable banks ----
@@ -679,7 +679,7 @@ function renderRoute() {
     const eff = k === 'shields'
       ? shieldPower(core, state.power.shields, r.aux, r.batt, state.damage.shieldPanels)
       : Math.min(125, delivered + r.aux + r.batt);
-    els.eff.textContent = eff + '%'; els.eff.style.color = eff >= 100 ? 'var(--g1)' : eff >= 50 ? 'var(--yellow)' : 'var(--red)';
+    els.eff.textContent = eff + '%'; els.eff.style.color = eff > 66 ? 'var(--g1)' : eff > 33 ? 'var(--yellow)' : 'var(--red)';
   });
   renderMaxPower(core);
 }
@@ -838,8 +838,9 @@ function renderAreas() {
 }
 function renderPowerSubs() {
   POWER_SUBS.forEach(([k]) => {
-    const on = state.power[k] > 0;
-    setAreaBtn(subBtns[k], on ? 0 : 2, on ? 'ONLINE' : 'OFFLINE');
+    const p = clamp(state.power[k] | 0, 0, 100);
+    const st = p > 66 ? 0 : p > 33 ? 1 : 2;              // banded like every system: 67+ / 34–66 / 0–33
+    setAreaBtn(subBtns[k], st, A_STATE[st]);
   });
 }
 
@@ -1352,7 +1353,7 @@ renderAll();
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
 // players see the operator-triggered damage dots but no state readouts (bare)
 // the DM's embedded display carries the system log (?log=1); players never do
-$('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
+$('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1&dots=1';   // both views show damage dots
 if (PLAYER) {
   document.body.classList.add('player');
   $('con-title').textContent = 'PLAYER VIEW';
