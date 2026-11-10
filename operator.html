@@ -261,6 +261,20 @@
   .bk-status.bk-st-active.bk-rs2{ color:var(--red); } .bk-status.bk-st-active.bk-rs1{ color:var(--yellow); }
   .relay-gated{ opacity:.45; }
   .rr-relay{ font-size:8px; margin-left:6px; }
+  .relay-card{ grid-column:1/-1; }
+  .relay-grid{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px; }
+  @media (max-width:720px){ .relay-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+  .relay-cell{ border:1px solid currentColor; border-radius:4px; padding:5px 7px; display:flex; flex-direction:column;
+    gap:2px; background:rgba(0,0,0,.2); min-width:0; }
+  .relay-cell .rc-n{ font-size:10px; letter-spacing:2px; font-weight:bold; }
+  .relay-cell .rc-s{ font-size:9px; letter-spacing:1px; }
+  .relay-cell .rc-u{ font-size:8px; color:var(--dim); overflow-wrap:anywhere; }
+  .relay-cell .rc-t{ font-size:8px; color:var(--glint); letter-spacing:1px; }
+  .relay-cell.bk-rs2{ background:rgba(239,68,68,.10); } .relay-cell.bk-rs1{ background:rgba(250,204,21,.08); }
+  .relay-cell.tgt{ box-shadow:0 0 0 1px var(--glint), 0 0 8px rgba(190,249,210,.35); }
+  .bk-target-pick{ display:flex; flex-direction:column; gap:5px; padding:7px; border:1px dashed var(--glint);
+    border-radius:4px; }
+  .bk-target-pick .lbl{ font-size:10px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 8px; }
   #bk-target-seg button{ min-width:52px; font-size:9px; padding:6px 4px; }
   #bk-target-seg button .rs{ display:block; font-size:7px; opacity:.8; margin-top:2px; }
   #bk-target-seg button.tgt{ outline:1px solid var(--glint); outline-offset:1px; }
@@ -309,6 +323,15 @@
       <section class="block power-block">
         <h3 class="block-title">⚡ POWER &amp; RESERVES</h3>
         <div class="block-grid">
+          <!-- SYSTEM-RELAY STATUS — every system's relay, always visible (DM + players) -->
+          <div class="card relay-card" id="relay-card">
+            <h2>⌁ SYSTEM-RELAY STATUS <span class="v" id="relay-sum">ALL ONLINE</span></h2>
+            <div class="relay-grid" id="relay-grid"></div>
+            <div class="hint">Each relay gates that system's controls: OFFLINE = locked · DAMAGED = throttle + battery
+              (terminal input) · ONLINE = everything incl. AUX (overdrive). SERA brings OFFLINE relays back once all
+              sectors are nominal; DAMAGED relays need two cracked SYSTEM-RELAY challenges.</div>
+          </div>
+
           <!-- CORE POWER (produced by the core reactor — its own system) -->
           <div class="card">
             <h2>CORE POWER <span class="v" id="core-v">100%</span></h2>
@@ -388,13 +411,16 @@
           <!-- DM: arm the 6-number sequence (masked), reseed at random, lock players out -->
           <div class="card ctl-only">
             <h2>SIGNAL BREAKER <span class="v" id="bk-dm-status">OFF</span></h2>
+            <div class="bk-target-pick">
+              <div class="lbl"><span>① PUZZLE IS FOR · SYSTEM RELAY</span><b id="bk-dm-target">—</b></div>
+              <div class="seg" id="bk-target-seg"></div>
+              <div class="hint">Click the system this challenge repairs — players see it on their board.</div>
+            </div>
             <div class="row">
-              <div class="lbl"><span>⚿ SEQUENCE · NODES A–F</span><b id="bk-dm-seq">NOT SET</b></div>
+              <div class="lbl"><span>② SEQUENCE · NODES A–F</span><b id="bk-dm-seq">NOT SET</b></div>
               <input type="text" id="bk-seq-in" maxlength="6" inputmode="numeric" autocomplete="off" spellcheck="false"
                      aria-label="signal breaker sequence" placeholder="6 DIGITS · ENTER TO ARM">
             </div>
-            <div class="row"><div class="lbl"><span>⌁ CHALLENGE TARGET · RELAY</span><b id="bk-dm-target">—</b></div></div>
-            <div class="seg" id="bk-target-seg"></div>
             <div class="seg">
               <button id="bk-random" type="button" title="Arm a fresh random sequence">⟳ RANDOM</button>
               <button id="bk-lock" type="button">⛔ LOCK OUT</button>
@@ -493,10 +519,12 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         normTimerLabel, firebaseDb } from './ship-model.js';
+         normTimerLabel, firebaseDb } from './ship-model.js?v=3';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
          RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
-         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js';
+         relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=3';
+// ?v=N busts the browser / GitHub Pages cache: a stale module missing a new export kills this
+// whole script (blank controls). BUMP N whenever ship-model.js or signal-breaker.js changes.
 
 // ?player-view (legacy ?display) — resolved up front: the relay gate in the render functions needs it
 const Q = new URLSearchParams(location.search);
@@ -1070,6 +1098,29 @@ RELAY_SYSTEMS.forEach(([k, label]) => {
   $('bk-target-seg').appendChild(b);
   targetBtns[k] = b;
 });
+// always-visible relay status panel (top of the power block, DM + players)
+const relayCells = {};
+RELAY_SYSTEMS.forEach(([k, label]) => {
+  const c = document.createElement('div'); c.className = 'relay-cell';
+  c.innerHTML = `<span class="rc-n">${label}</span><span class="rc-s"></span><span class="rc-u"></span><span class="rc-t"></span>`;
+  $('relay-grid').appendChild(c);
+  relayCells[k] = { c, s: c.querySelector('.rc-s'), u: c.querySelector('.rc-u'), t: c.querySelector('.rc-t') };
+});
+function renderRelayCard() {
+  const b = state.breaker, live = b.status === 'active' || b.status === 'lockout';
+  let down = 0;
+  RELAY_KEYS.forEach(k => {
+    const rs = relaySt(k), el = relayCells[k], tgt = live && k === b.target;
+    if (rs) down++;
+    el.c.className = 'relay-cell bk-rs' + rs + (tgt ? ' tgt' : '');
+    el.s.textContent = '● ' + relayText(b, k);
+    el.u.textContent = 'UNLOCKED: ' + relayUnlocks(k, rs);
+    el.t.textContent = tgt ? '◂ ACTIVE PUZZLE TARGET' : '';
+  });
+  const sum = $('relay-sum');
+  sum.textContent = down ? down + ' RELAY' + (down > 1 ? 'S' : '') + ' DOWN' : 'ALL ONLINE';
+  sum.className = 'v bk-rs' + (down ? 2 : 0);
+}
 // player-facing lock notices on the power / routing / terminal cards
 function renderRelayLocks() {
   const names = keys => keys.map(relayLabel).join(', ');
@@ -1126,6 +1177,7 @@ function renderBreaker() {
   });
   renderRelayAreas();
   renderRelayLocks();
+  renderRelayCard();
   renderPower(); renderRoute(); renderTerm();
   if (breakerBoard) breakerBoard.update(b);
 }
