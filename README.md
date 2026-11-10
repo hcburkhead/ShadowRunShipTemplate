@@ -141,11 +141,21 @@ and the relay gates that system's controls on the player view:
 
 On the SIGNAL BREAKER card the DM picks the **challenge target** (which
 system's relay the current challenge is for); the player board shows
-`TARGET ▸ <SYSTEM> RELAY` plus every relay's status. Cracking a challenge
-repairs the target relay one step (OFFLINE → DAMAGED → ONLINE), unlocks the
-matching controls and logs it to the ship terminal; the DM then arms the next
-challenge (RANDOM or a new sequence — the target and relay states carry over).
-All relays start ONLINE, so nothing is gated until the DM knocks one down.
+`TARGET ▸ <SYSTEM> RELAY` plus every relay's status. Repairs run through
+**SERA**, the ship's AI:
+- **OFFLINE** — SERA brings the relay back **ONLINE on her own** as soon as
+  every ship sector (all damage-control areas, lift fans and shield panels) is
+  nominal. While any sector is damaged, a cracked challenge gets it to DAMAGED.
+  (So to keep a relay down, damage a sector first — otherwise SERA restores it
+  immediately.)
+- **DAMAGED** — takes **two** cracked challenges: the first lets SERA
+  **reinitialize** the system (`REINIT 1/2`), the second **re-engages** it →
+  ONLINE.
+
+Each step is flashed on the player board and logged to the ship terminal; the
+DM then arms the next challenge (RANDOM or a new sequence — the target and
+relay states carry over). All relays start ONLINE, so nothing is gated until
+the DM knocks one down.
 
 ## What the DM controls (operator.html)
 - **Core power** — read-only; it reflects the core reactor's state.

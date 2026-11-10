@@ -13,14 +13,19 @@
 // Synced state (localStorage / BroadcastChannel / Firebase key `shipBreaker`):
 //   { id, code: [6 ints], status: off|active|cracked|lockout,
 //     hist: [{ g: [6 ints], r: 'nhlnnl' }],    r: n nominal · h high · l low
-//     target: relay key, relay: { eng, drones, weapons, shields, term } }
+//     target: relay key, relay: { eng, drones, weapons, shields, term },
+//     reinit: [relay keys SERA has reinitialized], note: last repair message }
 //
 // SYSTEM-RELAY: every player-operated system has its own relay, with the same
 // ONLINE (0) / DAMAGED (1) / OFFLINE (2) states as the rest of the ship. The
 // relay gates that system's player controls (RELAY_SYSTEMS below). The DM picks
-// which system a challenge targets; cracking it repairs that relay one step
-// (OFFLINE → DAMAGED → ONLINE), unlocking more of its controls. Relays default
-// to ONLINE, so nothing is gated until the DM knocks a relay down.
+// which system a challenge targets. Repairs go through SERA, the ship's AI:
+//   OFFLINE — SERA brings the relay straight back ONLINE on her own once every
+//             ship sector is nominal (operator.html runs that check). Until
+//             then a cracked challenge gets it to DAMAGED.
+//   DAMAGED — takes TWO cracked challenges: the first lets SERA reinitialize
+//             the system, the second re-engages it → ONLINE.
+// Relays default to ONLINE, so nothing is gated until the DM knocks one down.
 // The pure helpers below are shared by the operator and player views; the
 // BreakerBoard class is the player-facing board (DOM + canvas).
 
@@ -45,6 +50,12 @@ export function normRelay(raw) {
     if (v >= 0 && v <= 2) o[k] = v;
   });
   return o;
+}
+/** relay status text, incl. SERA's two-step repair of a DAMAGED relay. */
+export function relayText(b, k) {
+  const st = b.relay[k] | 0;
+  if (st !== 1) return RELAY_WORD[st];
+  return (b.reinit || []).includes(k) ? 'DAMAGED · REINIT 1/2' : 'DAMAGED · REINIT 0/2';
 }
 /** what a relay unlocks right now, e.g. 'THROTTLE + BATTERY' (DAMAGED), 'ALL CONTROLS' (ONLINE). */
 export function relayUnlocks(k, st) {
@@ -84,7 +95,11 @@ export function normBreaker(raw) {
     .filter(h => h.g && RESULT_RE.test(h.r))
     .slice(-BK_HIST);
   const target = RELAY_KEYS.includes(raw.target) ? raw.target : RELAY_KEYS[0];
-  return { id: String(raw.id || ''), code, status, hist, target, relay: normRelay(raw.relay) };
+  const relay = normRelay(raw.relay);
+  // a reinit only counts on a DAMAGED relay (Firebase drops empty arrays → default [])
+  const reinit = (Array.isArray(raw.reinit) ? raw.reinit : []).filter(k => relay[k] === 1);
+  const note = String(raw.note || '').slice(0, 90);
+  return { id: String(raw.id || ''), code, status, hist, target, relay, reinit: [...new Set(reinit)], note };
 }
 
 /** A fresh, armed challenge; target + relays carry over. A new id tells every board to reset. */
@@ -93,14 +108,30 @@ export const newBreaker = (code, prev = {}) => ({
   code: code.slice(), status: 'active', hist: [],
   target: RELAY_KEYS.includes(prev.target) ? prev.target : RELAY_KEYS[0],
   relay: normRelay(prev.relay),
+  reinit: Array.isArray(prev.reinit) ? prev.reinit.slice() : [],
+  note: '',
 });
 
-/** Score the crack: repair the target relay one step. Returns the new state (or null if already ONLINE). */
+/** Score the crack against the target relay (mutates b; sets b.note). Returns the
+ *  repair message, or null if the relay was already ONLINE.
+ *   OFFLINE → DAMAGED · DAMAGED → reinitialized (1/2) → re-engaged ONLINE (2/2) */
 export function repairRelay(b) {
-  const st = b.relay[b.target];
-  if (!(st > 0)) return null;
-  b.relay = { ...b.relay, [b.target]: st - 1 };
-  return st - 1;
+  const k = b.target, st = b.relay[k], name = relayLabel(k);
+  const reinit = (b.reinit || []).filter(x => x !== k);
+  let msg;
+  if (st === 2) {
+    b.relay = { ...b.relay, [k]: 1 };
+    msg = `${name} RELAY DAMAGED — ${relayUnlocks(k, 1)} UNLOCKED · SERA MUST REINITIALIZE`;
+  } else if (st === 1 && !(b.reinit || []).includes(k)) {
+    reinit.push(k);
+    msg = `SERA REINITIALIZED ${name} (1/2) — RE-ENGAGE REQUIRED`;
+  } else if (st === 1) {
+    b.relay = { ...b.relay, [k]: 0 };
+    msg = `SERA RE-ENGAGED ${name} (2/2) — RELAY ONLINE · ALL CONTROLS UNLOCKED`;
+  } else return null;
+  b.reinit = reinit;
+  b.note = msg;
+  return msg;
 }
 
 export const nodeLabel = i => String.fromCharCode(65 + i);
@@ -214,7 +245,7 @@ export class BreakerBoard {
   /** Apply synced state. Safe to call repeatedly with the same state. */
   update(b) {
     const firstSeen = !this.seen;
-    const prevId = this.id, prevStatus = this.status, prevRelay = this.relay;
+    const prevId = this.id, prevStatus = this.status;
     const sessionChanged = b.id !== this.id;
     if (sessionChanged) { this.id = b.id; this.histLen = -1; }
 
@@ -233,6 +264,7 @@ export class BreakerBoard {
     this.status = b.status;
     this.target = b.target;
     this.relay = b.relay;
+    this.b = b;
     this.seen = true;
     // a status change (cracked / locked out / reseeded) always beats a pending warning
     if (sessionChanged || prevStatus !== b.status) { clearTimeout(this.flashT); this.flashT = null; }
@@ -248,10 +280,7 @@ export class BreakerBoard {
         this._flash('⚠ OPERATOR RESEEDED THE SIGNAL — NEW SEQUENCE', 2600);
       } else if (b.status === 'cracked' && prevStatus !== 'cracked') {
         this._sfx('win');
-        const st = b.relay[b.target];
-        if (st < prevRelay[b.target]) {
-          this._flash(`✓ ${relayLabel(b.target)} RELAY ${RELAY_WORD[st]} — ${relayUnlocks(b.target, st)} UNLOCKED`, 3600);
-        }
+        if (b.note) this._flash('✓ ' + b.note, 4000);
       } else if (b.status === 'lockout' && prevStatus !== 'lockout') {
         this._sfx('lose');
         this.root.classList.remove('bk-shake'); void this.root.offsetWidth; this.root.classList.add('bk-shake');
@@ -275,7 +304,7 @@ export class BreakerBoard {
     const s = this.el.status;
     const n = this.hist.length;
     const st = this.relay[this.target] | 0;
-    const word = RELAY_WORD[st];
+    const word = relayText(this.b || { relay: this.relay }, this.target);
     const txt = {
       off: 'SIGNAL BREAKER OFFLINE',
       active: `RELAY STATUS: ${word}`,
@@ -288,12 +317,13 @@ export class BreakerBoard {
 
   _renderRelay() {
     const st = this.relay[this.target] | 0;
-    this.el.target.textContent = `TARGET ▸ ${relayLabel(this.target)} RELAY · ${RELAY_WORD[st]}`;
+    const b = this.b || { relay: this.relay };
+    this.el.target.textContent = `TARGET ▸ ${relayLabel(this.target)} RELAY · ${relayText(b, this.target)}`;
     this.el.target.className = 'bk-target bk-rs' + st;
     this.el.chans.forEach(c => {
       const k = c.dataset.k, s = this.relay[k] | 0;
       c.className = 'bk-ch bk-rs' + s + (k === this.target ? ' bk-tgt' : '');
-      c.querySelector('em').textContent = RELAY_WORD[s];
+      c.querySelector('em').textContent = relayText(b, k);
       c.title = `${relayLabel(k)} relay ${RELAY_WORD[s]} — unlocked: ${relayUnlocks(k, s)}`;
     });
   }
