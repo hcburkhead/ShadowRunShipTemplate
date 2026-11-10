@@ -7,9 +7,8 @@
 // Units: feet at y = 0, facing +Z, ~4.5–7 units tall (the ship is ~160 long);
 // index.html scales / places / spins them.
 //
-//   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
-//             eyes glowing in the hood, long cloak, a cyberdeck (live scrolling terminal) +
-//             datajack cable
+//   casper  — street hacker: hoodie with pulled-up hood, blue glowing visor, rebreather mask,
+//             open green jacket with hands in pockets, tactical cargo pants, live terminal HUD
 //   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
 //             jeans, groomed beard with one braid, swept-back hair, commlink in hand,
 //             double-bladed axe strapped across his back
@@ -18,8 +17,7 @@
 //             suppressed scoped rifle at the ready
 //   ryu     — stocky, heavily augmented weapons specialist: two cyber arms, armoured chest
 //             plate + shoulder pads, spinal nodes, shin plates, visor (live terminal HUD),
-//             topknot, katana
-//             across the back, heavy thigh holster, two small drones at his shoulders
+//             topknot, katana across the back, heavy thigh holster, two small drones at his shoulders
 
 import * as THREE from './vendor/three.module.js';
 
@@ -110,48 +108,62 @@ function humanoid(g, o) {
 }
 
 const BUILD = {
-  // ---- troll hacker: tall and slender, hooded ----
+  // ---- street hacker: hoodie, glowing blue visor, rebreather mask, open green jacket ----
   casper(g) {
-    const DECK = 0x6df3ff;
+    const GREEN = 0x22c55e, BLUE = 0x38bdf8, MASK = 0xa1a1aa;
     humanoid(g, {
-      thigh: 0.24, arm: 0.14, foot: 0.75,
-      legs: [[[-0.3, 3.2, 0], [-0.34, 1.75, 0.12], [-0.32, 0.4, 0]], [[0.3, 3.2, 0], [0.36, 1.75, 0.1], [0.34, 0.4, 0]]],
-      arms: [[[-0.62, 5.0, 0], [-0.82, 4.1, 0.2], [-0.42, 3.8, 0.95]], [[0.62, 5.0, 0], [0.82, 4.1, 0.2], [0.42, 3.8, 0.95]]],
+      thigh: 0.24, arm: 0.15, foot: 0.72,
+      armColor: [GREEN, GREEN],
+      legs: [[[-0.3, 3.2, 0], [-0.34, 1.75, 0.12], [-0.32, 0.4, 0]], [[0.3, 3.2, 0], [0.36, 1.75, 0.1]], [0.34, 0.4, 0]]],
+      arms: [[[-0.62, 4.95, 0], [-0.72, 4.05, 0.22], [-0.38, 3.25, 0.38]], [[0.62, 4.95, 0], [0.72, 4.05, 0.22], [0.38, 3.25, 0.38]]],
       torsoY: 3.05, torsoZ: 0.65, torso: [[0.42, 0], [0.4, 0.4], [0.36, 0.8], [0.5, 1.4], [0.6, 1.8], [0.5, 2.0], [0.2, 2.15]],
       neck: [5.15, 5.45, 0.13], head: { p: [0, 5.75, 0.05], r: 0.36 },
     });
-    // the hood: a rounded hoodie cowl — a soft dome open at the front (gap centred on +Z),
-    // a rolled rim framing the face, and the hood's bunched fold at the back of the neck
-    const OPEN = 1.45;                                                   // face opening width (radians)
+
+    // hoodie: rounded cowl dome framing face
+    const OPEN = 1.35;
     solid(g, new THREE.SphereGeometry(0.5, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
-      W, { p: [0, 5.82, -0.06], s: [0.88, 1.28, 1.1] }, 8);               // slim, tall dome; low edge angle → panel lines
-    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]); // rolled rim around the face
-    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);    // bunched fold at the neck
-    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W);  // centre seam over the crown
-    line(g, [[-0.1, 5.4, 0.38], [-0.12, 5.1, 0.44], [-0.1, 4.85, 0.44]], W);           // drawstrings
-    line(g, [[0.12, 5.42, 0.44], [0.14, 5.1, 0.5], [0.12, 4.85, 0.5]], W);
-    solid(g, new THREE.CylinderGeometry(0.72, 1.05, 3.3, 12, 1, true, Math.PI * 0.6, Math.PI * 0.8), W, { p: [0, 3.55, -0.08] }); // cloak (back)
-    solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [-0.62, 6.15, -0.05], r: [0, 0, 1.0] }); // horns through the hood
-    solid(g, new THREE.ConeGeometry(0.1, 0.7, 5), W, { p: [0.62, 6.15, -0.05], r: [0, 0, -1.0] });
-    box(g, 0.48, 0.07, 0.05, DECK, { p: [0, 5.8, 0.36] });              // eyes glowing in the shadow
-    solid(g, new THREE.ConeGeometry(0.05, 0.25, 4), W, { p: [-0.13, 5.42, 0.38] }); // tusks
-    solid(g, new THREE.ConeGeometry(0.05, 0.25, 4), W, { p: [0.13, 5.42, 0.38] });
-    ring(g, [0, 3.15, 0], 0.46, 0.04, W, undefined, [1, 0.68, 1]);      // belt
-    box(g, 0.28, 0.3, 0.16, W, { p: [0.38, 3.0, 0.25] });               // belt pouches
-    box(g, 0.28, 0.3, 0.16, W, { p: [-0.38, 3.0, 0.25] });
-    box(g, 1.4, 0.1, 0.8, DECK, { p: [0, 3.65, 1.15] });                // cyberdeck (keyboard half)
-    line(g, [[-0.55, 3.71, 0.95], [0.55, 3.71, 0.95]], DECK);           // key rows
-    line(g, [[-0.55, 3.71, 1.15], [0.55, 3.71, 1.15]], DECK);
-    // screen hinged at the far edge, leaning back so it faces him (like an open laptop)
-    box(g, 1.3, 0.75, 0.05, DECK, { p: [0, 4.03, 1.63], r: [0.3, 0, 0] });
-    // live terminal on the display: a scrolling command / log feed (canvas texture, shared by
-    // every Casper copy and advanced by userData.tick), on the face turned toward him
-    const scr = new THREE.Group(); scr.position.set(0, 4.03, 1.6); scr.rotation.x = 0.3;
-    const term = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.52), new THREE.MeshBasicMaterial({
+      W, { p: [0, 5.82, -0.06], s: [0.9, 1.28, 1.1] }, 8);
+    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]);   // hoodie rim
+    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);      // neck fold
+    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W); // crown seam
+    line(g, [[-0.1, 5.35, 0.42], [-0.12, 4.8, 0.46], [-0.1, 4.2, 0.46]], W);  // drawstrings
+    line(g, [[0.12, 5.35, 0.42], [0.14, 4.8, 0.46], [0.12, 4.2, 0.46]], W);
+
+    // face: glowing blue visor + cyber rebreather mask
+    box(g, 0.52, 0.12, 0.08, BLUE, { p: [0, 5.82, 0.38] });               // horizontal visor
+    line(g, [[-0.25, 5.82, 0.43], [0.25, 5.82, 0.43]], BLUE);
+    solid(g, new THREE.ConeGeometry(0.24, 0.38, 6), MASK, { p: [0, 5.5, 0.38], r: [-0.3, 0, 0] }); // mask body
+    rod(g, [-0.14, 5.48, 0.38], [-0.24, 5.45, 0.3], 0.07, 0.07, MASK, 6);  // filter canisters
+    rod(g, [0.14, 5.48, 0.38], [0.24, 5.45, 0.3], 0.07, 0.07, MASK, 6);
+    box(g, 0.12, 0.18, 0.08, BLUE, { p: [0, 5.48, 0.42] });               // mask glow core
+    line(g, [[-0.08, 5.52, 0.47], [0.08, 5.52, 0.47]], BLUE);
+    line(g, [[-0.08, 5.44, 0.47], [0.08, 5.44, 0.47]], BLUE);
+
+    // open green bomber jacket over hoodie with hands tucked into pockets
+    solid(g, new THREE.CylinderGeometry(0.68, 0.78, 2.1, 12, 1, true, 0.5, Math.PI * 2 - 1.0), GREEN, { p: [0, 4.05, 0], s: [1.05, 1, 0.85] });
+    line(g, [[-0.28, 4.9, 0.42], [-0.38, 4.0, 0.48], [-0.38, 3.1, 0.42]], GREEN); // jacket lapels / front edges
+    line(g, [[0.28, 4.9, 0.42], [0.38, 4.0, 0.48], [0.38, 3.1, 0.42]], GREEN);
+    box(g, 0.18, 0.45, 0.05, W, { p: [-0.42, 4.5, 0.4], r: [0, 0, -0.15] });     // white tactical patches / shoulder straps
+    box(g, 0.18, 0.45, 0.05, W, { p: [0.42, 4.5, 0.4], r: [0, 0, 0.15] });
+    line(g, [[-0.5, 4.8, 0.35], [-0.3, 4.2, 0.42]], W);
+    line(g, [[0.5, 4.8, 0.35], [0.3, 4.2, 0.42]], W);
+    box(g, 0.22, 0.28, 0.12, GREEN, { p: [-0.38, 3.25, 0.4] });             // front pockets
+    box(g, 0.22, 0.28, 0.12, GREEN, { p: [0.38, 3.25, 0.4] });
+
+    // tactical cargo pockets on trousers
+    box(g, 0.26, 0.35, 0.12, W, { p: [-0.38, 2.3, 0.15] });
+    box(g, 0.26, 0.35, 0.12, W, { p: [0.38, 2.3, 0.15] });
+    line(g, [[-0.34, 2.5, 0.22], [-0.34, 2.1, 0.22], [-0.18, 2.1, 0.22]], W);
+    line(g, [[0.34, 2.5, 0.22], [0.34, 2.1, 0.22], [0.18, 2.1, 0.22]], W);
+
+    // live floating cyberdeck terminal display
+    const scr = new THREE.Group(); scr.position.set(0, 3.8, 0.7); scr.rotation.x = -0.15;
+    const term = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.42), new THREE.MeshBasicMaterial({
       map: deckTerminal().tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    term.position.z = -0.03; term.rotation.y = Math.PI;                  // front of the text faces him (−Z)
+    term.position.z = 0;
     scr.add(term); g.add(scr);
-    tube(g, [[0.3, 3.7, 1.0], [0.45, 4.4, 0.75], [0.3, 5.1, 0.45], [0.25, 5.55, 0.3]], 0.03, DECK); // datajack cable
+
     g.userData.tick = t => updateDeckTerminal(t);
     return 6.95;
   },
@@ -270,125 +282,3 @@ const BUILD = {
     box(g, 0.32, 0.65, 0.1, NEON, { p: [0.58, 0.95, 0.12], r: [-0.08, 0, 0] });
     // visor, topknot
     box(g, 0.7, 0.13, 0.1, NEON, { p: [0, 5.0, 0.32] });
-    // the visor runs the same live terminal feed as Casper's deck (a shared texture; this
-    // copy shows a horizontal band of it to fit the slim visor), on its outer face
-    const hud = deckTerminalView();                                      // same canvas → scrolls in sync
-    hud.repeat.set(1, 0.3); hud.offset.set(0, 0.32);
-    const visorHud = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.11), new THREE.MeshBasicMaterial({
-      map: hud, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    visorHud.position.set(0, 5.0, 0.375); g.add(visorHud);
-    ball(g, [0, 5.43, -0.12], 0.14);
-    ring(g, [0, 5.34, -0.1], 0.11, 0.03, NEON);
-    // katana across the back: blade, guard, wrapped grip
-    rod(g, [1.05, 2.7, -0.66], [-0.8, 4.85, -0.66], 0.045, 0.03, BLADE, 5);
-    ring(g, [-0.84, 4.9, -0.66], 0.15, 0.035, W, [0, Math.PI / 2, 0.68]);
-    rod(g, [-0.88, 4.95, -0.66], [-1.2, 5.34, -0.66], 0.07, 0.07, W, 6);
-    // heavy thigh holster
-    box(g, 0.26, 0.6, 0.38, W, { p: [0.82, 2.05, 0.08], r: [0, 0, 0.08] });
-    // two small quad-rotor drones hovering at his shoulders (bob + spin rotors via userData.tick)
-    const drones = [-1, 1].map(side => {
-      const d = new THREE.Group();
-      d.position.set(side * 1.75, 4.95, 0.15);
-      box(d, 0.36, 0.12, 0.36, W);                                        // body
-      ball(d, [0, -0.02, 0], 0.1, BLADE);                                 // glowing core
-      box(d, 0.16, 0.05, 0.05, BLADE, { p: [0, -0.02, 0.2] });            // sensor eye, facing forward
-      const rotors = [[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([x, z]) => {
-        rod(d, [0, 0.03, 0], [x * 0.3, 0.06, z * 0.3], 0.025, 0.025, W, 4);   // arms
-        const r = new THREE.Group(); r.position.set(x * 0.3, 0.09, z * 0.3);
-        ring(r, [0, 0, 0], 0.15, 0.015, NEON);                              // rotor guard
-        rod(r, [-0.13, 0, 0], [0.13, 0, 0], 0.012, 0.012, W, 3);            // blade
-        d.add(r);
-        return r;
-      });
-      g.add(d);
-      return { d, rotors, side, y0: d.position.y };
-    });
-    g.userData.tick = t => {                                              // called each frame by index.html
-      updateDeckTerminal(t);                                              // keeps the visor feed scrolling
-      for (const { d, rotors, side, y0 } of drones) {
-        d.position.y = y0 + Math.sin(t * 2.2 + side) * 0.12;
-        d.rotation.y = Math.sin(t * 0.7 + side) * 0.25;
-        rotors.forEach((r, i) => { r.rotation.y = t * 30 * (i % 2 ? 1 : -1); });
-      }
-    };
-    return 5.55;
-  },
-};
-
-// ---- Casper's cyberdeck terminal: a tiny canvas that scrolls hacker log lines ----
-let deckTerm = null;
-const HEX = n => Array.from({ length: n }, () => '0123456789ABCDEF'[Math.random() * 16 | 0]).join('');
-const pick = a => a[Math.random() * a.length | 0];
-const TERM_LINES = [
-  () => '> jack-in node://' + HEX(4).toLowerCase() + '.' + HEX(2).toLowerCase(),
-  () => 'decrypt ' + HEX(4) + ':' + HEX(4) + ' .. OK',
-  () => '[ICE] probe deflected',
-  () => '[ICE] black ICE sig ' + HEX(3) + ' masked',
-  () => { const n = 10 + (Math.random() * 90 | 0), f = n / 10 | 0; return 'trace ' + '#'.repeat(f) + '.'.repeat(10 - f) + ' ' + n + '%'; },
-  () => 'GET /host/' + pick(['sec', 'cam', 'door', 'paydata', 'relay', 'ice']) + ' 200',
-  () => '0x' + HEX(6) + '  ' + HEX(2) + ' ' + HEX(2) + ' ' + HEX(2) + ' ' + HEX(2),
-  () => '> sudo override --' + pick(['relay', 'lock', 'cams', 'alarm', 'drones']),
-  () => '[SERA] handshake ' + pick(['ok', 'ok', 'retry', 'ok']),
-  () => 'spoof id ' + HEX(8) + ' accepted',
-  () => '> grep -r paydata /mnt/' + HEX(2).toLowerCase(),
-];
-function deckTerminal() {
-  if (deckTerm) return deckTerm;
-  const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearFilter;
-  deckTerm = { canvas, ctx: canvas.getContext('2d'), tex, views: [], lines: [], next: 0, drawn: -1 };
-  for (let i = 0; i < 7; i++) deckTerm.lines.push(pick(TERM_LINES)());
-  drawDeckTerminal(0);
-  return deckTerm;
-}
-// another texture over the same terminal canvas (own repeat / offset). The renderer re-uploads
-// per texture object, so every view is flagged on each redraw.
-function deckTerminalView() {
-  const t = deckTerminal().tex.clone();
-  deckTerm.views.push(t);
-  return t;
-}
-function drawDeckTerminal(t) {
-  const { ctx, lines, tex } = deckTerm, W = 256, H = 128, LH = 14;
-  ctx.fillStyle = 'rgb(2,22,14)'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(109,243,255,0.28)'; ctx.fillRect(0, 0, W, 15);              // title bar
-  ctx.font = 'bold 11px "Courier New", monospace'; ctx.textBaseline = 'top';
-  ctx.fillStyle = '#bef9d2'; ctx.fillText('casper@deck:~  [MATRIX]', 5, 2);
-  ctx.font = '11px "Courier New", monospace';
-  const shown = lines.slice(-7);
-  shown.forEach((l, i) => {                                                           // older lines fade
-    ctx.globalAlpha = 0.4 + 0.6 * (i + 1) / shown.length;
-    ctx.fillStyle = l.startsWith('[ICE]') ? '#facc15' : l.startsWith('>') ? '#6df3ff' : '#4ade80';
-    ctx.fillText(l.slice(0, 38), 5, 19 + i * LH);
-  });
-  ctx.globalAlpha = 1;
-  if ((t * 2.5 | 0) % 2) {                                                            // blinking cursor
-    const last = shown[shown.length - 1] || '';
-    ctx.fillStyle = '#6df3ff'; ctx.fillRect(5 + Math.min(38, last.length) * 6.6 + 2, 19 + (shown.length - 1) * LH, 6, 11);
-  }
-  // scanlines
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
-  tex.needsUpdate = true;
-  for (const v of deckTerm.views) v.needsUpdate = true;
-}
-function updateDeckTerminal(t) {
-  if (!deckTerm) return;
-  if (t >= deckTerm.next) {                                                           // a new line every ~0.3–0.7 s
-    deckTerm.lines.push(pick(TERM_LINES)());
-    if (deckTerm.lines.length > 40) deckTerm.lines.splice(0, deckTerm.lines.length - 40);
-    deckTerm.next = t + 0.3 + Math.random() * 0.4;
-  }
-  const frame = t * 10 | 0;                                                           // redraw at ~10 Hz
-  if (frame !== deckTerm.drawn) { deckTerm.drawn = frame; drawDeckTerminal(t); }
-}
-
-/** A new figure group for a crew key (casper/gimli/ganbold/ryu), feet at y = 0.
- *  Returns { group, height }. Unknown keys fall back to a simple glowing pillar.
- *  A figure with moving parts sets group.userData.tick(seconds) — call it each frame. */
-export function buildFigure(key) {
-  const group = new THREE.Group();
-  const height = BUILD[key] ? BUILD[key](group) : (solid(group, new THREE.CylinderGeometry(0.5, 0.5, 5, 8), W, { p: [0, 2.5, 0] }), 5);
-  return { group, height };
-}
