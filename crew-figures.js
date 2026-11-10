@@ -10,7 +10,8 @@
 //   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
 //             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
 //   gimli   — the team's face, a dwarf: shorter, normal proportions, casual open coat +
-//             jeans, groomed beard with one braid, swept-back hair
+//             jeans, groomed beard with one braid, swept-back hair, commlink in hand,
+//             double-bladed axe strapped across his back
 //   ganbold — tall augmented hitman: long belted coat with popped collar, fur ushanka,
 //             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
 //             suppressed scoped rifle at the ready
@@ -62,6 +63,18 @@ function tube(g, pts, r, color = W, segs = 12) {
 const ring = (g, p, R, r, color, rot = [Math.PI / 2, 0, 0], s) =>
   solid(g, new THREE.TorusGeometry(R, r, 4, 14), color, { p, r: rot, s }, 35);
 const box = (g, w, h, d, color, t) => solid(g, new THREE.BoxGeometry(w, h, d), color, t);
+// a flat crescent axe blade in the XY plane, from the haft (x = 0) out to the edge (+x)
+function axeBlade() {
+  const sh = new THREE.Shape();
+  sh.moveTo(0, -0.14);
+  sh.quadraticCurveTo(0.22, -0.16, 0.45, -0.42);       // lower beard
+  sh.quadraticCurveTo(0.62, 0, 0.45, 0.42);            // curved cutting edge
+  sh.quadraticCurveTo(0.22, 0.16, 0, 0.14);            // upper horn back to the haft
+  sh.closePath();
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 6 });
+  geo.translate(0, 0, -0.025);
+  return geo;
+}
 
 // ---- the shared humanoid rig ----
 // o.legs / o.arms: [[root, joint, end], [root, joint, end]] (left, right)
@@ -137,11 +150,11 @@ const BUILD = {
   // ---- dwarf face: shorter than the others but normal proportions, casual —
   //      an open coat over a plain top, jeans, groomed beard, swept-back hair ----
   gimli(g) {
-    const DENIM = 0x60a5fa;
+    const DENIM = 0x60a5fa, LINK = 0x6df3ff, GOLD = 0xfacc15;
     humanoid(g, {
       thigh: 0.27, arm: 0.19, foot: 0.68, legColor: DENIM,
       legs: [[[-0.3, 1.75, 0], [-0.34, 0.98, 0.1], [-0.32, 0.38, 0]], [[0.3, 1.75, 0], [0.36, 0.98, 0.06], [0.35, 0.38, -0.04]]],
-      arms: [[[-0.7, 3.35, 0], [-0.82, 2.7, 0.12], [-0.64, 2.15, 0.3]], [[0.7, 3.35, 0], [0.84, 2.7, 0.1], [0.66, 2.15, 0.28]]],
+      arms: [[[-0.7, 3.35, 0], [-0.82, 2.7, 0.12], [-0.64, 2.15, 0.3]], [[0.7, 3.35, 0], [0.88, 2.78, 0.3], [0.55, 3.0, 0.68]]],
       torsoY: 1.6, torsoZ: 0.72, torso: [[0.55, 0], [0.52, 0.35], [0.5, 0.6], [0.62, 1.1], [0.68, 1.45], [0.52, 1.65], [0.22, 1.78]],
       neck: [3.36, 3.55, 0.17], head: { p: [0, 3.84, 0.03], r: 0.4 },
     });
@@ -162,6 +175,19 @@ const BUILD = {
     solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [-0.14, 3.68, 0.36], r: [0, 0, 1.3] });
     solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [0.14, 3.68, 0.36], r: [0, 0, -1.3] });
     lathe(g, [[0.38, 0], [0.41, 0.14], [0.34, 0.3], [0.12, 0.38], [0, 0.39]], W, { p: [0, 3.9, -0.05], s: [1, 1, 1.12] }, 10);
+    // commlink held up in the right hand
+    box(g, 0.28, 0.42, 0.05, LINK, { p: [0.52, 3.1, 0.75], r: [-0.4, -0.3, 0] });
+    // double-bladed axe strapped diagonally across the back, head over the left shoulder
+    const axe = new THREE.Group();
+    axe.position.set(0, 2.55, -0.62); axe.rotation.z = -0.62;          // tilt: head up-left, butt down-right
+    rod(axe, [0, -1.45, 0], [0, 1.5, 0], 0.05, 0.05, W, 6);           // haft
+    const blade = axeBlade();
+    solid(axe, blade, GOLD, { p: [0, 1.1, 0] });                       // crescent blades, either side
+    solid(axe, blade, GOLD, { p: [0, 1.1, 0], s: [-1, 1, 1] });
+    solid(axe, new THREE.ConeGeometry(0.06, 0.3, 5), GOLD, { p: [0, 1.62, 0] });   // top spike
+    g.add(axe);
+    // the strap: over the right shoulder, across the chest, round to the left hip
+    tube(g, [[0.5, 3.35, -0.35], [0.45, 3.3, 0.35], [0, 2.75, 0.52], [-0.45, 2.15, 0.45], [-0.55, 1.95, -0.2]], 0.035, W);
     return 4.3;
   },
 

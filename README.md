@@ -215,7 +215,8 @@ sharing an area spread out around it:
 - **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
   through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
 - **Gimli** — the team's face, a dwarf: shorter but normally proportioned, in an
-  open coat and jeans, with a groomed beard (one braid) and swept-back hair.
+  open coat and jeans, with a groomed beard (one braid) and swept-back hair, a
+  commlink in hand and a double-bladed axe strapped across his back.
 - **Ganbold** — tall, augmented hitman: long belted coat with popped collar, fur
   ushanka, shades over a red cybereye, neck ports, a cyber left arm with a
   smartlink cable to his suppressed scoped rifle.
