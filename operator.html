@@ -1113,7 +1113,7 @@ function renderRelayCard() {
     el.tr.className = 'bk-rs' + rs + (tgt ? ' tgt' : '');
     el.st.textContent = relayText(b, k);
     el.st.className = 'rt-s bk-rs' + rs;
-    el.t.textContent = tgt ? ' ◂ PUZZLE TARGET' : '';
+    el.t.textContent = tgt ? ' ◂ ACTIVE TARGET' : '';   // in-world (SERA) wording
     el.tr.title = 'Unlocked: ' + relayUnlocks(k, rs);
   });
   const sum = $('relay-sum');
