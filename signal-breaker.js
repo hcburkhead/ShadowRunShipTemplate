@@ -20,9 +20,9 @@
 // ONLINE (0) / DAMAGED (1) / OFFLINE (2) states as the rest of the ship. The
 // relay gates that system's player controls (RELAY_SYSTEMS below). The DM picks
 // which system a challenge targets. Repairs go through SERA, the ship's AI:
-//   OFFLINE — SERA brings the relay straight back ONLINE on her own once every
-//             ship sector is nominal (operator.html runs that check). Until
-//             then a cracked challenge gets it to DAMAGED.
+//   OFFLINE — SERA brings the relay back ONLINE on her own when the damaged
+//             ship sectors are repaired to nominal (operator.html runs that
+//             check). Otherwise a cracked challenge gets it to DAMAGED.
 //   DAMAGED — takes TWO cracked challenges: the first lets SERA reinitialize
 //             the system, the second re-engages it → ONLINE.
 // Relays default to ONLINE, so nothing is gated until the DM knocks one down.

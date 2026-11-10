@@ -254,6 +254,7 @@
     border:1px solid currentColor; border-radius:4px; background:rgba(0,0,0,.25); }
   .bk-status.bk-st-active.bk-rs2{ color:var(--red); } .bk-status.bk-st-active.bk-rs1{ color:var(--yellow); }
   .relay-gated{ opacity:.45; }
+  .capnote{ font-style:normal; font-size:8px; color:var(--yellow); margin-left:4px; letter-spacing:1px; }
   .rr-relay{ font-size:8px; margin-left:6px; }
   .relay-card{ grid-column:1/-1; }
   .crew-rows{ display:flex; flex-direction:column; gap:6px; }
@@ -347,11 +348,11 @@
           <div class="card">
             <h2>SYSTEM POWER <span class="v" id="pwr-total">CORE 100%</span></h2>
             <div id="relay-lock-sys" class="reserve-lock" hidden></div>
-            <div class="row" id="row-eng"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-eng"></div>
-            <div class="row" id="row-drones"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-drones"></div>
-            <div class="row" id="row-weapons"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
-            <div class="row" id="row-shields"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
-            <div class="hint">Each system draws from core power, capped by the current CORE %. Throttle or cut a system; it can't exceed core unless players add reserves.</div>
+            <div class="row" id="row-eng"><div class="lbl"><span>⬡ ENGINES <i class="capnote" id="cap-eng"></i></span><b id="v-eng">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-eng"></div>
+            <div class="row" id="row-drones"><div class="lbl"><span>⬡ DRONES <i class="capnote" id="cap-drones"></i></span><b id="v-drones">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-drones"></div>
+            <div class="row" id="row-weapons"><div class="lbl"><span>⬡ WEAPONS <i class="capnote" id="cap-weapons"></i></span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
+            <div class="row" id="row-shields"><div class="lbl"><span>⬡ SHIELDS <i class="capnote" id="cap-shields"></i></span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
+            <div class="hint">Each system draws from core power, capped by the current CORE % and by its state (DAMAGED ≤66%, OFFLINE 0%). Throttle or cut a system; it can't exceed core unless players add reserves.</div>
           </div>
 
           <!-- players: the Relay board (built by signal-breaker.js) -->
@@ -437,15 +438,15 @@
               wipes the players' progress (use it if they get stuck or the pattern gets predictable).
               No timer or attempt cap: LOCK OUT freezes the board until you UNLOCK it, END hides it.
               <br>SYSTEM-RELAY: pick the system this challenge targets (shown on the player board).
-              SERA (ship AI) repairs relays: an OFFLINE relay comes back ONLINE by itself once every
-              sector (areas, lift fans, shield panels) is nominal — so damage a sector first if you want
-              it to stay down; otherwise a crack gets it to DAMAGED. A DAMAGED relay takes TWO cracks:
-              SERA reinitializes the system (1/2), then re-engages it → ONLINE (2/2).
-              A relay gates that system's player controls: OFFLINE = locked, DAMAGED = throttle + battery
-              (terminal: SHIP TERMINAL), ONLINE = everything incl. AUX (terminal: OVERDRIVE). Knock relays
-              down in DAMAGE CONTROL → SYSTEM-RELAY; all relays start ONLINE (nothing gated).
+              Each system's STATE (DAMAGE CONTROL → SYSTEMS) is its relay. A crack repairs it one step:
+              OFFLINE → DAMAGED, and a DAMAGED system takes TWO cracks (SERA reinitializes it 1/2, then
+              re-engages it → ONLINE 2/2). SERA also brings OFFLINE systems back ONLINE on her own when the
+              damaged sectors (areas, lift fans, shield panels) are repaired to nominal.
+              The state gates the players' controls (OFFLINE = locked, DAMAGED = throttle + battery /
+              terminal input, ONLINE = everything incl. AUX / overdrive) and caps the system's power
+              slider (OFFLINE 0% · DAMAGED ≤66% · ONLINE ≤100%). All systems start ONLINE.
               Remote: BREAKER &lt;6 digits&gt; · BREAKER RANDOM · BREAKER LOCK · BREAKER UNLOCK · BREAKER OFF ·
-              BREAKER TARGET &lt;SYS&gt; · RELAY &lt;SYS|ALL&gt; &lt;ONLINE|DAMAGED|OFFLINE&gt;.</div>
+              BREAKER TARGET &lt;SYS&gt; · STATE &lt;SYS|ALL&gt; &lt;ONLINE|DAMAGED|OFFLINE&gt; (alias RELAY).</div>
           </div>
 
         </div>
@@ -522,7 +523,7 @@
 
           <!-- DAMAGE CONTROL -->
           <div class="card full">
-            <h2>DAMAGE CONTROL <span class="v hint ctl-only">areas cycle ONLINE · DAMAGED · OFFLINE — subsystems toggle power on/off</span></h2>
+            <h2>DAMAGE CONTROL <span class="v hint ctl-only">click to cycle ONLINE · DAMAGED · OFFLINE — SYSTEMS set each system's state (caps its power slider)</span></h2>
             <div class="areas" id="area-grid"></div>
           </div>
         </div>
@@ -605,6 +606,23 @@ const saveTimer  = () => pushKey('shipTimer', state.timer);
 // gate(k, 0) = needs ONLINE. The DM console is never gated.
 const relaySt = k => ((state.breaker && state.breaker.relay) ? state.breaker.relay[k] | 0 : 0);
 const gate = (k, need) => !PLAYER || relaySt(k) <= need;
+// SYSTEM STATE (= that system's relay state) caps its power slider for everyone, DM included:
+//   ONLINE → up to 100% · DAMAGED → up to 66% (the top of the DAMAGED band) · OFFLINE → 0%, slider disabled
+const STATE_CAP = [100, 66, 0];
+const capFor = k => STATE_CAP[relaySt(k)];
+// after a state change, move the slider with it: a better state ramps it up to the new cap,
+// a worse one clamps it down. Manual control stays free underneath the cap.
+function syncStatePower(prevRelay) {
+  let changed = false;
+  KEYS.forEach(k => {
+    const was = prevRelay ? prevRelay[k] | 0 : relaySt(k), now = relaySt(k), cap = STATE_CAP[now];
+    const p = state.power[k] | 0;
+    const next = now < was ? cap : Math.min(p, cap);
+    if (next !== p) { state.power[k] = next; changed = true; }
+  });
+  if (changed) savePower();
+  renderPower(); renderRoute();
+}
 
 // ---- core power + per-system throttle ----
 // core power is derived from ship integrity; each system runs on core, capped by
@@ -620,18 +638,22 @@ function renderPower() {
   cv.textContent = core + '%'; cv.style.color = core > 66 ? '' : core > 33 ? 'var(--yellow)' : 'var(--red)';
   $('pwr-total').textContent = 'CORE ' + core + '%';
   KEYS.forEach(k => {
-    const thr = clamp(state.power[k] | 0, 0, 100);
+    const cap = capFor(k);
+    const thr = clamp(state.power[k] | 0, 0, cap);
     const sl = $('sl-' + k); if (document.activeElement !== sl) sl.value = thr;
-    sl.disabled = !gate(k, 1);                                     // relay OFFLINE → throttle locked
-    $('row-' + k).classList.toggle('relay-gated', !gate(k, 1));
+    sl.disabled = !gate(k, 1) || cap <= 0;                         // system / relay OFFLINE → throttle locked
+    $('row-' + k).classList.toggle('relay-gated', sl.disabled);
+    $('cap-' + k).textContent = cap < 100 ? (cap ? '≤' + cap + '%' : 'OFFLINE') : '';
     const delivered = Math.min(thr, core);                       // core actually reaching the system
     const vEl = $('v-' + k);
     vEl.textContent = delivered + '%'; vEl.style.color = intColor(delivered);
   });
 }
 KEYS.forEach(k => $('sl-' + k).addEventListener('input', () => {
-  state.power[k] = +$('sl-' + k).value;
-  renderPower(); renderRoute(); renderPowerSubs(); savePower();
+  const sl = $('sl-' + k), cap = capFor(k);
+  if (+sl.value > cap) sl.value = cap;                           // the system state caps the ramp
+  state.power[k] = +sl.value;
+  renderPower(); renderRoute(); savePower();
 }));
 
 // ---- aux / battery routing (players): per-system reserves, DM-damageable banks ----
@@ -803,9 +825,6 @@ setInterval(() => {   // live badge while the countdown runs
 }, 500);
 
 // ---- damageable areas (cycle ONLINE / DAMAGED / OFFLINE) ----
-// weapons + drones aren't damageable — they sit in the same list but just toggle
-// power on/off (ONLINE/OFFLINE), so clicking them cuts/restores their power.
-const POWER_SUBS = [['weapons', 'WEAPONS'], ['drones', 'DRONES']];
 const areaGrid = $('area-grid');
 const catGroups = {};
 function catGroup(cat) {   // one column per category (label + its buttons), groups flow to fill width
@@ -828,7 +847,7 @@ const setAreaBtn = (b, st, label) => {
   b.classList.remove('s0', 's1', 's2'); b.classList.add('s' + st);
   b._st.textContent = label;
 };
-const areaBtns = {}, subBtns = {};
+const areaBtns = {};
 AREAS.forEach(([k, label, cat]) => {
   areaBtns[k] = areaButton(label, cat, () => {
     state.damage.areas[k] = (state.damage.areas[k] + 1) % 3;
@@ -836,17 +855,13 @@ AREAS.forEach(([k, label, cat]) => {
     seraCheck();
   });
 });
-POWER_SUBS.forEach(([k, label]) => {
-  subBtns[k] = areaButton(label, 'SUBSYSTEMS', () => {
-    state.power[k] = state.power[k] > 0 ? 0 : 100;   // cut/restore the system's core feed
-    renderPower(); renderRoute(); renderPowerSubs(); savePower();
-  });
-});
-// SYSTEM-RELAY — one relay per player system, cycling ONLINE / DAMAGED / OFFLINE like any
-// area; the relay gates that system's player controls (repaired by cracking challenges)
+// SYSTEMS — one STATE control per system (ENGINES / DRONES / WEAPONS / SHIELDS / TERMINAL),
+// cycling ONLINE → DAMAGED → OFFLINE. The state IS that system's relay: it caps the system's
+// power slider (see STATE_CAP), gates the players' controls, and is what SYSTEM-RELAY
+// challenges repair. (Replaces the old SUBSYSTEMS power toggles + separate relay buttons.)
 const relayBtns = {};
 RELAY_SYSTEMS.forEach(([k, label]) => {
-  relayBtns[k] = areaButton(label, 'SYSTEM-RELAY', () => setRelay(k, (relaySt(k) + 1) % 3));
+  relayBtns[k] = areaButton(label, 'SYSTEMS', () => setRelay(k, (relaySt(k) + 1) % 3));
 });
 function renderRelayAreas() {
   RELAY_KEYS.forEach(k => setAreaBtn(relayBtns[k], relaySt(k), relayText(state.breaker, k)));
@@ -855,13 +870,6 @@ function renderAreas() {
   AREAS.forEach(([k]) => {
     const st = state.damage.areas[k] | 0;
     setAreaBtn(areaBtns[k], st, A_STATE[st]);
-  });
-}
-function renderPowerSubs() {
-  POWER_SUBS.forEach(([k]) => {
-    const p = clamp(state.power[k] | 0, 0, 100);
-    const st = p > 66 ? 0 : p > 33 ? 1 : 2;              // banded like every system: 67+ / 34–66 / 0–33
-    setAreaBtn(subBtns[k], st, A_STATE[st]);
   });
 }
 
@@ -1069,8 +1077,12 @@ function breakerTransmit(guess) {
   if (isCracked(r)) {
     b.status = 'cracked';
     // SERA repairs the target relay: OFFLINE → DAMAGED, DAMAGED → reinit (1/2) → re-engage ONLINE (2/2)
+    const prev = { ...b.relay };
     const msg = repairRelay(b);
     if (msg) { termPush('⌁ ' + msg, 'tl-ok'); saveTerm(); renderTerm(); }
+    saveBreaker(); renderBreaker();
+    syncStatePower(prev);       // a repaired system's slider ramps up to its new cap
+    return;
   }
   saveBreaker(); renderBreaker();
 }
@@ -1082,18 +1094,20 @@ function setBreakerTarget(k) {
   return true;
 }
 function setRelay(k, st) { setRelays([k], st); }
-function setRelays(keys, st) {   // DM / remote: an explicit state restarts SERA's repair of those relays
-  const b = state.breaker;
+function setRelays(keys, st) {   // DM / remote: an explicit state restarts SERA's repair of those systems
+  const b = state.breaker, prev = { ...b.relay };
   b.relay = { ...b.relay, ...Object.fromEntries(keys.map(k => [k, st])) };
   b.reinit = (b.reinit || []).filter(k => !keys.includes(k));
   b.note = '';
   saveBreaker(); renderBreaker();
-  seraCheck();
+  syncStatePower(prev);
+  // no SERA check here: SERA restores OFFLINE systems when the sectors are REPAIRED to nominal,
+  // so the DM can still take a system OFFLINE on an undamaged ship
 }
-// SERA auto-restore: an OFFLINE relay comes straight back ONLINE once every ship
-// sector (areas, lift fans, shield panels) is nominal. DAMAGED relays still need
-// SERA's two-challenge reinitialize + re-engage. Runs after local damage / relay
-// changes only (not on incoming sync, so a stale console can't overwrite live state).
+// SERA auto-restore: OFFLINE systems come back ONLINE when a damage-control change leaves
+// every ship sector (areas, lift fans, shield panels) nominal. DAMAGED systems still need
+// SERA's two-challenge reinitialize + re-engage. Runs only after local DAMAGE changes (not
+// when the DM sets a system state, and not on incoming sync).
 function sectorsNominal() {
   const d = state.damage;
   return Object.values(d.areas || {}).every(v => (v | 0) === 0)
@@ -1104,10 +1118,12 @@ function seraCheck() {
   if (!b || !sectorsNominal()) return;
   const down = RELAY_KEYS.filter(k => b.relay[k] === 2);
   if (!down.length) return;
+  const prev = { ...b.relay };
   b.relay = { ...b.relay, ...Object.fromEntries(down.map(k => [k, 0])) };
-  termPush('◈ SERA: ALL SECTORS NOMINAL — ' + down.map(relayLabel).join(', ') + ' RELAY BROUGHT ONLINE', 'tl-ok');
+  termPush('◈ SERA: ALL SECTORS NOMINAL — ' + down.map(relayLabel).join(', ') + ' BROUGHT ONLINE', 'tl-ok');
   saveTerm(); renderTerm();
   saveBreaker(); renderBreaker();
+  syncStatePower(prev);
 }
 const targetBtns = {};
 RELAY_SYSTEMS.forEach(([k, label]) => {
@@ -1335,8 +1351,8 @@ function execRemote(cmd) {
   if ((m = raw.match(/^POWER (\w+) (\d{1,3})$/))) {
     const k = POWER_ALIAS[m[1]];
     if (!k) return '✖ unknown system: ' + m[1];
-    state.power[k] = clamp(+m[2], 0, 100);
-    renderPower(); renderRoute(); renderPowerSubs(); savePower();
+    state.power[k] = clamp(+m[2], 0, capFor(k));   // capped by the system's state
+    renderPower(); renderRoute(); savePower();
     return '⚡ ' + m[1] + ' throttle → ' + state.power[k] + '%';
   }
   if ((m = raw.match(/^BREAKER (.+)$/))) {   // signal breaker — never echo the sequence
@@ -1358,7 +1374,7 @@ function execRemote(cmd) {
     armBreaker(code);
     return '⌁ signal breaker armed · sequence set';
   }
-  if ((m = raw.match(/^RELAY (\w+) (\w+)$/))) {
+  if ((m = raw.match(/^(?:RELAY|STATE) (\w+) (\w+)$/))) {   // system state (= its relay)
     const v = STATE_WORDS[m[2]];
     const ks = m[1] === 'ALL' ? RELAY_KEYS : RELAY_ALIAS[m[1]] ? [RELAY_ALIAS[m[1]]] : null;
     if (!ks || v === undefined) return '✖ unknown relay/state: ' + raw;
@@ -1400,7 +1416,7 @@ function handleRemoteCommand(d) {
 window.shipCommand = cmd => handleRemoteCommand(
   cmd && typeof cmd === 'object' ? cmd : { id: 'local-' + Date.now() + '-' + Math.random(), at: Date.now(), cmd });
 
-function renderAll() { renderCrew(); renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderPowerSubs(); renderFans(); renderShields(); renderTerm(); renderDestruct(); renderBreaker(); }
+function renderAll() { renderCrew(); renderPower(); renderRoute(); renderHull(); renderAlt(); renderTimer(); renderAreas(); renderFans(); renderShields(); renderTerm(); renderDestruct(); renderBreaker(); }
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
@@ -1460,7 +1476,7 @@ addEventListener('storage', () => {
       if (bc) { try { bc.postMessage(Date.now()); } catch (e) {} }
     };
     // adopt cloud state on connect (so a fresh operator matches what's live)
-    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { mirrorLocal('shipPowerLevels', d); state.power = Object.assign(state.power, d); normPower(state.power); renderPower(); renderRoute(); renderPowerSubs(); } });
+    onValue(ref(db, 'shipPowerLevels'), s => { const d = s.val(); if (d) { mirrorLocal('shipPowerLevels', d); state.power = Object.assign(state.power, d); normPower(state.power); renderPower(); renderRoute(); } });
     onValue(ref(db, 'shipDamageState'), s => { const d = s.val(); if (d) { mirrorLocal('shipDamageState', d); state.damage = Object.assign(state.damage, d); state.damage.areas = Object.assign(defaultAreas(), d.areas || {}); renderHull(); renderAreas(); renderFans(); renderShields(); renderPower(); renderRoute(); } });
     onValue(ref(db, 'shipAltitude'),    s => { const d = s.val(); if (d && typeof d.v === 'number') { mirrorLocal('shipAltitude', d); state.altitude = d.v; renderAlt(); } });
     onValue(ref(db, 'shipTimer'),       s => { const d = s.val(); if (d && typeof d.duration === 'number') { mirrorLocal('shipTimer', d); state.timer = d; renderTimer(); } });

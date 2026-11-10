@@ -24,7 +24,8 @@
  *   BREAKER LOCK | UNLOCK      lock the players out / let them back in
  *   BREAKER OFF                end it (hides the board on the player view)
  *   BREAKER TARGET <SYS>       pick the relay the challenge repairs (ENG|DRONES|WEAPONS|SHIELDS|TERM)
- *   RELAY <SYS|ALL> <state>    set a system relay ONLINE | DAMAGED | OFFLINE (gates player controls)
+ *   STATE <SYS|ALL> <state>    set a system's state ONLINE | DAMAGED | OFFLINE (= its relay: caps the
+ *                              power slider 100 / 66 / 0 and gates player controls; alias RELAY)
  *   CREW <NAME> <AREA|OFF>     place a player dot (CASPER|GIMLI|GANBOLD|RYU) at BRIDGE, AICORE,
  *                              REACTOR, DRONEBAY, WPNFWD, WPNAFT, BOOSTP, BOOSTS, FANFP… or OFF
  * ─────────────────────────────────────────────────────────────────────────
