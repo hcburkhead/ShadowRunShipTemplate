@@ -645,16 +645,30 @@ function updateFans(s) {
     for (const m of g.userData.mats) m.color.setHex(col);   // colour both blade sets
   }
 }
+// drones follow the DRONE BAY area like every other system (+ the DM's DRONES power toggle):
+//   ONLINE  → normal colours, rotors spin, drones bob
+//   DAMAGED → yellow, frozen
+//   OFFLINE → red, frozen (still shown — never hidden)
+// Deliberately NOT tied to reactor-fed effective power: a starved core shouldn't paint
+// an ONLINE bay red.
+function droneState(s) {
+  const bay = clamp((s.areas.droneBay || 0) | 0, 0, 2);
+  const powerCut = ((s.throttle && s.throttle.drones) | 0) <= 0;   // DAMAGE CONTROL → SUBSYSTEMS → DRONES OFFLINE
+  return powerCut ? 2 : bay;
+}
 function updateDrones(s) {
   if (!droneSwarms.length) return;
-  const bayDead = (s.areas.droneBay || 0) >= 2, active = s.drones > 0 && !bayDead;
-  const op = active ? 0.9 : 0.85;                 // powered-off drones go red + freeze
+  const st = droneState(s), active = st === 0;
+  const col = st === 2 ? 0xef4444 : st === 1 ? 0xfacc15 : null;
   for (const sw of droneSwarms) {
-    sw.visible = !bayDead;                        // bay destroyed → drones gone
+    sw.visible = true;
     sw.userData.active = active;
-    for (const d of sw.userData.drones) for (const c of d.children) {
-      c.material.opacity = op;
-      c.material.color.setHex(active ? c.userData.baseColor : 0xef4444);
+    for (const d of sw.userData.drones) {
+      if (!active) d.position.y = d.userData.baseY;   // settle frozen drones on their rest height
+      for (const c of d.children) {
+        c.material.opacity = active ? 0.9 : 0.85;
+        c.material.color.setHex(col === null ? c.userData.baseColor : col);
+      }
     }
   }
 }

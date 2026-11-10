@@ -190,6 +190,9 @@ the DM knocks one down.
 - The hull **kerns** — banks/pitches toward failing lift fans.
 - Directional shields, a floor shield ring, drone swarm, and blinking damage
   dots, all colored by state.
+- The drone swarm follows the DRONE BAY (and the DRONES power toggle) like any
+  other system: ONLINE = normal colours and moving, DAMAGED = yellow and frozen,
+  OFFLINE = red and frozen (always shown).
 - A left-rail **system log** (DM view only) recording every state change.
 
 ## Views
