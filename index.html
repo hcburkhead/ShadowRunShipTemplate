@@ -883,6 +883,10 @@ loader.load(MODEL_URL, (res) => {
   applyShield();
   applyAltitude();
   resizeAll();
+  // the first render() ran before the model existed (no dots / fan blades / drones yet), and
+  // later renders skip when the stored state is unchanged — so repaint everything now that the
+  // model is in, or damage only shows after the next state change
+  render(true);
 }, undefined, (err) => {
   console.warn('[console] model load failed:', err);
   document.getElementById('err').style.display = 'grid';
