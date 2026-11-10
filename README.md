@@ -107,7 +107,7 @@ type-a-command-in-a-cell console. Supported commands (no terminal lockout or
 code word on this channel — it's the GM's authorized path): `SD -T <secs>`,
 `TIMER <secs|m:ss> [LABEL]`, `TIMER STOP|RESET`,
 `DAMAGE <AREA> <ONLINE|DAMAGED|OFFLINE>`, `SHIELD <FORE|STBD|AFT|PORT> <state>`,
-`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`,
+`POWER <ENG|DRONES|WEAPONS|SHIELDS> <0-100>`, `ALT <0-100>`, `CREW <CASPER|GIMLI|GANBOLD|RYU> <AREA|OFF>`,
 `BREAKER <6 digits>|RANDOM|LOCK|UNLOCK|OFF`, `BREAKER TARGET <SYS>`,
 `RELAY <ENG|DRONES|WEAPONS|SHIELDS|TERM|ALL> <ONLINE|DAMAGED|OFFLINE>` (the
 sequence is masked in the log). Every executed
@@ -192,8 +192,16 @@ OFFLINE state; power percentages (system sliders, effective power) are banded
 **67–100% ONLINE · 34–66% DAMAGED · 0–33% OFFLINE**, the same as the lift fans.
 Where an area belongs to a powered system, it shows the worse of the two: weapon
 batteries ← WEAPONS slider, boosters ← ENGINES slider, drone bay / drones ← DRONES
-slider, shield arcs ← panel state and shield power. Damage dots show on both the
-DM console's ship view and the player view.
+slider, shield arcs ← panel state and shield power. On the **player view** damage
+shows as blinking dots at each area; on the **DM console** the affected part of the
+ship's own wireframe softly pulses yellow / red instead (no dots).
+
+**Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
+CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
+battery, a booster or a lift fan, or "— NOT SHOWN". Each placed player shows as a
+small glowing white dot with a faint name tag, on both the DM and player views, in
+all five ship views; players sharing an area spread out around it. Synced as
+`shipCrew`; remote: `CREW <NAME> <AREA|OFF>` (e.g. `CREW RYU REACTOR`).
 - Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
 - The hull **kerns** — banks/pitches toward failing lift fans.
 - Directional shields, a floor shield ring, drone swarm, and blinking damage

@@ -124,7 +124,26 @@ export function readJSON(key, fallback = null) {
 }
 
 // ---- Firebase real-time sync (loaded dynamically so pages work offline) ----
-export const SYNC_KEYS = ['shipPowerLevels', 'shipDamageState', 'shipAux', 'shipAltitude', 'shipTimer', 'shipTerminal', 'shipDestruct'];
+export const SYNC_KEYS = ['shipPowerLevels', 'shipDamageState', 'shipAux', 'shipAltitude', 'shipTimer', 'shipTerminal', 'shipDestruct', 'shipCrew'];
+
+// ---- crew locations (GM-set; synced as shipCrew = { casper: 'bridge', gimli: '', ... }) ----
+// Each player shows as a small glowing white dot (with a faint name tag) at a ship location;
+// '' = not shown. Locations are the damage-control area keys the display already anchors.
+export const CREW = [['casper', 'CASPER'], ['gimli', 'GIMLI'], ['ganbold', 'GANBOLD'], ['ryu', 'RYU']];
+export const CREW_LOCS = [
+  ['', '— NOT SHOWN'], ['bridge', 'BRIDGE'], ['aiCore', 'AI CORE'], ['reactor', 'REACTOR'],
+  ['droneBay', 'DRONE BAY'], ['wpnFwd', 'FWD BATTERY'], ['wpnAft', 'AFT BATTERY'],
+  ['boostP', 'BOOSTER PORT'], ['boostS', 'BOOSTER STBD'],
+  ['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S'],
+];
+export function normCrew(raw) {
+  const o = {};
+  CREW.forEach(([k]) => {
+    const v = raw && typeof raw === 'object' ? String(raw[k] || '') : '';
+    o[k] = CREW_LOCS.some(([l]) => l === v) ? v : '';
+  });
+  return o;
+}
 export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
   authDomain: "shadowrun-ship-db.firebaseapp.com",

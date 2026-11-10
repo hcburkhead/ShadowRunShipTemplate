@@ -25,6 +25,8 @@
  *   BREAKER OFF                end it (hides the board on the player view)
  *   BREAKER TARGET <SYS>       pick the relay the challenge repairs (ENG|DRONES|WEAPONS|SHIELDS|TERM)
  *   RELAY <SYS|ALL> <state>    set a system relay ONLINE | DAMAGED | OFFLINE (gates player controls)
+ *   CREW <NAME> <AREA|OFF>     place a player dot (CASPER|GIMLI|GANBOLD|RYU) at BRIDGE, AICORE,
+ *                              REACTOR, DRONEBAY, WPNFWD, WPNAFT, BOOSTP, BOOSTS, FANFP… or OFF
  * ─────────────────────────────────────────────────────────────────────────
  */
 
