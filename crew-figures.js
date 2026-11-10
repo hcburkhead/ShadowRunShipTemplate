@@ -17,7 +17,8 @@
 //             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
 //             suppressed scoped rifle at the ready
 //   ryu     — stocky, heavily augmented weapons specialist: two cyber arms, armoured chest
-//             plate + shoulder pads, spinal nodes, shin plates, visor, topknot, katana
+//             plate + shoulder pads, spinal nodes, shin plates, visor (live terminal HUD),
+//             topknot, katana
 //             across the back, heavy thigh holster, two small drones at his shoulders
 
 import * as THREE from './vendor/three.module.js';
@@ -269,6 +270,13 @@ const BUILD = {
     box(g, 0.32, 0.65, 0.1, NEON, { p: [0.58, 0.95, 0.12], r: [-0.08, 0, 0] });
     // visor, topknot
     box(g, 0.7, 0.13, 0.1, NEON, { p: [0, 5.0, 0.32] });
+    // the visor runs the same live terminal feed as Casper's deck (a shared texture; this
+    // copy shows a horizontal band of it to fit the slim visor), on its outer face
+    const hud = deckTerminalView();                                      // same canvas → scrolls in sync
+    hud.repeat.set(1, 0.3); hud.offset.set(0, 0.32);
+    const visorHud = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.11), new THREE.MeshBasicMaterial({
+      map: hud, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    visorHud.position.set(0, 5.0, 0.375); g.add(visorHud);
     ball(g, [0, 5.43, -0.12], 0.14);
     ring(g, [0, 5.34, -0.1], 0.11, 0.03, NEON);
     // katana across the back: blade, guard, wrapped grip
@@ -296,6 +304,7 @@ const BUILD = {
       return { d, rotors, side, y0: d.position.y };
     });
     g.userData.tick = t => {                                              // called each frame by index.html
+      updateDeckTerminal(t);                                              // keeps the visor feed scrolling
       for (const { d, rotors, side, y0 } of drones) {
         d.position.y = y0 + Math.sin(t * 2.2 + side) * 0.12;
         d.rotation.y = Math.sin(t * 0.7 + side) * 0.25;
@@ -328,10 +337,17 @@ function deckTerminal() {
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
   const tex = new THREE.CanvasTexture(canvas);
   tex.minFilter = THREE.LinearFilter;
-  deckTerm = { canvas, ctx: canvas.getContext('2d'), tex, lines: [], next: 0, drawn: -1 };
+  deckTerm = { canvas, ctx: canvas.getContext('2d'), tex, views: [], lines: [], next: 0, drawn: -1 };
   for (let i = 0; i < 7; i++) deckTerm.lines.push(pick(TERM_LINES)());
   drawDeckTerminal(0);
   return deckTerm;
+}
+// another texture over the same terminal canvas (own repeat / offset). The renderer re-uploads
+// per texture object, so every view is flagged on each redraw.
+function deckTerminalView() {
+  const t = deckTerminal().tex.clone();
+  deckTerm.views.push(t);
+  return t;
 }
 function drawDeckTerminal(t) {
   const { ctx, lines, tex } = deckTerm, W = 256, H = 128, LH = 14;
@@ -355,6 +371,7 @@ function drawDeckTerminal(t) {
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
   tex.needsUpdate = true;
+  for (const v of deckTerm.views) v.needsUpdate = true;
 }
 function updateDeckTerminal(t) {
   if (!deckTerm) return;

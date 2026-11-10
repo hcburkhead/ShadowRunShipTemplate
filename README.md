@@ -227,7 +227,8 @@ sharing an area spread out around it:
   ushanka, shades over a red cybereye, neck ports, a cyber left arm with a
   smartlink cable to his suppressed scoped rifle.
 - **Ryu** — stocky, heavily augmented weapons specialist: two cyber arms,
-  armoured chest plate and shoulder pads, spinal nodes, shin plates, visor,
+  armoured chest plate and shoulder pads, spinal nodes, shin plates, a visor
+  running the same live terminal feed as Casper's deck,
   topknot, katana across the back, heavy thigh holster, and two small
   quad-rotor drones hovering at his shoulders.
 
