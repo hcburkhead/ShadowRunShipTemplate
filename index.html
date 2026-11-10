@@ -281,6 +281,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
 import { CREW, normCrew } from './ship-model.js?v=5';
+import { buildFigure } from './crew-figures.js?v=1';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
          normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=5';   // ?v busts stale caches — bump on change
@@ -721,24 +722,27 @@ function labelTexture(text) {
   g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillText(text, 128, 32);
   return new THREE.CanvasTexture(c);
 }
+// each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
+// glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
+const FIG_SCALE = 2.2;
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
   const glow = glowTexture();
   CREW.forEach(([k, name]) => {
     const tag = labelTexture(name);
-    for (const t of targets) {
+    targets.forEach((t, ti) => {
       const grp = new THREE.Group(); grp.visible = false;
-      grp.add(new THREE.Mesh(new THREE.SphereGeometry(1.3, 10, 8),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })));
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffffff, transparent: true, opacity: 0.8,
-        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
-      halo.scale.set(7, 7, 1); grp.add(halo);
+      const { group: fig, height } = buildFigure(k);
+      fig.scale.setScalar(FIG_SCALE); grp.add(fig);
+      const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: glow, color: 0xffffff,
+        transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      disc.rotation.x = -Math.PI / 2; disc.scale.set(7, 7, 1); disc.position.y = 0.05; grp.add(disc);
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
-      lbl.scale.set(14, 3.5, 1); lbl.position.set(0, 4.2, 0); grp.add(lbl);
+      lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.6, 0); grp.add(lbl);
       t.add(grp);
-      crewMarks.push({ k, grp });
-    }
+      crewMarks.push({ k, grp, fig, spin: ti === 0 });   // targets[0] = the perspective view
+    });
   });
 }
 function updateCrew() {
@@ -751,8 +755,8 @@ function updateCrew() {
     grp.visible = !!a;
     if (!a) continue;
     const here = at[l], n = here.length, i = here.indexOf(k);
-    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 4.5 : 0;
-    grp.position.set(a.x + Math.cos(ang) * rr, a.y + 3, a.z + Math.sin(ang) * rr);
+    const ang = (i / n) * Math.PI * 2, rr = n > 1 ? 8 : 0;
+    grp.position.set(a.x + Math.cos(ang) * rr, a.y, a.z + Math.sin(ang) * rr);   // feet on the anchor
   }
 }
 
@@ -1085,6 +1089,7 @@ function tick() {
     const sp = crashed ? 0 : dt * 4.5 * (fanSpeed[idx] || 0);   // everything stops once crashed
     g.userData.sets[0].rotation.y += sp; g.userData.sets[1].rotation.y -= sp;
   }
+  for (const m of crewMarks) if (m.spin && m.grp.visible) m.fig.rotation.y += dt * 0.6;   // crew turntable (perspective only)
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
     if (!sw.visible || crashed) continue;
     const act = sw.userData.active;

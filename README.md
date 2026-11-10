@@ -17,6 +17,8 @@ no build step; just open the files (or host on GitHub Pages).
 - `signal-breaker.js` — the SIGNAL BREAKER code-breaker challenge: the shared
   rules (scoring, sync-state validation) plus the player board. Imported by
   `operator.html`.
+- `crew-figures.js` — the crew hologram figurines (Three.js primitives) shown on the
+  ship display.
 - `ship-model.js` — the shared power/damage model (pure functions + sync
   constants); both `operator.html` and `index.html` import it, so the math
   lives in one place.
@@ -206,8 +208,14 @@ ship's own wireframe softly pulses yellow / red instead (no dots).
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
 battery, a booster or a lift fan, or "— NOT SHOWN". Each placed player shows as a
-small glowing white dot with a faint name tag, on both the DM and player views, in
-all five ship views; players sharing an area spread out around it. Synced as
+small **hologram figurine** (`crew-figures.js`, wireframe like the ship, one accent
+colour each) standing on a soft glow, with a faint name tag, on both the DM and
+player views, in all five ship views (the perspective copies slowly turn); players
+sharing an area spread out around it:
+- **Casper** — hulking, hunched troll hacker: horns, tusks, a glowing cyberdeck.
+- **Gimli** — stocky dwarf warrior: big braided beard, conical helm, axe.
+- **Ganbold** — tall hitman: long coat, fur ushanka, shades, suppressed rifle.
+- **Ryu** — lean street samurai: cyber visor, topknot, katana across the back. Synced as
 `shipCrew`; remote: `CREW <NAME> <AREA|OFF>` (e.g. `CREW RYU REACTOR`).
 - Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
 - The hull **kerns** — banks/pitches toward failing lift fans.
