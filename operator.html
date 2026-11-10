@@ -247,6 +247,23 @@
   body.player .power-block .card.breaker-player-card:not(.bk-on){ display:none; }
   body.player .power-block .block-grid.bk-dense{ grid-auto-flow:row dense; }   /* only while the board shows */
   @media (min-width:1240px){ body.player .breaker-player-card{ grid-column:span 2; } }
+
+  /* ---- SYSTEM-RELAY: per-system relay status (ONLINE / DAMAGED / OFFLINE) gating player controls ---- */
+  .bk-rs0{ color:var(--g1); } .bk-rs1{ color:var(--yellow); } .bk-rs2{ color:var(--red); }
+  .bk-target{ font-size:12px; letter-spacing:3px; text-align:center; font-weight:bold; padding:4px;
+    border:1px solid currentColor; border-radius:4px; background:rgba(0,0,0,.25); }
+  .bk-relay{ display:flex; flex-wrap:wrap; gap:4px; justify-content:center; }
+  .bk-ch{ font-size:8.5px; letter-spacing:1px; border:1px solid var(--edge); border-radius:3px; padding:2px 6px;
+    display:inline-flex; align-items:center; gap:4px; opacity:.75; }
+  .bk-ch i{ width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 5px currentColor; }
+  .bk-ch em{ font-style:normal; opacity:.8; }
+  .bk-ch.bk-tgt{ border-color:currentColor; opacity:1; font-weight:bold; }
+  .bk-status.bk-st-active.bk-rs2{ color:var(--red); } .bk-status.bk-st-active.bk-rs1{ color:var(--yellow); }
+  .relay-gated{ opacity:.45; }
+  .rr-relay{ font-size:8px; margin-left:6px; }
+  #bk-target-seg button{ min-width:52px; font-size:9px; padding:6px 4px; }
+  #bk-target-seg button .rs{ display:block; font-size:7px; opacity:.8; margin-top:2px; }
+  #bk-target-seg button.tgt{ outline:1px solid var(--glint); outline-offset:1px; }
 </style>
 </head>
 <body>
@@ -302,10 +319,11 @@
           <!-- SYSTEM POWER (DM per-system core throttle, capped by core power) -->
           <div class="card">
             <h2>SYSTEM POWER <span class="v" id="pwr-total">CORE 100%</span></h2>
-            <div class="row"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-eng"></div>
-            <div class="row"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-drones"></div>
-            <div class="row"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
-            <div class="row"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
+            <div id="relay-lock-sys" class="reserve-lock" hidden></div>
+            <div class="row" id="row-eng"><div class="lbl"><span>⬡ ENGINES</span><b id="v-eng">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-eng"></div>
+            <div class="row" id="row-drones"><div class="lbl"><span>⬡ DRONES</span><b id="v-drones">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-drones"></div>
+            <div class="row" id="row-weapons"><div class="lbl"><span>⬡ WEAPONS</span><b id="v-weapons">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-weapons"></div>
+            <div class="row" id="row-shields"><div class="lbl"><span>⬡ SHIELDS</span><b id="v-shields">100%</b></div><input type="range" min="0" max="100" value="100" id="sl-shields"></div>
             <div class="hint">Each system draws from core power, capped by the current CORE %. Throttle or cut a system; it can't exceed core unless players add reserves.</div>
           </div>
 
@@ -319,6 +337,7 @@
           <div class="card boost-card">
             <h2>AUX / BATTERY ROUTING <span class="v">AUX&nbsp;<b id="aux-cap">50%</b> · BATT&nbsp;<b id="batt-cap">25%</b></span></h2>
             <div id="reserve-lock" class="reserve-lock" hidden>⚠ AUX BANK OFFLINE — auxiliary routing locked. Fall back to BATTERY and restore aux via the DM.</div>
+            <div id="relay-lock-route" class="reserve-lock warn" hidden></div>
             <div id="route-rows" class="route-rows"></div>
             <div class="hint">When core power drops, route AUX (up to 50%, sub-optimal) into a system. BATTERY (up to 25%) is always available and can't be damaged. Reserves are independent of ship integrity.</div>
 
@@ -341,6 +360,7 @@
                3 bad entries lock the terminal for 5 minutes. -->
           <div class="card">
             <h2>SHIP TERMINAL <span class="v" id="term-status">READY</span></h2>
+            <div id="relay-lock-term" class="reserve-lock" hidden></div>
             <div class="term-log" id="term-log"></div>
             <div class="term-line"><span class="term-prompt">&gt;</span>
               <input type="text" id="term-in" maxlength="40" autocomplete="off" spellcheck="false"
@@ -373,6 +393,8 @@
               <input type="text" id="bk-seq-in" maxlength="6" inputmode="numeric" autocomplete="off" spellcheck="false"
                      aria-label="signal breaker sequence" placeholder="6 DIGITS · ENTER TO ARM">
             </div>
+            <div class="row"><div class="lbl"><span>⌁ CHALLENGE TARGET · RELAY</span><b id="bk-dm-target">—</b></div></div>
+            <div class="seg" id="bk-target-seg"></div>
             <div class="seg">
               <button id="bk-random" type="button" title="Arm a fresh random sequence">⟳ RANDOM</button>
               <button id="bk-lock" type="button">⛔ LOCK OUT</button>
@@ -384,7 +406,13 @@
               the board appears on the player view. RANDOM arms a fresh random sequence, which also
               wipes the players' progress (use it if they get stuck or the pattern gets predictable).
               No timer or attempt cap: LOCK OUT freezes the board until you UNLOCK it, END hides it.
-              Remote: BREAKER &lt;6 digits&gt; · BREAKER RANDOM · BREAKER LOCK · BREAKER UNLOCK · BREAKER OFF.</div>
+              <br>SYSTEM-RELAY: pick the system this challenge targets (shown on the player board).
+              Cracking it repairs that system's relay one step, OFFLINE → DAMAGED → ONLINE.
+              A relay gates that system's player controls: OFFLINE = locked, DAMAGED = throttle + battery
+              (terminal: SHIP TERMINAL), ONLINE = everything incl. AUX (terminal: OVERDRIVE). Knock relays
+              down in DAMAGE CONTROL → SYSTEM-RELAY; all relays start ONLINE (nothing gated).
+              Remote: BREAKER &lt;6 digits&gt; · BREAKER RANDOM · BREAKER LOCK · BREAKER UNLOCK · BREAKER OFF ·
+              BREAKER TARGET &lt;SYS&gt; · RELAY &lt;SYS|ALL&gt; &lt;ONLINE|DAMAGED|OFFLINE&gt;.</div>
           </div>
 
         </div>
@@ -464,7 +492,12 @@ import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
          normTimerLabel, firebaseDb } from './ship-model.js';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
-         RESULT_GLYPH, RESULT_CLASS, BreakerBoard } from './signal-breaker.js';
+         RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
+         relayLabel, relayUnlocks, repairRelay } from './signal-breaker.js';
+
+// ?player-view (legacy ?display) — resolved up front: the relay gate in the render functions needs it
+const Q = new URLSearchParams(location.search);
+const PLAYER = Q.has('player-view') || Q.has('display');
 
 // element ids are static — resolve each at most once
 const domCache = {};
@@ -518,6 +551,12 @@ const saveAux    = () => pushKey('shipAux', state.aux);
 const saveAlt    = () => pushKey('shipAltitude', { v: state.altitude });
 const saveTimer  = () => pushKey('shipTimer', state.timer);
 
+// ---- SYSTEM-RELAY gate (relay state lives in shipBreaker; see signal-breaker.js) ----
+// relay states: 0 ONLINE · 1 DAMAGED · 2 OFFLINE. gate(k, 1) = needs at least DAMAGED,
+// gate(k, 0) = needs ONLINE. The DM console is never gated.
+const relaySt = k => ((state.breaker && state.breaker.relay) ? state.breaker.relay[k] | 0 : 0);
+const gate = (k, need) => !PLAYER || relaySt(k) <= need;
+
 // ---- core power + per-system throttle ----
 // core power is derived from ship integrity; each system runs on core, capped by
 // its own throttle (and never above the current core level on core alone).
@@ -534,6 +573,8 @@ function renderPower() {
   KEYS.forEach(k => {
     const thr = clamp(state.power[k] | 0, 0, 100);
     const sl = $('sl-' + k); if (document.activeElement !== sl) sl.value = thr;
+    sl.disabled = !gate(k, 1);                                     // relay OFFLINE → throttle locked
+    $('row-' + k).classList.toggle('relay-gated', !gate(k, 1));
     const delivered = Math.min(thr, core);                       // core actually reaching the system
     const vEl = $('v-' + k);
     vEl.textContent = delivered + '%'; vEl.style.color = intColor(delivered);
@@ -550,7 +591,7 @@ const routeEls = {};   // per-system element refs, resolved once at build time
 ROUTE.forEach(([k, label]) => {
   const row = document.createElement('div'); row.className = 'route-row'; row.dataset.k = k;
   row.innerHTML =
-    `<div class="rr-h"><span>⬡ ${label}</span><b>EFF <span id="eff-${k}">100%</span></b></div>`
+    `<div class="rr-h"><span>⬡ ${label}<span class="rr-relay" id="rr-relay-${k}"></span></span><b>EFF <span id="eff-${k}">100%</span></b></div>`
   + `<div class="rr-sub">`
   +   `<div class="row"><div class="lbl"><span>AUX</span><b id="av-${k}">0%</b></div>`
   +     `<input type="range" min="0" max="50" step="1" value="0" id="sl-aux-${k}"></div>`
@@ -562,6 +603,7 @@ ROUTE.forEach(([k, label]) => {
     eff: row.querySelector('#eff-' + k),
     auxV: row.querySelector('#av-' + k),   auxSl: row.querySelector('#sl-aux-' + k),
     battV: row.querySelector('#bv-' + k),  battSl: row.querySelector('#sl-batt-' + k),
+    relay: row.querySelector('#rr-relay-' + k),
   };
   els.auxSl.addEventListener('input', e => {
     state.aux[k].aux = +e.target.value; renderRoute(); saveAux();
@@ -592,10 +634,15 @@ function renderRoute() {
     r.aux = clamp(r.aux | 0, 0, auxCap);               // clamp aux to the (possibly damaged) ceiling
     r.batt = clamp(r.batt | 0, 0, battCap);            // battery always available up to its cap
     const els = routeEls[k];
-    els.auxSl.max = auxCap; els.auxSl.disabled = !auxLive;
+    els.auxSl.max = auxCap; els.auxSl.disabled = !auxLive || !gate(k, 0);   // aux needs the relay ONLINE
     if (document.activeElement !== els.auxSl) els.auxSl.value = r.aux;
     els.auxV.textContent = r.aux + '%'; els.auxV.style.color = auxLive ? '' : 'var(--dim)';
-    els.battSl.max = battCap; els.battSl.disabled = false;          // battery is always operable
+    els.battSl.max = battCap; els.battSl.disabled = !gate(k, 1);    // battery: any live relay (DAMAGED+)
+    els.auxSl.parentElement.classList.toggle('relay-gated', !gate(k, 0));
+    els.battSl.parentElement.classList.toggle('relay-gated', !gate(k, 1));
+    const rs = relaySt(k);
+    els.relay.textContent = PLAYER && rs ? '🔒 RELAY ' + RELAY_WORD[rs] : '';
+    els.relay.className = 'rr-relay bk-rs' + rs;
     if (document.activeElement !== els.battSl) els.battSl.value = r.batt;
     els.battV.textContent = r.batt + '%';
     const delivered = Math.min(clamp(state.power[k] | 0, 0, 100), core);
@@ -625,6 +672,7 @@ function renderMaxPower(core) {
   const btn = $('btn-overdrive');
   btn.hidden = !show; $('overdrive-hint').hidden = !show;
   btn.classList.toggle('on', !!state.aux.overdrive);
+  btn.disabled = !gate('term', 0);                                // overdrive needs the TERMINAL relay ONLINE
   // overload flag: below full core power the reactor can't be overloaded, so
   // the redline can't trigger the self-destruct (also covers core OFFLINE)
   const flag = $('overload-flag');
@@ -744,6 +792,15 @@ POWER_SUBS.forEach(([k, label]) => {
     renderPower(); renderRoute(); renderPowerSubs(); savePower();
   });
 });
+// SYSTEM-RELAY — one relay per player system, cycling ONLINE / DAMAGED / OFFLINE like any
+// area; the relay gates that system's player controls (repaired by cracking challenges)
+const relayBtns = {};
+RELAY_SYSTEMS.forEach(([k, label]) => {
+  relayBtns[k] = areaButton(label, 'SYSTEM-RELAY', () => setRelay(k, (relaySt(k) + 1) % 3));
+});
+function renderRelayAreas() {
+  RELAY_KEYS.forEach(k => setAreaBtn(relayBtns[k], relaySt(k), RELAY_WORD[relaySt(k)]));
+}
 function renderAreas() {
   AREAS.forEach(([k]) => {
     const st = state.damage.areas[k] | 0;
@@ -845,9 +902,11 @@ function renderTerm() {
   termLog.scrollTop = termLog.scrollHeight;
   const locked = termLocked(), st = $('term-status');
   if (!locked && state.term.lockUntil) state.term.lockUntil = 0;   // expired — clear locally
-  termIn.disabled = locked;
-  st.classList.toggle('locked', locked);
-  st.textContent = locked ? 'LOCKED ' + fmtT((state.term.lockUntil - Date.now()) / 1000)
+  const relayDown = !gate('term', 1);                                // TERMINAL relay OFFLINE
+  termIn.disabled = locked || relayDown;
+  st.classList.toggle('locked', locked || relayDown);
+  st.textContent = relayDown ? 'RELAY OFFLINE'
+    : locked ? 'LOCKED ' + fmtT((state.term.lockUntil - Date.now()) / 1000)
     : state.term.attempts > 0 ? (TERM_TRIES - state.term.attempts) + ' TRIES LEFT' : 'READY';
 }
 // initiate the destruct — the countdown duration comes from the DM's OH SH*T!
@@ -938,7 +997,7 @@ let bkPeek = false;
 const BK_STATUS_TXT = { off: 'OFF', active: 'ARMED', cracked: 'CRACKED', lockout: 'LOCKED OUT' };
 
 function armBreaker(code) {
-  state.breaker = newBreaker(code);
+  state.breaker = newBreaker(code, state.breaker);   // keeps the target + relay states
   saveBreaker(); renderBreaker();
 }
 function setBreakerStatus(status) {
@@ -954,8 +1013,45 @@ function breakerTransmit(guess) {
   if (b.status !== 'active' || !b.code.length) { renderBreaker(); return; }
   const r = evaluate(guess, b.code);
   b.hist = [...b.hist, { g: guess, r }].slice(-BK_HIST);
-  if (isCracked(r)) b.status = 'cracked';
+  if (isCracked(r)) {
+    b.status = 'cracked';
+    const st = repairRelay(b);   // the targeted relay steps up OFFLINE → DAMAGED → ONLINE
+    if (st !== null) {
+      termPush('⌁ ' + relayLabel(b.target) + ' RELAY ' + RELAY_WORD[st] + ' — ' + relayUnlocks(b.target, st) + ' UNLOCKED', 'tl-ok');
+      saveTerm(); renderTerm();
+    }
+  }
   saveBreaker(); renderBreaker();
+}
+// DM: pick the system the challenge targets / set a relay's state
+function setBreakerTarget(k) {
+  if (!RELAY_KEYS.includes(k)) return false;
+  state.breaker.target = k;
+  saveBreaker(); renderBreaker();
+  return true;
+}
+function setRelay(k, st) {
+  state.breaker.relay = { ...state.breaker.relay, [k]: st };
+  saveBreaker(); renderBreaker();
+}
+const targetBtns = {};
+RELAY_SYSTEMS.forEach(([k, label]) => {
+  const b = document.createElement('button'); b.type = 'button';
+  b.innerHTML = `${label}<span class="rs"></span>`; b._rs = b.querySelector('.rs');
+  b.addEventListener('click', () => setBreakerTarget(k));
+  $('bk-target-seg').appendChild(b);
+  targetBtns[k] = b;
+});
+// player-facing lock notices on the power / routing / terminal cards
+function renderRelayLocks() {
+  const names = keys => keys.map(relayLabel).join(', ');
+  const sysDown = RELAY_KEYS.filter(k => k !== 'term' && relaySt(k) === 2);
+  const auxDown = RELAY_KEYS.filter(k => k !== 'term' && relaySt(k) >= 1);
+  const show = (id, on, msg) => { const el = $(id); el.hidden = !(PLAYER && on); if (on) el.textContent = msg; };
+  show('relay-lock-sys', sysDown.length, '⚠ RELAY OFFLINE: ' + names(sysDown) + ' — controls locked. Crack the SYSTEM-RELAY to restore.');
+  show('relay-lock-route', auxDown.length, '⚠ AUX locked until the relay is ONLINE: ' + names(auxDown)
+    + (sysDown.length ? ' · BATTERY locked (relay OFFLINE): ' + names(sysDown) : ''));
+  show('relay-lock-term', relaySt('term') === 2, '⚠ TERMINAL RELAY OFFLINE — command input locked. Crack the SYSTEM-RELAY to restore.');
 }
 function renderBreaker() {
   const b = state.breaker;
@@ -992,6 +1088,17 @@ function renderBreaker() {
     }));
     log.scrollTop = log.scrollHeight;
   }
+  // SYSTEM-RELAY: DM target picker + every gated control follows the relay states
+  $('bk-dm-target').textContent = relayLabel(b.target) + ' · ' + RELAY_WORD[relaySt(b.target)];
+  $('bk-dm-target').className = 'bk-rs' + relaySt(b.target);
+  RELAY_KEYS.forEach(k => {
+    const btn = targetBtns[k], rs = relaySt(k);
+    btn.className = 'on s' + rs + (k === b.target ? ' tgt' : '');
+    btn._rs.textContent = RELAY_WORD[rs];
+  });
+  renderRelayAreas();
+  renderRelayLocks();
+  renderPower(); renderRoute(); renderTerm();
   if (breakerBoard) breakerBoard.update(b);
 }
 function bkError(msg) {   // brief inline error on the DM card's status badge
@@ -1046,6 +1153,7 @@ const STATE_WORDS = { ONLINE: 0, DAMAGED: 1, OFFLINE: 2, 0: 0, 1: 1, 2: 2 };
 const SHIELD_IDX = { FORE: 0, STBD: 1, AFT: 2, PORT: 3 };
 const POWER_ALIAS = { ENG: 'eng', ENGINES: 'eng', DRONES: 'drones', DRN: 'drones',
   WEAPONS: 'weapons', WPN: 'weapons', SHIELDS: 'shields', SHD: 'shields' };
+const RELAY_ALIAS = { ...POWER_ALIAS, TERM: 'term', TERMINAL: 'term' };
 const parseClock = s => {   // "90" or "1:30" → seconds
   const m = String(s).match(/^(\d{1,3}):([0-5]\d)$/);
   return m ? +m[1] * 60 + +m[2] : (/^\d{1,4}$/.test(s) ? +s : NaN);
@@ -1108,12 +1216,25 @@ function execRemote(cmd) {
       return setBreakerStatus('lockout') ? '⛔ signal breaker locked out' : '✖ no signal breaker armed';
     if (arg === 'UNLOCK')
       return setBreakerStatus('active') ? '▶ signal breaker unlocked' : '✖ no signal breaker armed';
+    let t;
+    if ((t = arg.match(/^TARGET (\w+)$/))) {
+      const k = RELAY_ALIAS[t[1]];
+      return k && setBreakerTarget(k) ? '⌁ signal breaker target → ' + relayLabel(k) + ' relay' : '✖ unknown relay: ' + t[1];
+    }
     if (arg === 'OFF' || arg === 'END')
       return setBreakerStatus('off') ? '✕ signal breaker ended' : '✖ no signal breaker armed';
     const code = parseSequence(arg);
     if (!code) return '✖ BREAKER needs 6 digits (0-9), RANDOM, LOCK, UNLOCK or OFF';
     armBreaker(code);
     return '⌁ signal breaker armed · sequence set';
+  }
+  if ((m = raw.match(/^RELAY (\w+) (\w+)$/))) {
+    const v = STATE_WORDS[m[2]];
+    const ks = m[1] === 'ALL' ? RELAY_KEYS : RELAY_ALIAS[m[1]] ? [RELAY_ALIAS[m[1]]] : null;
+    if (!ks || v === undefined) return '✖ unknown relay/state: ' + raw;
+    state.breaker.relay = { ...state.breaker.relay, ...Object.fromEntries(ks.map(k => [k, v])) };
+    saveBreaker(); renderBreaker();
+    return '⌁ ' + m[1] + ' RELAY → ' + RELAY_WORD[v];
   }
   if ((m = raw.match(/^ALT (\d{1,3})$/))) {
     state.altitude = clamp(+m[1], 0, 100);
@@ -1123,7 +1244,7 @@ function execRemote(cmd) {
   return '✖ unknown command: ' + raw.slice(0, 40);
 }
 // the shared terminal log is player-visible: never echo a breaker sequence
-const maskRemote = c => c.replace(/^BREAKER (?!RANDOM$|LOCK$|LOCKOUT$|UNLOCK$|OFF$|END$).*$/, 'BREAKER ••••••');
+const maskRemote = c => c.replace(/^BREAKER (?!RANDOM$|LOCK$|LOCKOUT$|UNLOCK$|OFF$|END$|TARGET ).*$/, 'BREAKER ••••••');
 let cmdSeen = null;
 try { cmdSeen = localStorage.getItem('shipCmdSeen'); } catch (e) {}
 function handleRemoteCommand(d) {
@@ -1147,8 +1268,6 @@ function renderAll() { renderPower(); renderRoute(); renderHull(); renderAlt(); 
 renderAll();
 
 // ---- player view (?display): ship views + damage dots + the power-routing control ----
-const Q = new URLSearchParams(location.search);
-const PLAYER = Q.has('player-view') || Q.has('display');   // ?player-view (legacy ?display)
 // players see the operator-triggered damage dots but no state readouts (bare)
 // the DM's embedded display carries the system log (?log=1); players never do
 $('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1';
@@ -1165,8 +1284,9 @@ if (PLAYER) {
       || id === 'btn-overdrive' || id === 'term-in';
     if (!operable) { el.disabled = true; el.tabIndex = -1; }
   });
-  renderRoute();   // re-apply the aux lock after the blanket disable above
-  renderTerm();    // re-apply the terminal lockout state too
+  renderPower();   // re-apply the relay gate after the blanket disable above
+  renderRoute();   // ...and the aux lock
+  renderTerm();    // ...and the terminal lockout state
   // the SIGNAL BREAKER board — built after the blanket disable so its controls stay live
   breakerBoard = new BreakerBoard($('breaker-board'), { onTransmit: breakerTransmit });
   renderBreaker();

@@ -23,6 +23,8 @@
  *   BREAKER RANDOM             arm (or reseed) it with a random sequence
  *   BREAKER LOCK | UNLOCK      lock the players out / let them back in
  *   BREAKER OFF                end it (hides the board on the player view)
+ *   BREAKER TARGET <SYS>       pick the relay the challenge repairs (ENG|DRONES|WEAPONS|SHIELDS|TERM)
+ *   RELAY <SYS|ALL> <state>    set a system relay ONLINE | DAMAGED | OFFLINE (gates player controls)
  * ─────────────────────────────────────────────────────────────────────────
  */
 

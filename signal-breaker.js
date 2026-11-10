@@ -12,12 +12,46 @@
 //
 // Synced state (localStorage / BroadcastChannel / Firebase key `shipBreaker`):
 //   { id, code: [6 ints], status: off|active|cracked|lockout,
-//     hist: [{ g: [6 ints], r: 'nhlnnl' }] }   r: n nominal · h high · l low
+//     hist: [{ g: [6 ints], r: 'nhlnnl' }],    r: n nominal · h high · l low
+//     target: relay key, relay: { eng, drones, weapons, shields, term } }
+//
+// SYSTEM-RELAY: every player-operated system has its own relay, with the same
+// ONLINE (0) / DAMAGED (1) / OFFLINE (2) states as the rest of the ship. The
+// relay gates that system's player controls (RELAY_SYSTEMS below). The DM picks
+// which system a challenge targets; cracking it repairs that relay one step
+// (OFFLINE → DAMAGED → ONLINE), unlocking more of its controls. Relays default
+// to ONLINE, so nothing is gated until the DM knocks a relay down.
 // The pure helpers below are shared by the operator and player views; the
 // BreakerBoard class is the player-facing board (DOM + canvas).
 
 export const BK_NODES = 6, BK_MIN = 0, BK_MAX = 9, BK_HIST = 200;
 export const BK_STATUS = ['off', 'active', 'cracked', 'lockout'];
+export const RELAY_WORD = ['ONLINE', 'DAMAGED', 'OFFLINE'];
+// [key, label, unlocked at DAMAGED, unlocked at ONLINE]
+export const RELAY_SYSTEMS = [
+  ['eng',     'ENGINES',  'THROTTLE + BATTERY', 'AUX ROUTING'],
+  ['drones',  'DRONES',   'THROTTLE + BATTERY', 'AUX ROUTING'],
+  ['weapons', 'WEAPONS',  'THROTTLE + BATTERY', 'AUX ROUTING'],
+  ['shields', 'SHIELDS',  'THROTTLE + BATTERY', 'AUX ROUTING'],
+  ['term',    'TERMINAL', 'SHIP TERMINAL',      'OVERDRIVE'],
+];
+export const RELAY_KEYS = RELAY_SYSTEMS.map(r => r[0]);
+export const relayLabel = k => (RELAY_SYSTEMS.find(r => r[0] === k) || [k, String(k).toUpperCase()])[1];
+export const defaultRelay = () => Object.fromEntries(RELAY_KEYS.map(k => [k, 0]));
+export function normRelay(raw) {
+  const o = defaultRelay();
+  if (raw && typeof raw === 'object') RELAY_KEYS.forEach(k => {
+    const v = Math.round(+raw[k]);
+    if (v >= 0 && v <= 2) o[k] = v;
+  });
+  return o;
+}
+/** what a relay unlocks right now, e.g. 'THROTTLE + BATTERY' (DAMAGED), 'ALL CONTROLS' (ONLINE). */
+export function relayUnlocks(k, st) {
+  const r = RELAY_SYSTEMS.find(x => x[0] === k);
+  if (!r) return '';
+  return st === 0 ? 'ALL CONTROLS' : st === 1 ? r[2] : 'NOTHING';
+}
 const RESULT_RE = new RegExp(`^[nhl]{${BK_NODES}}$`);
 
 /** '482915', '4 8 2 9 1 5', '4,8,2,9,1,5' or [4,8,2,9,1,5] → array, else null. */
@@ -49,14 +83,25 @@ export function normBreaker(raw) {
     .map(h => ({ g: parseSequence(h && h.g), r: String((h && h.r) || '') }))
     .filter(h => h.g && RESULT_RE.test(h.r))
     .slice(-BK_HIST);
-  return { id: String(raw.id || ''), code, status, hist };
+  const target = RELAY_KEYS.includes(raw.target) ? raw.target : RELAY_KEYS[0];
+  return { id: String(raw.id || ''), code, status, hist, target, relay: normRelay(raw.relay) };
 }
 
-/** A fresh, armed challenge. A new id tells every board to reset. */
-export const newBreaker = code => ({
+/** A fresh, armed challenge; target + relays carry over. A new id tells every board to reset. */
+export const newBreaker = (code, prev = {}) => ({
   id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
   code: code.slice(), status: 'active', hist: [],
+  target: RELAY_KEYS.includes(prev.target) ? prev.target : RELAY_KEYS[0],
+  relay: normRelay(prev.relay),
 });
+
+/** Score the crack: repair the target relay one step. Returns the new state (or null if already ONLINE). */
+export function repairRelay(b) {
+  const st = b.relay[b.target];
+  if (!(st > 0)) return null;
+  b.relay = { ...b.relay, [b.target]: st - 1 };
+  return st - 1;
+}
 
 export const nodeLabel = i => String.fromCharCode(65 + i);
 export const RESULT_GLYPH = { n: '●', h: '▲', l: '▼' };
@@ -101,6 +146,7 @@ export class BreakerBoard {
     this.onTransmit = onTransmit;
     this.sound = sound;
     this.id = null; this.histLen = -1; this.status = 'off'; this.seen = false;
+    this.target = RELAY_KEYS[0]; this.relay = defaultRelay();
     this.hist = [];
     this.guess = Array(BK_NODES).fill(null);
     this.locked = Array(BK_NODES).fill(false);
@@ -129,7 +175,10 @@ export class BreakerBoard {
         </div>`;
     }
     this.root.innerHTML = `
+      <div class="bk-target"></div>
       <div class="bk-status"></div>
+      <div class="bk-relay">${RELAY_SYSTEMS.map(([k, label]) =>
+        `<span class="bk-ch" data-k="${k}"><i></i>${label}<em></em></span>`).join('')}</div>
       <div class="bk-hud"><span>TRANSMISSIONS <b class="bk-count">0</b></span><span>NOMINAL <b class="bk-nom">0/${BK_NODES}</b></span></div>
       <div class="bk-log"></div>
       <div class="hint bk-hint">Enter a FULL sequence each transmission — NOMINAL nodes lock in.
@@ -141,6 +190,8 @@ export class BreakerBoard {
     this.el = {
       status: q('.bk-status'), count: q('.bk-count'), nom: q('.bk-nom'), log: q('.bk-log'), tx: q('.bk-tx'),
       nodes: [...this.root.querySelectorAll('.bk-node')],
+      target: q('.bk-target'),
+      chans: [...this.root.querySelectorAll('.bk-ch')],
     };
     this.el.cards = this.el.nodes.map(n => ({
       card: n, read: n.querySelector('.bk-read'), val: n.querySelector('.bk-val'),
@@ -163,7 +214,7 @@ export class BreakerBoard {
   /** Apply synced state. Safe to call repeatedly with the same state. */
   update(b) {
     const firstSeen = !this.seen;
-    const prevId = this.id, prevStatus = this.status;
+    const prevId = this.id, prevStatus = this.status, prevRelay = this.relay;
     const sessionChanged = b.id !== this.id;
     if (sessionChanged) { this.id = b.id; this.histLen = -1; }
 
@@ -180,12 +231,15 @@ export class BreakerBoard {
     }
     this.hist = b.hist;
     this.status = b.status;
+    this.target = b.target;
+    this.relay = b.relay;
     this.seen = true;
     // a status change (cracked / locked out / reseeded) always beats a pending warning
     if (sessionChanged || prevStatus !== b.status) { clearTimeout(this.flashT); this.flashT = null; }
 
     this._renderNodes();
     this._renderHud();
+    this._renderRelay();
     this._renderStatus();
 
     if (!firstSeen) {
@@ -194,6 +248,10 @@ export class BreakerBoard {
         this._flash('⚠ OPERATOR RESEEDED THE SIGNAL — NEW SEQUENCE', 2600);
       } else if (b.status === 'cracked' && prevStatus !== 'cracked') {
         this._sfx('win');
+        const st = b.relay[b.target];
+        if (st < prevRelay[b.target]) {
+          this._flash(`✓ ${relayLabel(b.target)} RELAY ${RELAY_WORD[st]} — ${relayUnlocks(b.target, st)} UNLOCKED`, 3600);
+        }
       } else if (b.status === 'lockout' && prevStatus !== 'lockout') {
         this._sfx('lose');
         this.root.classList.remove('bk-shake'); void this.root.offsetWidth; this.root.classList.add('bk-shake');
@@ -216,14 +274,28 @@ export class BreakerBoard {
     if (this.flashT) return;   // a flash owns the line until it expires
     const s = this.el.status;
     const n = this.hist.length;
+    const st = this.relay[this.target] | 0;
+    const word = RELAY_WORD[st];
     const txt = {
       off: 'SIGNAL BREAKER OFFLINE',
-      active: 'RELAY STATUS:OFFLINE',
-      cracked: `✓ RELAY STATUS:ACTIVE || ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
+      active: `RELAY STATUS: ${word}`,
+      cracked: `✓ RELAY STATUS: ${word} || ${n} TRANSMISSION${n === 1 ? '' : 'S'}`,
       lockout: '✖ ACCESS REVOKED — SERA INITIATED LOCK-OUT',
     }[this.status];
     s.textContent = txt;
-    s.className = 'bk-status bk-st-' + this.status;
+    s.className = 'bk-status bk-st-' + this.status + ' bk-rs' + st;
+  }
+
+  _renderRelay() {
+    const st = this.relay[this.target] | 0;
+    this.el.target.textContent = `TARGET ▸ ${relayLabel(this.target)} RELAY · ${RELAY_WORD[st]}`;
+    this.el.target.className = 'bk-target bk-rs' + st;
+    this.el.chans.forEach(c => {
+      const k = c.dataset.k, s = this.relay[k] | 0;
+      c.className = 'bk-ch bk-rs' + s + (k === this.target ? ' bk-tgt' : '');
+      c.querySelector('em').textContent = RELAY_WORD[s];
+      c.title = `${relayLabel(k)} relay ${RELAY_WORD[s]} — unlocked: ${relayUnlocks(k, s)}`;
+    });
   }
 
   _flash(msg, ms) {
