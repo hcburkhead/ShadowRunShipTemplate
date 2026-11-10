@@ -17,6 +17,8 @@ no build step; just open the files (or host on GitHub Pages).
 - `signal-breaker.js` — the SIGNAL BREAKER code-breaker challenge: the shared
   rules (scoring, sync-state validation) plus the player board. Imported by
   `operator.html`.
+- `crew-figures.js` — the crew hologram figurines (Three.js primitives) shown on the
+  ship display.
 - `ship-model.js` — the shared power/damage model (pure functions + sync
   constants); both `operator.html` and `index.html` import it, so the math
   lives in one place.
@@ -206,17 +208,21 @@ ship's own wireframe softly pulses yellow / red instead (no dots).
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
 battery, a booster or a lift fan, or "— NOT SHOWN". Each placed player shows as a
-small glowing white dot with a faint name tag, on both the DM and player views, in
-all five ship views; players sharing an area spread out around it. Synced as
-`shipCrew`; remote: `CREW <NAME> <AREA|OFF>` (e.g. `CREW RYU REACTOR`).
-- Counter-rotating lift-fan blades per duct (slow/stop/red as fans take damage).
-- The hull **kerns** — banks/pitches toward failing lift fans.
-- Directional shields, a floor shield ring, drone swarm, and blinking damage
-  dots, all colored by state.
-- The drone swarm shows the worse of the DRONE BAY state and the DRONES power
-  slider (67–100% = ONLINE, 34–66% = DAMAGED, 0–33% = OFFLINE): ONLINE = normal colours
-  and moving, DAMAGED = yellow and frozen, OFFLINE = red and frozen (always shown).
-- A left-rail **system log** (DM view only) recording every state change.
+small **hologram figurine** (`crew-figures.js`, wireframe like the ship, one accent
+colour each) standing on a soft glow, with a faint name tag, on both the DM and
+player views, in all five ship views (the perspective copies slowly turn); players
+sharing an area spread out around it:
+- **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
+  through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
+- **Gimli** — stocky dwarf warrior: braided beard and moustache, crested half-helm
+  with nasal / cheek guards, pauldrons, belt buckle, double-bladed axe.
+- **Ganbold** — tall hitman: long belted coat with popped collar, fur ushanka,
+  shades, suppressed scoped rifle at the ready.
+- **Ryu** — lean street samurai: cyber arm, visor, topknot, collared jacket,
+  katana across the back, thigh holster.
+
+All four share one posable humanoid body (contoured torso, jointed arms and legs
+with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.
 
 ## Views
 - `operator.html` — DM console.
