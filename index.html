@@ -647,7 +647,8 @@ function updateFans(s) {
 }
 // drones show the WORSE of two statuses, like every other system:
 //   the DRONE BAY area (Damage Control: ONLINE / DAMAGED / OFFLINE), and
-//   the DRONES power slider (System Power): 100% = ONLINE · 1–99% = DAMAGED · 0% = OFFLINE
+//   the DRONES power slider (System Power), banded like the lift fans:
+//     67–100% = ONLINE · 34–66% = DAMAGED · 0–33% = OFFLINE
 // which render as
 //   ONLINE  → normal colours, rotors spin, drones bob
 //   DAMAGED → yellow, frozen
@@ -657,7 +658,7 @@ function updateFans(s) {
 function droneState(s) {
   const bay = clamp((s.areas.droneBay || 0) | 0, 0, 2);
   const pwr = clamp((s.throttle && s.throttle.drones) | 0, 0, 100);
-  const slider = pwr >= 100 ? 0 : pwr > 0 ? 1 : 2;
+  const slider = pwr > 66 ? 0 : pwr > 33 ? 1 : 2;
   return Math.max(bay, slider);
 }
 function updateDrones(s) {

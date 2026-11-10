@@ -191,7 +191,7 @@ the DM knocks one down.
 - Directional shields, a floor shield ring, drone swarm, and blinking damage
   dots, all colored by state.
 - The drone swarm shows the worse of the DRONE BAY state and the DRONES power
-  slider (100% = ONLINE, 1–99% = DAMAGED, 0% = OFFLINE): ONLINE = normal colours
+  slider (67–100% = ONLINE, 34–66% = DAMAGED, 0–33% = OFFLINE): ONLINE = normal colours
   and moving, DAMAGED = yellow and frozen, OFFLINE = red and frozen (always shown).
 - A left-rail **system log** (DM view only) recording every state change.
 
