@@ -9,8 +9,9 @@
 //
 //   casper  — tall, slender troll hacker: rounded hoodie hood with horns through it, tusks,
 //             eyes glowing in the hood, long cloak, a cyberdeck + datajack cable
-//   gimli   — stocky dwarf warrior: braided beard + moustache, crested half-helm with
-//             nasal / cheek guards, pauldrons, belt + buckle, double-bladed axe
+//   gimli   — the team's face, a dwarf: shorter, normal proportions, tailored suit with a
+//             gold tie + pocket square, groomed beard with a gold-ringed braid, swept-back
+//             hair, commlink in hand
 //   ganbold — tall augmented hitman: long belted coat with popped collar, fur ushanka,
 //             shades over a red cybereye, neck ports, cyber left arm + smartlink cable,
 //             suppressed scoped rifle at the ready
@@ -62,18 +63,6 @@ function tube(g, pts, r, color = W, segs = 12) {
 const ring = (g, p, R, r, color, rot = [Math.PI / 2, 0, 0], s) =>
   solid(g, new THREE.TorusGeometry(R, r, 4, 14), color, { p, r: rot, s }, 35);
 const box = (g, w, h, d, color, t) => solid(g, new THREE.BoxGeometry(w, h, d), color, t);
-// a flat crescent axe blade in the XY plane, from the haft (x = 0) out to the edge (+x)
-function axeBlade() {
-  const sh = new THREE.Shape();
-  sh.moveTo(0, -0.16);
-  sh.quadraticCurveTo(0.25, -0.18, 0.52, -0.5);        // lower beard
-  sh.quadraticCurveTo(0.72, 0, 0.52, 0.5);             // curved cutting edge
-  sh.quadraticCurveTo(0.25, 0.18, 0, 0.16);            // upper horn back to the haft
-  sh.closePath();
-  const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false, curveSegments: 6 });
-  geo.translate(0, 0, -0.03);
-  return geo;
-}
 
 // ---- the shared humanoid rig ----
 // o.legs / o.arms: [[root, joint, end], [root, joint, end]] (left, right)
@@ -145,41 +134,37 @@ const BUILD = {
     return 6.95;
   },
 
-  // ---- dwarf warrior: short, broad, braided beard, half-helm, axe ----
+  // ---- dwarf face: shorter than the others but normal proportions, sharp suit,
+  //      groomed beard with one gold-ringed braid, swept-back hair, commlink in hand ----
   gimli(g) {
-    const STEEL = 0xfacc15;
+    const GOLD = 0xfacc15, LINK = 0x6df3ff;
     humanoid(g, {
-      thigh: 0.34, arm: 0.26, foot: 0.8,
-      legs: [[[-0.42, 1.35, 0], [-0.5, 0.78, 0.12], [-0.46, 0.38, 0]], [[0.42, 1.35, 0], [0.5, 0.78, 0.1], [0.48, 0.38, 0]]],
-      arms: [[[-1.0, 2.65, 0], [-1.25, 1.95, 0.25], [-0.95, 1.5, 0.65]], [[1.0, 2.65, 0], [1.32, 2.15, 0.3], [1.18, 1.95, 0.82]]],
-      torsoY: 1.15, torsoZ: 0.85, torso: [[0.85, 0], [0.98, 0.35], [1.08, 0.8], [1.12, 1.2], [0.95, 1.55], [0.45, 1.8]],
-      neck: [2.9, 3.0, 0.3], head: { p: [0, 3.35, 0.05], r: 0.5 },
+      thigh: 0.27, arm: 0.19, foot: 0.68,
+      legs: [[[-0.3, 1.75, 0], [-0.34, 0.98, 0.1], [-0.32, 0.38, 0]], [[0.3, 1.75, 0], [0.36, 0.98, 0.06], [0.35, 0.38, -0.04]]],
+      arms: [[[-0.7, 3.35, 0], [-0.82, 2.7, 0.12], [-0.64, 2.15, 0.3]], [[0.7, 3.35, 0], [0.88, 2.78, 0.3], [0.55, 3.0, 0.68]]],
+      torsoY: 1.6, torsoZ: 0.72, torso: [[0.55, 0], [0.52, 0.35], [0.5, 0.6], [0.62, 1.1], [0.68, 1.45], [0.52, 1.65], [0.22, 1.78]],
+      neck: [3.36, 3.55, 0.17], head: { p: [0, 3.84, 0.03], r: 0.4 },
     });
-    // helm: half-dome + rim + crest, nasal and cheek guards
-    solid(g, new THREE.SphereGeometry(0.58, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), STEEL, { p: [0, 3.4, 0.03] });
-    ring(g, [0, 3.42, 0.03], 0.58, 0.05, STEEL);
-    box(g, 0.08, 0.2, 1.0, STEEL, { p: [0, 3.95, 0.03] });               // crest ridge
-    box(g, 0.1, 0.45, 0.08, STEEL, { p: [0, 3.25, 0.55] });              // nasal guard
-    box(g, 0.08, 0.45, 0.35, STEEL, { p: [-0.5, 3.15, 0.25] });          // cheek guards
-    box(g, 0.08, 0.45, 0.35, STEEL, { p: [0.5, 3.15, 0.25] });
-    // beard: a full wedge, two long braids with rings, a moustache
-    solid(g, new THREE.ConeGeometry(0.62, 1.3, 9), W, { p: [0, 2.55, 0.42], r: [Math.PI + 0.15, 0, 0] });
-    tube(g, [[-0.28, 2.8, 0.55], [-0.32, 2.2, 0.72], [-0.3, 1.6, 0.8], [-0.26, 1.15, 0.78]], 0.08);
-    tube(g, [[0.28, 2.8, 0.55], [0.32, 2.2, 0.72], [0.3, 1.6, 0.8], [0.26, 1.15, 0.78]], 0.08);
-    ring(g, [-0.3, 1.55, 0.8], 0.11, 0.03, STEEL); ring(g, [0.3, 1.55, 0.8], 0.11, 0.03, STEEL);
-    solid(g, new THREE.ConeGeometry(0.08, 0.5, 5), W, { p: [-0.25, 3.1, 0.5], r: [0, 0, 1.2] });   // moustache
-    solid(g, new THREE.ConeGeometry(0.08, 0.5, 5), W, { p: [0.25, 3.1, 0.5], r: [0, 0, -1.2] });
-    // pauldrons, belt + buckle
-    solid(g, new THREE.SphereGeometry(0.45, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), STEEL, { p: [-1.02, 2.62, 0], r: [0, 0, 0.35] });
-    solid(g, new THREE.SphereGeometry(0.45, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), STEEL, { p: [1.02, 2.62, 0], r: [0, 0, -0.35] });
-    ring(g, [0, 1.3, 0], 1.0, 0.07, STEEL, undefined, [1, 0.86, 1]);
-    box(g, 0.4, 0.3, 0.1, STEEL, { p: [0, 1.3, 0.88] });
-    // double-bladed axe: haft, two crescent blades, top spike
-    rod(g, [1.2, 0.35, 0.85], [1.2, 3.85, 0.72], 0.06, 0.06, W, 6);
-    const blade = axeBlade();
-    solid(g, blade, STEEL, { p: [1.2, 3.35, 0.7] });                       // crescent blades, either side
-    solid(g, blade, STEEL, { p: [1.2, 3.35, 0.7], s: [-1, 1, 1] });
-    solid(g, new THREE.ConeGeometry(0.07, 0.35, 5), STEEL, { p: [1.2, 4.0, 0.72] });
+    // tailored suit: jacket hem, shirt collar, lapels, gold tie + pocket square, buttons
+    lathe(g, [[0.64, 0], [0.57, 0.35], [0.52, 0.55]], W, { p: [0, 1.45, 0], s: [1, 1, 0.78] }, 10);
+    lathe(g, [[0.2, 0], [0.24, 0.16]], W, { p: [0, 3.32, 0.02], s: [1, 1, 0.9] }, 10);
+    line(g, [[-0.18, 3.35, 0.36], [-0.36, 2.85, 0.48], [-0.08, 2.3, 0.46]], W);   // lapels
+    line(g, [[0.18, 3.35, 0.36], [0.36, 2.85, 0.48], [0.08, 2.3, 0.46]], W);
+    box(g, 0.12, 0.75, 0.04, GOLD, { p: [0, 2.9, 0.47], r: [-0.12, 0, 0] });      // tie
+    box(g, 0.16, 0.1, 0.04, GOLD, { p: [0, 3.28, 0.42] });                        // knot
+    box(g, 0.18, 0.08, 0.04, GOLD, { p: [-0.38, 2.95, 0.5] });                    // pocket square
+    ball(g, [0, 2.2, 0.46], 0.04); ball(g, [0, 2.0, 0.45], 0.04);                 // buttons
+    // groomed beard, one braid with a gold ring, neat moustache
+    solid(g, new THREE.ConeGeometry(0.34, 0.55, 8), W, { p: [0, 3.42, 0.3], r: [Math.PI + 0.25, 0, 0] });
+    tube(g, [[0, 3.2, 0.42], [0, 2.98, 0.48], [0, 2.82, 0.47]], 0.05);
+    ring(g, [0, 2.93, 0.48], 0.07, 0.025, GOLD);
+    solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [-0.14, 3.68, 0.36], r: [0, 0, 1.3] });
+    solid(g, new THREE.ConeGeometry(0.05, 0.3, 5), W, { p: [0.14, 3.68, 0.36], r: [0, 0, -1.3] });
+    // swept-back hair
+    lathe(g, [[0.38, 0], [0.41, 0.14], [0.34, 0.3], [0.12, 0.38], [0, 0.39]], W, { p: [0, 3.9, -0.05], s: [1, 1, 1.12] }, 10);
+    // commlink held up in the right hand, gold signet ring on the left
+    box(g, 0.28, 0.42, 0.05, LINK, { p: [0.52, 3.1, 0.75], r: [-0.4, -0.3, 0] });
+    ring(g, [-0.64, 2.12, 0.33], 0.06, 0.02, GOLD);
     return 4.3;
   },
 

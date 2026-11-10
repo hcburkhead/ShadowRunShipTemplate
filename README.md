@@ -214,8 +214,9 @@ player views, in all five ship views (the perspective copies slowly turn); playe
 sharing an area spread out around it:
 - **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
   through, tusks, eyes glowing in the hood, long cloak, cyberdeck + datajack cable.
-- **Gimli** — stocky dwarf warrior: braided beard and moustache, crested half-helm
-  with nasal / cheek guards, pauldrons, belt buckle, double-bladed axe.
+- **Gimli** — the team's face, a dwarf: shorter but normally proportioned, in a
+  tailored suit with a gold tie and pocket square, groomed beard with a gold-ringed
+  braid, swept-back hair, commlink in hand.
 - **Ganbold** — tall, augmented hitman: long belted coat with popped collar, fur
   ushanka, shades over a red cybereye, neck ports, a cyber left arm with a
   smartlink cable to his suppressed scoped rifle.
