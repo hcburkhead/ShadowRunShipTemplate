@@ -5,6 +5,10 @@ of the Helicarrier with live damage, power, and flight readouts. Static site —
 no build step; just open the files (or host on GitHub Pages).
 
 ## Files
+> Module imports carry a `?v=N` cache-buster (`operator.html`, `index.html`). Bump it
+> whenever `ship-model.js` or `signal-breaker.js` changes, or browsers holding the old
+> module will fail to load the console.
+
 - `operator.html` — the DM control surface, with the holographic display
   embedded. Drives everything below.
 - `index.html` — the holographic display: a perspective view + four profile
@@ -139,7 +143,11 @@ and the relay gates that system's controls on the player view:
   (TERMINAL: the ship terminal input unlocks).
 - **ONLINE** — everything, including AUX routing (TERMINAL: OVERDRIVE).
 
-On the SIGNAL BREAKER card the DM picks the **challenge target** (which
+A **SYSTEM-RELAY STATUS** panel at the top of the power controls shows every
+relay's state, what it currently unlocks and the active puzzle's target — on
+both the DM console and the player view, whether or not a challenge is armed.
+
+At the top of the SIGNAL BREAKER card (① PUZZLE IS FOR) the DM picks the **challenge target** (which
 system's relay the current challenge is for); the player board shows
 `TARGET ▸ <SYSTEM> RELAY` plus every relay's status. Repairs run through
 **SERA**, the ship's AI:
