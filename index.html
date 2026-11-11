@@ -280,12 +280,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
-import { CREW, normCrew, crewFreePos } from './ship-model.js?v=7';
-import { buildRooms } from './ship-rooms.js?v=3';   // ship interiors (bridge, command offices, engine room)
+import { CREW, normCrew, crewFreePos } from './ship-model.js?v=8';
+import { buildRooms } from './ship-rooms.js?v=4';   // ship interiors (bridge, command offices, engine room)
 import { buildFigure } from './crew-figures.js?v=14';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
-         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=7';   // ?v busts stale caches — bump on change
+         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=8';   // ?v busts stale caches — bump on change
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const PARAMS = new URLSearchParams(location.search);
@@ -667,6 +667,7 @@ function buildDroneSwarm(cx, cy, cz, spread) {
     d.userData = { rotors, nav, phase: Math.random() * 6.28, baseY: d.position.y };
     swarm.add(d); drones.push(d);
   }
+  swarm.scale.setScalar(0.22);                                    // true scale: each drone ≈ 1 unit (~3 m) across
   swarm.userData = { drones, active: true };
   return swarm;
 }
@@ -755,7 +756,7 @@ function labelTexture(text) {
 }
 // each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
 // glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
-const FIG_SCALE = 0.6;   // close to true scale against the ship (zoom in for detail)
+const FIG_SCALE = 0.085; // true scale: a person ≈ 0.55 units on a ~160-unit (~450 m) ship — zoom in to see them
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
@@ -770,7 +771,7 @@ function buildCrew(zones, targets) {
         transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
       disc.rotation.x = -Math.PI / 2; disc.scale.set(4.4 * FIG_SCALE, 4.4 * FIG_SCALE, 1); disc.position.y = 0.05; grp.add(disc);
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
-      lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.6, 0); grp.add(lbl);
+      lbl.scale.set(14, 3.5, 1); lbl.position.set(0, height * FIG_SCALE + 1.2, 0); grp.add(lbl);
       t.add(grp);
       crewMarks.push({ k, grp, fig, lbl, top: height * FIG_SCALE, spin: ti === 0 });   // targets[0] = the perspective view
     });
@@ -891,14 +892,14 @@ const dotArea   = (key, sys) => s => {
 };
 
 const persp = makeView('cv-persp', (v) => {
-  const c = new THREE.PerspectiveCamera(42, 1, 0.2, 6000);   // small near plane: close zoom on the crew
+  const c = new THREE.PerspectiveCamera(42, 1, 0.02, 6000);  // tiny near plane: zoom right in on true-scale crew
   c.position.set(150, 92, 168);
   v.controls = new OrbitControls(c, v.renderer.domElement);
   v.controls.enableDamping = true;
   v.controls.autoRotate = true; v.controls.autoRotateSpeed = 0.7;
   // zoom right in on a crew member: wheel / pinch zooms toward the cursor (the orbit pivot follows),
   // right-drag / two-finger drag pans; double-click resets the view
-  v.controls.minDistance = 3; v.controls.maxDistance = 520;
+  v.controls.minDistance = 0.6; v.controls.maxDistance = 520;
   v.controls.zoomToCursor = true; v.controls.enablePan = true; v.controls.screenSpacePanning = true;
   v.controls.target.set(0, 0, 0);
   v.renderer.domElement.addEventListener('dblclick', () => {
@@ -952,7 +953,7 @@ if (PARAMS.has('drag') && persp) {
   const drop = e => {
     if (!crewDrag) return;
     const { m } = crewDrag, p = m.grp.position;
-    const value = 'free:' + [p.x, p.y, p.z].map(n => n.toFixed(1)).join(',');
+    const value = 'free:' + [p.x, p.y, p.z].map(n => n.toFixed(2)).join(',');
     crewDrag = null;
     persp.controls.enabled = true; el.style.cursor = '';
     try { el.releasePointerCapture(e.pointerId); } catch (_) {}
@@ -1118,7 +1119,7 @@ loader.load(MODEL_URL, (res) => {
   persp.scene.add(shieldRing);            // floor ring stays put
 
   // drones inside the hull's drone bay (not on the model) — perspective + dorsal
-  const dPos = apos(-0.12, 0, 0.42), dSpread = sz.x * 0.12;
+  const dPos = apos(-0.08, 0.12, 0.42), dSpread = sz.x * 0.12;   // drone bay, starboard of the lift / stair trunk
   droneSwarms = [];
   const sw1 = buildDroneSwarm(...dPos, dSpread); perspLift.add(sw1); droneSwarms.push(sw1);
   if (top) { const sw2 = buildDroneSwarm(...dPos, dSpread); top.scene.add(sw2); droneSwarms.push(sw2); }
@@ -1129,7 +1130,7 @@ loader.load(MODEL_URL, (res) => {
   const zones = [];
   const FAN_KEYS = ['fanFP', 'fanFS', 'fanAP', 'fanAS'];
   // lift fans: dots + crew anchors only — the operator view colours their blades, not the wireframe
-  centres.forEach((c, i) => zones.push({ key: FAN_KEYS[i], pos: [c[0], c[1] + 4, c[2]], r: FR * 1.3, eval: dotEngine(i), tint: false }));
+  centres.forEach((c, i) => zones.push({ key: FAN_KEYS[i], pos: [c[0], c[1] + 0.6, c[2]], r: FR * 1.3, eval: dotEngine(i), tint: false }));
   // (along, beam, up) = dot / crew anchor; box = the wireframe region the operator view tints
   const Z = (along, beam, up, key, sys, rk, bx, dotUp) => zones.push({ key, pos: apos(along, beam, up), r: maxDim * rk, box: bx,
     dot: dotUp === undefined ? undefined : apos(along, beam, dotUp), eval: dotArea(key, sys) });   // dotUp: lift the player dot clear of a room
@@ -1202,11 +1203,12 @@ function tick() {
   }
   for (const m of crewMarks) if (m.spin && m.grp.visible) {           // crew turntable + moving parts (perspective only)
     m.fig.rotation.y += dt * 0.6;
-    // name tag shrinks as the camera closes in (full size from ~180 units out, down to ~15%)
+    // name tag shrinks with the camera distance so it keeps a steady on-screen size once
+    // you zoom in (full size from ~180 units out), and hugs the head when small
     m.lbl.getWorldPosition(_tagPos);
-    const k = Math.max(0.15, Math.min(1, persp.cam.position.distanceTo(_tagPos) / 180));
+    const k = Math.max(0.002, Math.min(1, persp.cam.position.distanceTo(_tagPos) / 180));
     m.lbl.scale.set(14 * k, 3.5 * k, 1);
-    m.lbl.position.y = m.top + 0.4 + 1.2 * k;                          // and hugs the head when small
+    m.lbl.position.y = m.top + 0.05 + 1.2 * k;
     if (m.fig.userData.tick) m.fig.userData.tick(now / 1000);           // e.g. Ryu's hovering drones
   }
   for (const sw of droneSwarms) {                        // drones: spin rotors + bob when active
@@ -1229,7 +1231,7 @@ function tick() {
     const pulse = 0.7 + 0.3 * Math.sin(now / 700);
     for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
   }
-  if (shipRooms) shipRooms.tick(now / 1000);
+  if (shipRooms) { shipRooms.tick(now / 1000); shipRooms.scaleLabels(persp.cam.position); }
   const tinted = TINT && paintTint(now);
   const renderStatic = liveDots || tinted || staticFrames > 0;   // static views idle between changes
   if (staticFrames > 0) staticFrames--;
