@@ -126,10 +126,10 @@ const BUILD = {
     // hoodie cowl dome
     const OPEN = 1.35;
     solid(g, new THREE.SphereGeometry(0.5, 10, 8, Math.PI / 2 + OPEN / 2, Math.PI * 2 - OPEN, 0, Math.PI * 0.8),
-      W, { p: [0, 5.82, -0.06], s: [0.9, 1.28, 1.1] }, 8);
-    ring(g, [0, 5.78, 0.36], 0.32, 0.04, W, [0, 0, 0], [0.95, 1.4, 1]);   // hoodie rim
-    ring(g, [0, 5.2, -0.04], 0.4, 0.08, W, undefined, [1, 0.85, 1]);      // neck fold
-    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], W); // crown seam
+      GREEN, { p: [0, 5.82, -0.06], s: [0.9, 1.28, 1.1] }, 8);   // hood matches the jacket
+    ring(g, [0, 5.78, 0.36], 0.32, 0.04, GREEN, [0, 0, 0], [0.95, 1.4, 1]);   // hoodie rim
+    ring(g, [0, 5.2, -0.04], 0.4, 0.08, GREEN, undefined, [1, 0.85, 1]);      // neck fold
+    line(g, [[0, 6.45, 0.15], [0, 6.42, -0.22], [0, 6.05, -0.58], [0, 5.5, -0.6]], GREEN); // crown seam
     line(g, [[-0.1, 5.35, 0.42], [-0.12, 4.8, 0.46], [-0.1, 4.2, 0.46]], W);  // drawstrings
     line(g, [[0.12, 5.35, 0.42], [0.14, 4.8, 0.46], [0.12, 4.2, 0.46]], W);
 
