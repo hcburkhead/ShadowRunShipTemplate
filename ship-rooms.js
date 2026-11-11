@@ -25,11 +25,11 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to keep WebGL performance smooth across all 20 decks
+// Shared static geometries to keep WebGL rendering performant across all 20 floors
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
-// Fast lightweight box helper using static references
+// Lightweight box helper reusing shared geometry
 function fastBox(g, w, h, d, px, py, pz, color = ROOM, edgeOp = 0.5, fillOp = 0.03) {
   const mesh = new THREE.Mesh(unitBoxGeo, fillMat(color, fillOp));
   mesh.scale.set(w, h, d);
@@ -152,20 +152,23 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Discrete personnel office room module (walls, console desk, display, chair)
+  // Detailed small personnel office module (walls, console desk, display, side locker, chair)
   function smallOffice(g, W, H, L, px, py, pz, ry = 0) {
     const o = new THREE.Group();
     o.position.set(px, py, pz);
     o.rotation.y = ry;
 
-    // Room enclosure walls and floor
+    // Room enclosure walls and floor frame
     fastBox(o, W, H, L, 0, 0, 0, ROOM, 0.35, 0.015);
 
-    // Desk console against back wall
+    // Main desk console
     fastBox(o, W * 0.65, 0.2, 0.22, 0, 0, -L * 0.28, ROOM, 0.6, 0.06);
 
-    // Display screen on desk
+    // Display terminal screen
     fastBox(o, W * 0.5, 0.14, 0.02, 0, 0.2, -L * 0.34, CORE, 0.85, 0.15);
+
+    // Side storage cabinet / locker unit
+    fastBox(o, W * 0.25, 0.45, 0.25, W * 0.3, 0, L * 0.2, ROOM, 0.4, 0.04);
 
     // Office chair facing console
     fastBox(o, 0.22, 0.18, 0.22, 0, 0, -L * 0.05, ROOM, 0.5, 0.05);
@@ -258,39 +261,45 @@ export function buildRooms(frame, targets) {
       const [a0, a1] = span, beam = u < 0.12 ? 0.17 : 0.26;
       const d = new THREE.Group(); place(d, (a0 + a1) / 2, 0, u); g.add(d);
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
-      box(d, W, 0.02, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.26 : 0.1, 0.005);
-      dashed(d, [0, 0.02, -L / 2 + 0.5], [0, 0.02, L / 2 - 0.5], DECK, 0.22, 0.6); // passage spine
 
-      // Populate personnel offices on ALL 20 DECKS along the central corridor
-      const rL = 1.4;                            // office length along Z
-      const rW = Math.min(1.3, (W - 1.1) / 2);    // office width across X
-      if (rW >= 0.45) {
-        const spacing = rL + 0.4;
-        const startZ = -L / 2 + 0.5;
-        const endZ = L / 2 - 0.5;
-        const count = Math.floor((endZ - startZ) / spacing);
+      // Solid floor plane separating each of the 20 distinct levels visually
+      box(d, W, 0.03, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.4 : 0.2, 0.04);
+      dashed(d, [0, 0.035, -L / 2 + 0.5], [0, 0.035, L / 2 - 0.5], DECK, 0.3, 0.6); // passage spine
 
-        for (let i = 0; i < count; i++) {
-          const z = startZ + i * spacing + rL / 2;
-          const globalAlong = (a0 + a1) / 2 + (z / Lh);
+      // 4 rows of 20 offices per level (10 offices Port, 10 offices Starboard)
+      const rL = 1.2;                           // Office length along Z
+      const rW = Math.min(1.1, (W - 1.2) / 4);   // Office width across X
+      if (rW >= 0.35) {
+        // Define 4 row positions across X beam (Rows 1 & 2 Port, Rows 3 & 4 Starboard)
+        const rowXs = [
+          -W / 2 + rW / 2 + 0.1,   // Row 1: Outer Port
+          -0.6 - rW / 2,           // Row 2: Inner Port
+          0.6 + rW / 2,            // Row 3: Inner Starboard
+          W / 2 - rW / 2 - 0.1     // Row 4: Outer Starboard
+        ];
 
-          // Exclude reserved functional spaces:
-          if (Math.abs(globalAlong - TRUNK.along) < 0.038) continue;             // Lift / Stairwell shaft
-          if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;   // Engine Room (Decks 1-4)
-          if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;    // Bridge (Decks 1-2)
-          if (n === 16 && globalAlong >= -0.64 && globalAlong <= -0.56) continue; // Command Offices (Deck 16)
+        // 5 offices per row along Z = 10 Port + 10 Starboard = 20 total per floor
+        const zStep = (L - 1.6) / 5;
+        for (let rowIdx = 0; rowIdx < 4; rowIdx++) {
+          const rx = rowXs[rowIdx];
+          const facingAngle = rowIdx < 2 ? Math.PI / 2 : -Math.PI / 2; // Face toward central aisle
 
-          const portX = -0.55 - rW / 2;
-          const stbdX = 0.55 + rW / 2;
+          for (let i = 0; i < 5; i++) {
+            const z = -L / 2 + 0.8 + i * zStep + zStep / 2;
+            const globalAlong = (a0 + a1) / 2 + (z / Lh);
 
-          // Port office (facing +X into central corridor)
-          smallOffice(d, rW, DH * 0.82, rL, portX, 0, z, Math.PI / 2);
-          // Starboard office (facing -X into central corridor)
-          smallOffice(d, rW, DH * 0.82, rL, stbdX, 0, z, -Math.PI / 2);
+            // Respect reserved spaces (Lift shaft, Engine Room, Bridge, Command Offices)
+            if (Math.abs(globalAlong - TRUNK.along) < 0.038) continue;
+            if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;
+            if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;
+            if (n === 16 && globalAlong >= -0.64 && globalAlong <= -0.56) continue;
+
+            smallOffice(d, rW, DH * 0.82, rL, rx, 0, z, facingAngle);
+          }
         }
       }
 
-      if (n === 1 || n % 5 === 0) { // deck number
+      if (n === 1 || n % 5 === 0) { // deck number label
         const s = labelSprite('DECK ' + String(n).padStart(2, '0'), 3.2, 0.5);
         s.position.copy(at(a0 + 0.015, -beam - 0.04, u)).add(new THREE.Vector3(0, 0.25, 0)); g.add(s);
       }
