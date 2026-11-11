@@ -25,11 +25,11 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to avoid recalculating hundreds of individual EdgesGeometry on CPU
+// Shared static geometries to eliminate CPU allocation overhead
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
-// Lightweight box helper for mass instance generation
+// Fast lightweight box helper using static references
 function fastBox(g, w, h, d, px, py, pz, color = ROOM, edgeOp = 0.5, fillOp = 0.03) {
   const mesh = new THREE.Mesh(unitBoxGeo, fillMat(color, fillOp));
   mesh.scale.set(w, h, d);
@@ -152,13 +152,28 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Fast personnel office generator using shared geometry
-  function smallOffice(L, W, H) {
+  // Consolidated Office Sector Block (renders a multi-room cluster as 1 light group)
+  function officeCluster(L, W, H, px, pz) {
     const g = new THREE.Group();
-    fastBox(g, W, H, L, 0, 0, 0, ROOM, 0.3, 0.015);
-    fastBox(g, W * 0.65, 0.22, 0.18, 0, 0, -L * 0.25, ROOM, 0.6, 0.05);   // Desk
-    fastBox(g, W * 0.55, 0.14, 0.01, 0, 0.22, -L * 0.31, CORE, 0.8, 0.12); // Console Screen
-    fastBox(g, 0.18, 0.18, 0.18, 0, 0, 0, ROOM, 0.5, 0.04);              // Chair
+    g.position.set(px, 0, pz);
+
+    // Outer sector boundary shell
+    fastBox(g, W, H, L, 0, 0, 0, ROOM, 0.25, 0.012);
+
+    // Internal partition walls dividing the cluster into sub-offices
+    const divisions = Math.max(2, Math.floor(L / 3.0));
+    for (let i = 1; i < divisions; i++) {
+      const z = -L / 2 + (i / divisions) * L;
+      fastBox(g, W * 0.9, H * 0.85, 0.02, 0, 0, z, ROOM, 0.25, 0.008);
+    }
+
+    // Workstation consoles & screens per office partition
+    for (let i = 0; i < divisions; i++) {
+      const z = -L / 2 + (i + 0.5) * (L / divisions);
+      fastBox(g, W * 0.55, 0.22, 0.2, 0, 0, z - 0.2, ROOM, 0.5, 0.04);        // Desk surface
+      fastBox(g, W * 0.45, 0.12, 0.01, 0, 0.22, z - 0.28, CORE, 0.7, 0.08);   // Console display
+    }
+
     return g;
   }
 
@@ -250,31 +265,36 @@ export function buildRooms(frame, targets) {
       box(d, W, 0.02, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.26 : 0.1, 0.005);
       dashed(d, [0, 0.02, -L / 2 + 0.5], [0, 0.02, L / 2 - 0.5], DECK, 0.22, 0.6); // passage spine
 
-      // Populate personnel decks (3 to 19) with small office modules
+      // Populate decks 3 through 19 with macro Office Clusters (2 to 4 sectors per deck max)
       if (n >= 3 && n <= 19) {
-        const rL = 1.6, rW = Math.min((W - 1.0) / 2, 1.8);
-        if (rW > 0.5) {
-          const step = rL + 1.2;
-          const count = Math.floor((L - 1.5) / step);
-          for (let i = 0; i < count; i++) {
-            const z = -L / 2 + 1.2 + i * step + rL / 2;
-            const globalAlong = (a0 + a1) / 2 + (z / Lh);
+        const rW = Math.min((W - 1.0) / 2, 2.0);
+        if (rW > 0.6) {
+          const trunkZ = (TRUNK.along - (a0 + a1) / 2) * Lh;
 
-            // Avoid placing offices over the trunk shaft, engine room, or bridge
-            if (Math.abs(globalAlong - TRUNK.along) < 0.04) continue;
-            if (n <= 4 && globalAlong > -0.15 && globalAlong < 0.08) continue; // Engine Room area
-            if (n <= 2 && globalAlong > 0.22) continue;                         // Bridge area
+          // Aft Sector bounds (from deck start to trunk shaft)
+          const aftL = Math.max(0, trunkZ - (-L / 2) - 0.8);
+          const aftZ = -L / 2 + 0.4 + aftL / 2;
 
-            // Port office
-            const port = smallOffice(rL, rW, DH * 0.85);
-            port.position.set(-W / 2 + rW / 2, 0, z);
-            d.add(port);
+          // Fore Sector bounds (from trunk shaft to deck end)
+          let foreStart = trunkZ + 0.8;
+          let foreEnd = L / 2 - 0.4;
+          if (n <= 4) {
+            const erForeZ = (ER.along + ER.L / 2 / Lh - (a0 + a1) / 2) * Lh;
+            foreStart = Math.max(foreStart, erForeZ + 0.5);
+          }
+          const foreL = Math.max(0, foreEnd - foreStart);
+          const foreZ = foreStart + foreL / 2;
 
-            // Starboard office
-            const stbd = smallOffice(rL, rW, DH * 0.85);
-            stbd.position.set(W / 2 - rW / 2, 0, z);
-            stbd.rotation.y = Math.PI; // Face inward toward corridor
-            d.add(stbd);
+          // Place Aft Office Sectors (Port & Starboard)
+          if (aftL > 2.0) {
+            d.add(officeCluster(aftL, rW, DH * 0.85, -W / 2 + rW / 2, aftZ));
+            d.add(officeCluster(aftL, rW, DH * 0.85, W / 2 - rW / 2, aftZ));
+          }
+
+          // Place Fore Office Sectors (Port & Starboard)
+          if (foreL > 2.0) {
+            d.add(officeCluster(foreL, rW, DH * 0.85, -W / 2 + rW / 2, foreZ));
+            d.add(officeCluster(foreL, rW, DH * 0.85, W / 2 - rW / 2, foreZ));
           }
         }
       }
