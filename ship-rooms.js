@@ -25,7 +25,7 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to maintain high performance across 800 offices
+// Shared static geometries to keep WebGL performance smooth across all 20 floors
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
@@ -152,26 +152,25 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Dual personnel office module (2 clustered workstations inside 1 shell room for maximum performance)
+  // Dual personnel office module (2 workstations in 1 enclosure shell)
   function dualOffice(g, W, H, L, px, py, pz, ry = 0) {
     const o = new THREE.Group();
     o.position.set(px, py, pz);
     o.rotation.y = ry;
 
-    // Room enclosure shell
     fastBox(o, W, H, L, 0, 0, 0, ROOM, 0.35, 0.015);
 
-    // Office 1 workstation (Port/Left side of dual module)
-    fastBox(o, W * 0.4, 0.2, 0.22, -W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);     // Desk 1
-    fastBox(o, W * 0.32, 0.14, 0.02, -W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15); // Screen 1
-    fastBox(o, 0.18, 0.18, 0.18, -W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);       // Chair 1
+    // Office 1 workstation (Port side)
+    fastBox(o, W * 0.4, 0.2, 0.22, -W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
+    fastBox(o, W * 0.32, 0.14, 0.02, -W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
+    fastBox(o, 0.18, 0.18, 0.18, -W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
 
-    // Office 2 workstation (Starboard/Right side of dual module)
-    fastBox(o, W * 0.4, 0.2, 0.22, W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);      // Desk 2
-    fastBox(o, W * 0.32, 0.14, 0.02, W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);  // Screen 2
-    fastBox(o, 0.18, 0.18, 0.18, W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);        // Chair 2
+    // Office 2 workstation (Starboard side)
+    fastBox(o, W * 0.4, 0.2, 0.22, W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
+    fastBox(o, W * 0.32, 0.14, 0.02, W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
+    fastBox(o, 0.18, 0.18, 0.18, W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
 
-    // Internal glass/frame partition separating the two clustered offices
+    // Center divider
     fastBox(o, 0.02, H * 0.75, L * 0.7, 0, 0, -L * 0.1, ROOM, 0.3, 0.01);
 
     g.add(o);
@@ -258,10 +257,9 @@ export function buildRooms(frame, targets) {
   function decks() {
     const g = new THREE.Group();
 
-    // Quadrant column splits: 2 columns in Aft half (Q3/Q4), 2 columns in Fore half (Q1/Q2)
-    const alongAft  = [-0.32, -0.23];
-    const alongFore = [0.06, 0.18];
-    const globalCols = [...alongAft, ...alongFore];
+    // 14 evenly spaced longitudinal column positions spanning the entire length of the ship
+    const numCols = 14;
+    const globalCols = Array.from({ length: numCols }, (_, i) => -0.72 + i * ((0.42 - (-0.72)) / (numCols - 1)));
 
     for (let n = 1; n <= DECKS; n++) {
       const u = deckU(n), span = deckSpan(u); if (!span) continue;
@@ -270,43 +268,44 @@ export function buildRooms(frame, targets) {
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
       const deckCenter = (a0 + a1) / 2;
 
-      // Solid ground plane separating each of the 20 levels visually
+      // Solid ground plane separating each of the 20 distinct levels visually
       box(d, W, 0.03, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.4 : 0.2, 0.04);
       dashed(d, [0, 0.035, -L / 2 + 0.5], [0, 0.035, L / 2 - 0.5], DECK, 0.3, 0.6); // passage spine
 
       const rL = 1.3;
-      const rW = 1.4;
+      const rW = 1.3;
 
-      // Compute 10 row positions across beam (5 Port rows, 5 Starboard rows)
-      const portMin = -0.65, portMax = -W / 2 + 0.75;
-      const stbdMin = 0.65,  stbdMax = W / 2 - 0.75;
-      const rowXs = [];
+      // 6 row positions across the width (3 Port rows, 3 Starboard rows)
+      const rowXs = [
+        -W * 0.38, -W * 0.24, -0.65, // Port rows
+        0.65, W * 0.24, W * 0.38     // Starboard rows
+      ];
 
-      for (let i = 0; i < 5; i++) {
-        rowXs.push(portMin + (i / 4) * (portMax - portMin)); // Rows 1-5: Port
-      }
-      for (let i = 0; i < 5; i++) {
-        rowXs.push(stbdMin + (i / 4) * (stbdMax - stbdMin)); // Rows 6-10: Starboard
-      }
-
-      // 40 dual-office modules per floor (10 per quadrant) = 800 offices ship-wide
       for (const globalAlong of globalCols) {
+        // Ensure column falls within this deck's current longitudinal hull bounds
         if (globalAlong < a0 + 0.02 || globalAlong > a1 - 0.02) continue;
 
-        // Respect reserved core zones (Lift shaft, Engine Room, Bridge, Command Offices)
-        if (Math.abs(globalAlong - TRUNK.along) < 0.035) continue;
-        if (n <= 4 && globalAlong >= -0.14 && globalAlong <= 0.05) continue;
-        if (n <= 2 && globalAlong >= 0.22) continue;
+        // Keep lift / stairwell shaft clear
+        if (Math.abs(globalAlong - TRUNK.along) < 0.032) continue;
+
+        // Reserve specific spaces on ONLY the decks they actually occupy:
+        // - Engine Room: Decks 01-04 (Decks 05-20 contain offices directly ABOVE the engine!)
+        if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;
+
+        // - Bridge: Decks 01-02 (Decks 03-20 contain offices directly ABOVE the bridge!)
+        if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;
+
+        // - Command Offices: Deck 16 only
         if (n === 16 && globalAlong >= -0.65 && globalAlong <= -0.55) continue;
 
-        // Fixed Z offset relative to deck center to maintain straight vertical columns
+        // Calculate exact local Z on deck to maintain straight vertical column lines
         const z = (globalAlong - deckCenter) * Lh;
 
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+        for (let rowIdx = 0; rowIdx < rowXs.length; rowIdx++) {
           const rx = rowXs[rowIdx];
-          if (Math.abs(rx) > W / 2 - rW / 2) continue; // Keep within hull bounds
+          if (Math.abs(rx) > W / 2 - rW / 2) continue; // Keep within hull width
 
-          const facingAngle = rowIdx < 5 ? Math.PI / 2 : -Math.PI / 2; // Face central aisle
+          const facingAngle = rowIdx < 3 ? Math.PI / 2 : -Math.PI / 2; // Face central passage
           dualOffice(d, rW, DH * 0.82, rL, rx, 0, z, facingAngle);
         }
       }
