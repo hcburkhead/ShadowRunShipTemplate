@@ -89,6 +89,8 @@ function labelSprite(text, w = 4.5, op = 0.6) {
 
 // ---- scale ----
 const _lp = new THREE.Vector3();
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 const shipCenter = new THREE.Vector3(0, 0, 0);
 const K = 0.2;                       // furniture is modelled in "figure units" (a person ≈ 2.75) and scaled by K
 // decks (fractions of hull height)
@@ -152,7 +154,7 @@ function jet(g, p, ry) {
 /**
  * Build the interiors and add a copy to every target scene.
  * frame = { at(along, beam, up) → THREE.Vector3 world point, bow: unit Vector3, Lh, Bh, H }
- * Returns { anchors: { key: Vector3 floor spot for crew }, setState(areas), tick(t), deckHeight }.
+ * Returns { anchors: { key: Vector3 floor spot for crew }, setState(areas), tick(t, crewTokens), deckHeight }.
  */
 export function buildRooms(frame, targets) {
   const { at, bow, Lh, Bh, H } = frame;
@@ -366,7 +368,10 @@ export function buildRooms(frame, targets) {
     box(car, S * 0.9, 0.05, S * 0.9, { p: [0, 0.03, 0] }, CORE, 0.9, 0.12);
     const frame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(S * 0.9, DH * 0.85, S * 0.9)), edgeMat(CORE, 0.6));
     frame.position.y = DH * 0.43; car.add(frame);
-    lifts.push({ car, h, speed: 0.12 });
+
+    // Register lift reference for passenger attachment checks
+    lifts.push({ car, h, speed: 0.12, radius: S * 0.8 });
+
     // stairwell (starboard side): a switchback flight between every pair of decks
     const st = new THREE.Group(); place(st, TRUNK.along, 0.035, u0); g.add(st);
     const n = Math.round((u1 - u0) / DECK_STEP);
@@ -383,7 +388,9 @@ export function buildRooms(frame, targets) {
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([x, z]) => box(L, 0.08, h, 0.08, { p: [x * S / 2, h / 2, z * S / 2] }, MARK, 0.6, 0.04));
     const plat = new THREE.Group(); L.add(plat);
     box(plat, S * 0.95, 0.08, S * 0.95, { p: [0, 0.04, 0] }, MARK, 0.8, 0.08);
-    lifts.push({ car: plat, h, speed: 0.08 });
+
+    // Register aircraft lift reference
+    lifts.push({ car: plat, h, speed: 0.08, radius: S * 0.6 });
   }
   function paths() {
     const g = new THREE.Group();
@@ -429,6 +436,7 @@ export function buildRooms(frame, targets) {
   return {
     anchors,
     deckHeight: DH,
+    lifts,
     setState(areas) {
       const paint = (list, st) => list.forEach(({ mats }) => mats.forEach(m => m.color.setHex(STATE_HEX[st] || CORE)));
       paint(reactorCores, Math.max(0, Math.min(2, (areas.reactor || 0) | 0)));
@@ -437,7 +445,6 @@ export function buildRooms(frame, targets) {
 
     // Dynamically scales map text labels and smoothly dims office geometry opacity on camera zoom-out
     scaleLabels(camPos) {
-      // 1. Map labels distance scaling
       for (const s of LABELS) {
         if (!s.parent) continue;
         s.getWorldPosition(_lp);
@@ -445,7 +452,6 @@ export function buildRooms(frame, targets) {
         s.scale.set(w, w * 0.19, 1);
       }
 
-      // 2. Dynamic Office Light Fading based on Camera Distance
       const dist = camPos.distanceTo(shipCenter);
       const fade = Math.max(0.05, Math.min(1.0, 1.0 - (dist - 40) / 80));
 
@@ -454,11 +460,46 @@ export function buildRooms(frame, targets) {
       officeCoreMat.opacity = 0.85 * fade;
     },
 
-    tick(t) {
+    // Call tick(t, crewTokens) every frame to animate lifts & automatically ride player tokens on the platform
+    tick(t, crewTokens = []) {
       const k = 0.65 + 0.35 * Math.sin(t * 2.4);
       reactorCores.forEach(({ mats }) => mats.forEach((m, i) => { m.opacity = i % 2 ? 0.9 * k : 0.18 * k; }));
       spinners.forEach((s, i) => { s.rotation.y = t * (0.6 + (i % 3) * 0.25); });
-      lifts.forEach(({ car, h, speed }) => { car.position.y = h * (0.5 - 0.5 * Math.cos(t * speed)); });
+
+      // Move lift platforms vertically
+      lifts.forEach(({ car, h, speed }) => {
+        car.position.y = h * (0.5 - 0.5 * Math.cos(t * speed));
+      });
+
+      // Auto-detect player tokens on any lift platform and attach/detach them dynamically
+      if (crewTokens && crewTokens.length > 0) {
+        lifts.forEach(lift => {
+          const liftCar = lift.car;
+          liftCar.getWorldPosition(_v1);
+          const radius = lift.radius || 1.1;
+
+          crewTokens.forEach(token => {
+            if (!token) return;
+            token.getWorldPosition(_v2);
+
+            const dx = _v2.x - _v1.x;
+            const dz = _v2.z - _v1.z;
+            const horizDist = Math.sqrt(dx * dx + dz * dz);
+            const dy = _v2.y - _v1.y;
+
+            // If token is placed within the lift platform footprint
+            if (horizDist < radius && dy >= -0.4 && dy <= 2.2) {
+              if (token.parent !== liftCar) {
+                liftCar.attach(token); // Attach to lift car (moves automatically with lift)
+              }
+            } else if (token.parent === liftCar) {
+              // Detach token back to main scene if GM moves it off the lift
+              const mainScene = targets[0];
+              if (mainScene) mainScene.attach(token);
+            }
+          });
+        });
+      }
     },
   };
 }
