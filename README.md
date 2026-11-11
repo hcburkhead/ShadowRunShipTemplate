@@ -212,19 +212,25 @@ slider, shield arcs ← panel state and shield power. On the **player view** dam
 shows as blinking dots at each area; on the **DM console** the affected part of the
 ship's own wireframe softly pulses yellow / red instead (no dots).
 
-**Ship interiors** (`ship-rooms.js`) are drawn as pale-blue hologram rooms inside the
-wireframe, in every view: the **bridge** in the forward underside gondola (window frame,
-console arc, captain's chair, and the **AI core** at its back), the **command offices** in
-the aft (rear) section at mid-height (three partitioned offices with desks, terminals and chairs around a
-holo-table), and the **engine room** on the aft end of the underside keel with the **main
-reactor** (pulsing core, coolant pipes, consoles). The reactor and AI core glow cyan /
-yellow / red with their damage-control state; crew placed there stand on the room floors.
-A **deck plan** links them like a tabletop dungeon map: a keel corridor from the bridge's
-aft door to the engine room, a **lift** (with a car riding up and down) from engineering
-up to the mid deck, a mid-deck passage aft to the command offices, and **stairs** from
-the back of the bridge up to a walkway that joins it — two routes between fore and aft.
-Corridors have door frames, dashed centre lines and direction chevrons, and the rooms
-carry floor labels (BRIDGE, AI CORE, ENGINEERING, COMMAND, LIFT, STAIRS).
+**Ship interiors at true scale** (`ship-rooms.js`). The hull (~160 units) stands for a
+~450 m carrier, so 1 unit ≈ 2.8 m and the crew are ~0.55 units tall — zoom in (mouse wheel
+toward the cursor, down to 0.6 units) to see them. Inside the hull, drawn as pale-blue
+hologram floors like a tabletop dungeon map, in all five views:
+- **20 personnel decks** (DECK 01 at the keel → DECK 20), each clipped to the hull's real
+  profile, with a passage spine and DECK numbers every five decks.
+- **Hangar deck** above them, with parked jets and a taxi line, and an **aircraft lift**
+  (animated platform) up to the **flight deck** on the top surface — twin runways,
+  threshold bars and landing spots.
+- **Bridge** (DECK 01–02, forward underside gondola) with its console arc, captain's chair
+  and the **AI core** at its back; **engine room** (DECK 01–04, keel) with the **main
+  reactor** and catwalks; **command offices** (DECK 16, aft). The reactor and AI core glow
+  cyan / yellow / red with their damage state.
+- A **lift + stairwell trunk** through every deck (the lift car rides the full height),
+  corridors from it to the engine room, command offices and hangar, and a keel corridor
+  bridge ⇄ engine room; door frames, dashed centre lines, direction chevrons and map labels
+  (which shrink as you zoom in).
+Crew can be placed in any of these (CREW LOCATIONS adds HANGAR DECK and FLIGHT DECK;
+remote `CREW <NAME> HANGAR | FLIGHTDECK`), or dragged anywhere.
 
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon

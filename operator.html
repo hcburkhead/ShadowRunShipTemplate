@@ -540,7 +540,7 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         normTimerLabel, firebaseDb, CREW, CREW_LOCS, normCrew, crewFreePos } from './ship-model.js?v=7';
+         normTimerLabel, firebaseDb, CREW, CREW_LOCS, normCrew, crewFreePos } from './ship-model.js?v=8';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
          RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
          relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=5';
@@ -1297,7 +1297,8 @@ function renderCrew() {
 // authorized channel — neither the attempt lockout nor the destruct code
 // word applies here.
 // crew spots = every damage area + the rooms that aren't damage areas
-const CREW_SPOT_EXTRA = { COMMAND: 'command', OFFICES: 'command', ENGINEROOM: 'reactor', ENGINE: 'reactor' };
+const CREW_SPOT_EXTRA = { COMMAND: 'command', OFFICES: 'command', ENGINEROOM: 'reactor', ENGINE: 'reactor',
+  HANGAR: 'hangar', FLIGHTDECK: 'flightDeck', FLIGHT: 'flightDeck' };
 const AREA_KEYS = { REACTOR: 'reactor', BRIDGE: 'bridge', AI: 'aiCore', AICORE: 'aiCore', DRONEBAY: 'droneBay',
   WPNFWD: 'wpnFwd', WPNAFT: 'wpnAft', BOOSTP: 'boostP', BOOSTS: 'boostS',
   FANFP: 'fanFP', FANFS: 'fanFS', FANAP: 'fanAP', FANAS: 'fanAS' };
