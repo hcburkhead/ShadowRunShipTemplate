@@ -25,6 +25,23 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
+// Shared static geometries to avoid recalculating hundreds of individual EdgesGeometry on CPU
+const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
+
+// Lightweight box helper for mass instance generation
+function fastBox(g, w, h, d, px, py, pz, color = ROOM, edgeOp = 0.5, fillOp = 0.03) {
+  const mesh = new THREE.Mesh(unitBoxGeo, fillMat(color, fillOp));
+  mesh.scale.set(w, h, d);
+  mesh.position.set(px, py + h / 2, pz);
+
+  const edges = new THREE.LineSegments(unitBoxEdges, edgeMat(color, edgeOp));
+  edges.scale.set(w, h, d);
+  edges.position.set(px, py + h / 2, pz);
+
+  g.add(mesh, edges);
+}
+
 function solid(g, geo, t = {}, color = ROOM, edgeOp = 0.55, fillOp = 0.035) {
   const h = new THREE.Group();
   if (t.p) h.position.set(...t.p);
@@ -133,17 +150,17 @@ export function buildRooms(frame, targets) {
   const BR = { along: 0.3, u: deckU(1), L: 0.1 * Lh, W: 0.2 * Bh, H: DH * 2 };     // bridge, DECK 01–02
   const ER = { along: -0.04, u: deckU(1), L: 0.14 * Lh, W: 0.26 * Bh, H: DH * 4 };  // engine room, DECK 01–04
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
-  const TRUNK = { along: -0.165 };
-  
+  const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
+
+  // Fast personnel office generator using shared geometry
   function smallOffice(L, W, H) {
-  const g = new THREE.Group();
-  shell(g, L, W, H);
-  // Abandoned desk console & chair facing into the room
-  console_(g, [0, 0, -L * 0.22], 0, 2.0);
-  chair(g, [0, 0, 0], 0);
-  return g;
+    const g = new THREE.Group();
+    fastBox(g, W, H, L, 0, 0, 0, ROOM, 0.3, 0.015);
+    fastBox(g, W * 0.65, 0.22, 0.18, 0, 0, -L * 0.25, ROOM, 0.6, 0.05);   // Desk
+    fastBox(g, W * 0.55, 0.14, 0.01, 0, 0.22, -L * 0.31, CORE, 0.8, 0.12); // Console Screen
+    fastBox(g, 0.18, 0.18, 0.18, 0, 0, 0, ROOM, 0.5, 0.04);              // Chair
+    return g;
   }
-  // lift + stairwell through every deck
 
   function bridge() {
     const g = new THREE.Group(); shell(g, BR.L, BR.W, BR.H);
@@ -237,9 +254,10 @@ export function buildRooms(frame, targets) {
       if (n >= 3 && n <= 19) {
         const rL = 1.6, rW = Math.min((W - 1.0) / 2, 1.8);
         if (rW > 0.5) {
-          const count = Math.floor((L - 1.5) / (rL + 0.8));
+          const step = rL + 1.2;
+          const count = Math.floor((L - 1.5) / step);
           for (let i = 0; i < count; i++) {
-            const z = -L / 2 + 1.2 + i * (rL + 0.8) + rL / 2;
+            const z = -L / 2 + 1.2 + i * step + rL / 2;
             const globalAlong = (a0 + a1) / 2 + (z / Lh);
 
             // Avoid placing offices over the trunk shaft, engine room, or bridge
