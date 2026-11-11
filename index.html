@@ -281,7 +281,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
 import { CREW, normCrew, crewFreePos } from './ship-model.js?v=7';
-import { buildRooms } from './ship-rooms.js?v=1';   // ship interiors (bridge, command offices, engine room)
+import { buildRooms } from './ship-rooms.js?v=3';   // ship interiors (bridge, command offices, engine room)
 import { buildFigure } from './crew-figures.js?v=14';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
@@ -620,22 +620,51 @@ if (LOGVIEW) document.body.classList.add('logview');
 let damageMarkers = [];
 let droneSwarms = [];    // procedural drones inside the hull (perspective + dorsal)
 // a small swarm of quad-drones for the drone bay; rotors spin + they bob when active
+// the ship's drones: hexagonal quad-rotors in the ship's cyan / teal — a cousin of Ryu's
+// personal drones (same four-rotor layout, guards and core) but clearly the ship's own: bigger
+// hex body with a dome, motor pods, an underslung sensor turret and a blinking amber nav light.
+// Every part keeps its base colour / opacity so updateDrones can recolour and restore it.
 function buildDroneSwarm(cx, cy, cz, spread) {
   const swarm = new THREE.Group(); swarm.position.set(cx, cy, cz);
-  const mat = (color, op) => new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+  const CY = 0x6df3ff, TEAL = 0x2dd4bf, CORE = 0xbef9d2, NAV = 0xf6a23c;
+  const lineMat = (color, op) => new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+  const meshMat = (color, op) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+  const remember = m => { m.userData.baseColor = m.material.color.getHex(); m.userData.baseOp = m.material.opacity; return m; };
+  const edges = (parent, geo, color, op, p = [0, 0, 0], r) => {
+    const m = remember(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), lineMat(color, op)));
+    m.position.set(...p); if (r) m.rotation.set(...r); parent.add(m); return m;
+  };
+  const glow = (parent, geo, color, op, p = [0, 0, 0]) => {
+    const m = remember(new THREE.Mesh(geo, meshMat(color, op))); m.position.set(...p); parent.add(m); return m;
+  };
   const drones = [];
-  const remember = m => { m.userData.baseColor = m.material.color.getHex(); return m; };
   for (let i = 0; i < 5; i++) {
     const d = new THREE.Group();
-    d.add(remember(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.6, 1, 2.6)), mat(0x6df3ff, 0.9))));
-    d.add(remember(new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6),   // bright core so the drone reads inside the hull
-      new THREE.MeshBasicMaterial({ color: 0xbef9d2, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }))));
-    const cg = new THREE.BufferGeometry();
-    cg.setAttribute('position', new THREE.Float32BufferAttribute([-2.8,0.7,0, 2.8,0.7,0, 0,0.7,-2.8, 0,0.7,2.8], 3));
-    const cross = remember(new THREE.LineSegments(cg, mat(0x6df3ff, 0.8))); d.add(cross);
+    edges(d, new THREE.CylinderGeometry(1.35, 1.2, 0.55, 6), CY, 0.9);                          // hex body
+    edges(d, new THREE.SphereGeometry(0.75, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), CY, 0.8, [0, 0.27, 0]);   // dome
+    glow(d, new THREE.SphereGeometry(0.55, 8, 6), CORE, 0.95);                                   // bright core (reads inside the hull)
+    edges(d, new THREE.SphereGeometry(0.38, 6, 4), CY, 0.85, [0, -0.5, 0]);                      // underslung sensor turret
+    edges(d, new THREE.CylinderGeometry(0.06, 0.06, 0.8, 4), CY, 0.85, [0, -0.55, 0.45], [Math.PI / 2, 0, 0]);
+    glow(d, new THREE.BoxGeometry(0.42, 0.12, 0.08), CY, 0.95, [0, 0.05, 1.22]);                 // forward sensor eye
+    const nav = glow(d, new THREE.SphereGeometry(0.14, 6, 4), NAV, 0.95, [0, 0.12, -1.25]);      // blinking nav light
+    const rotors = [];
+    [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([x, z], k) => {
+      const ax = x * 1.85, az = z * 1.85;
+      const arm = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x * 0.9, 0, z * 0.9), new THREE.Vector3(ax, 0.15, az)]);
+      d.add(remember(new THREE.LineSegments(arm, lineMat(CY, 0.8))));                            // arm
+      edges(d, new THREE.CylinderGeometry(0.18, 0.18, 0.3, 6), CY, 0.85, [ax, 0.15, az]);         // motor pod
+      edges(d, new THREE.TorusGeometry(0.85, 0.05, 4, 16), TEAL, 0.8, [ax, 0.32, az], [Math.PI / 2, 0, 0]);   // rotor guard
+      const rotor = new THREE.Group(); rotor.position.set(ax, 0.34, az); d.add(rotor);
+      const blade = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.72, 0, 0), new THREE.Vector3(0.72, 0, 0),
+                                                              new THREE.Vector3(0, 0, -0.72), new THREE.Vector3(0, 0, 0.72)]);
+      rotor.add(remember(new THREE.LineSegments(blade, lineMat(CORE, 0.85))));
+      rotor.userData.dir = k % 2 ? 1 : -1;                                                        // counter-rotating pairs
+      rotors.push(rotor);
+    });
     const a = (i / 5) * Math.PI * 2, rr = spread * (0.45 + 0.55 * (i % 2));
     d.position.set(Math.cos(a) * rr, (i % 3 - 1) * spread * 0.4, Math.sin(a) * rr);
-    d.userData = { cross, phase: Math.random() * 6.28, baseY: d.position.y };
+    d.rotation.y = a + Math.PI / 2;                                                               // each faces along its orbit
+    d.userData = { rotors, nav, phase: Math.random() * 6.28, baseY: d.position.y };
     swarm.add(d); drones.push(d);
   }
   swarm.userData = { drones, active: true };
@@ -676,10 +705,11 @@ function updateDrones(s) {
     sw.userData.active = active;
     for (const d of sw.userData.drones) {
       if (!active) d.position.y = d.userData.baseY;   // settle frozen drones on their rest height
-      for (const c of d.children) {
-        c.material.opacity = active ? 0.9 : 0.85;
+      d.traverse(c => {
+        if (!c.material) return;
+        c.material.opacity = (c.userData.baseOp ?? 0.9) * (active ? 1 : 0.95);
         c.material.color.setHex(col === null ? c.userData.baseColor : col);
-      }
+      });
     }
   }
 }
@@ -1105,11 +1135,11 @@ loader.load(MODEL_URL, (res) => {
     dot: dotUp === undefined ? undefined : apos(along, beam, dotUp), eval: dotArea(key, sys) });   // dotUp: lift the player dot clear of a room
   Z(-0.93,  0.2,  0.47, 'boostP', 'eng', 0.09, { L: [-1.05, -0.82], B: [0.03, 0.4],   U: [0.26, 0.66] });   // aft thruster blocks
   Z(-0.93, -0.2,  0.47, 'boostS', 'eng', 0.09, { L: [-1.05, -0.82], B: [-0.4, -0.03], U: [0.26, 0.66] });   //  ← ENGINES slider
-  Z( 0.32,  0,    0.1,  'bridge', null, 0.08,  { L: [0.2, 0.52],    B: [-0.32, 0.32], U: [-0.02, 0.22] });  // underside gondola
-  Z( 0.17,  0,    0.1,  'aiCore', null, 0.05, undefined, 0.27);                      // AI core, at the back of the bridge
-  Z(-0.09,  0,    0.12, 'reactor', null, 0.07, { L: [-0.22, 0.04], B: [-0.3, 0.3], U: [-0.02, 0.26] }, 0.3); // engine room (main reactor)
+  Z( 0.32,  0,    0.1,  'bridge', null, 0.08,  { L: [0.24, 0.52],   B: [-0.32, 0.32], U: [-0.02, 0.22] });  // underside gondola
+  Z( 0.2,   0,    0.1,  'aiCore', null, 0.04, undefined, 0.25);                      // AI core, at the back of the bridge
+  Z(-0.05,  0,    0.12, 'reactor', null, 0.07, { L: [-0.15, 0.05], B: [-0.2, 0.2], U: [0.0, 0.22] }, 0.27); // engine room (main reactor)
   Z(-0.12,  0,    0.42, 'droneBay', 'drones', 0.07);
-  zones.push({ key: 'command', pos: apos(0.17, 0, 0.42), r: 1, eval: () => ({ show: false }), tint: false }); // command offices (crew only)
+  zones.push({ key: 'command', pos: apos(-0.6, 0, 0.43), r: 1, eval: () => ({ show: false }), tint: false }); // command offices (crew only)
   Z( 0.8,   0,    0.48, 'wpnFwd', 'weapons', 0.07, { L: [0.55, 1.05], B: [0.1, 0.32], U: [0.38, 0.64], mirror: true }); // the two bow cannons
   Z(-0.62,  0.12, 0.62, 'wpnAft', 'weapons', 0.07);                                                        //  ← WEAPONS slider
 
@@ -1183,7 +1213,8 @@ function tick() {
     if (!sw.visible || crashed) continue;
     const act = sw.userData.active;
     for (const d of sw.userData.drones) {
-      d.userData.cross.rotation.y += dt * (act ? 16 : 0);
+      for (const r of d.userData.rotors) r.rotation.y += dt * (act ? 22 : 0) * r.userData.dir;
+      d.userData.nav.material.opacity = act ? (Math.sin(now / 160 + d.userData.phase) > 0.6 ? 0.95 : 0.15) : d.userData.nav.material.opacity;
       d.position.y = d.userData.baseY + (act ? Math.sin(now / 700 + d.userData.phase) * 1.3 : 0);  // freeze when off
     }
   }

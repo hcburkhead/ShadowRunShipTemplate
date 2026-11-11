@@ -214,11 +214,17 @@ ship's own wireframe softly pulses yellow / red instead (no dots).
 
 **Ship interiors** (`ship-rooms.js`) are drawn as pale-blue hologram rooms inside the
 wireframe, in every view: the **bridge** in the forward underside gondola (window frame,
-console arc, captain's chair, and the **AI core** at its back), the **command offices** on
-the hull deck above (three partitioned offices with desks, terminals and chairs around a
+console arc, captain's chair, and the **AI core** at its back), the **command offices** in
+the aft (rear) section at mid-height (three partitioned offices with desks, terminals and chairs around a
 holo-table), and the **engine room** on the aft end of the underside keel with the **main
 reactor** (pulsing core, coolant pipes, consoles). The reactor and AI core glow cyan /
 yellow / red with their damage-control state; crew placed there stand on the room floors.
+A **deck plan** links them like a tabletop dungeon map: a keel corridor from the bridge's
+aft door to the engine room, a **lift** (with a car riding up and down) from engineering
+up to the mid deck, a mid-deck passage aft to the command offices, and **stairs** from
+the back of the bridge up to a walkway that joins it — two routes between fore and aft.
+Corridors have door frames, dashed centre lines and direction chevrons, and the rooms
+carry floor labels (BRIDGE, AI CORE, ENGINEERING, COMMAND, LIFT, STAIRS).
 
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
@@ -248,6 +254,10 @@ the dropdown snaps the player back. The figures:
 
 All four share one posable humanoid body (contoured torso, jointed arms and legs
 with elbows / knees, hands, boots, neck, face) in `crew-figures.js`.
+
+The ship's **drone swarm** (in the drone bay) uses hexagonal quad-rotors with rotor
+guards, a dome, an underslung sensor turret and a blinking amber nav light — kin to
+Ryu's personal drones, but bigger and in the ship's cyan / teal.
 
 ## Views
 - `operator.html` — DM console.
