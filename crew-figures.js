@@ -133,6 +133,26 @@ const BUILD = {
     line(g, [[-0.1, 5.35, 0.42], [-0.12, 4.8, 0.46], [-0.1, 4.2, 0.46]], W);  // drawstrings
     line(g, [[0.12, 5.35, 0.42], [0.14, 4.8, 0.46], [0.12, 4.2, 0.46]], W);
 
+    // unkempt, spiky hair under the hood: a scalp cap, a messy fringe poking out over the
+    // visor, tufts at the temples and a couple of crown spikes pushing up into the hood
+    // (fixed, irregular angles / lengths so every copy of the figure matches)
+    const HAIR = 0xd4d4d8;
+    solid(g, new THREE.SphereGeometry(0.39, 9, 5, 0, Math.PI * 2, 0, Math.PI * 0.46), HAIR,
+      { p: [0, 5.8, 0.04], s: [0.92, 1.05, 1.0] });
+    const spike = (base, dir, len, r = 0.065) => {
+      const d = V(...dir).normalize();
+      solid(g, new THREE.ConeGeometry(r, len, 5), HAIR, {
+        p: V(...base).addScaledVector(d, len / 2).toArray(),
+        q: new THREE.Quaternion().setFromUnitVectors(UP, d) });
+    };
+    [[-0.24, 6.0, 0.24, -0.5, -0.4, 1.0, 0.26], [-0.14, 6.04, 0.28, -0.15, -0.7, 1.0, 0.31],
+     [-0.03, 6.02, 0.3, 0.1, -0.45, 1.0, 0.24], [0.08, 6.05, 0.29, 0.25, -0.8, 1.0, 0.33],
+     [0.18, 6.01, 0.26, 0.45, -0.5, 1.0, 0.27], [0.26, 5.97, 0.21, 0.8, -0.6, 0.9, 0.22]]
+      .forEach(([x, y, z, dx, dy, dz, len]) => spike([x, y, z], [dx, dy, dz], len));      // fringe
+    spike([-0.3, 5.86, 0.16], [-1, -0.25, 0.55], 0.22); spike([-0.31, 5.72, 0.1], [-1, -0.8, 0.35], 0.2, 0.055);
+    spike([0.3, 5.87, 0.15], [1, -0.15, 0.5], 0.24); spike([0.31, 5.71, 0.09], [1, -0.85, 0.4], 0.19, 0.055);
+    spike([-0.1, 6.15, 0.16], [-0.35, 1, 0.9], 0.24); spike([0.12, 6.16, 0.12], [0.45, 1, 0.75], 0.21);   // crown
+
     // L-shaped troll horns through the hoodie sides
     rod(g, [-0.35, 6.02, 0.0], [-0.68, 6.1, -0.02], 0.08, 0.065, W, 6);   // left base
     rod(g, [-0.68, 6.1, -0.02], [-0.62, 6.52, 0.22], 0.065, 0.02, W, 6); // left L-bend
