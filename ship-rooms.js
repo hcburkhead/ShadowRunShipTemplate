@@ -25,7 +25,12 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to keep WebGL rendering ultra-fast
+// Dedicated shared materials for office geometry to allow dynamic zoom-based fading
+const officeEdgeMat = edgeMat(ROOM, 0.35);
+const officeFillMat = fillMat(ROOM, 0.015);
+const officeCoreMat = edgeMat(CORE, 0.85);
+
+// Shared static geometries to keep WebGL rendering ultra-fast across all 20 decks
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
@@ -36,6 +41,19 @@ function fastBox(g, w, h, d, px, py, pz, color = ROOM, edgeOp = 0.5, fillOp = 0.
   mesh.position.set(px, py + h / 2, pz);
 
   const edges = new THREE.LineSegments(unitBoxEdges, edgeMat(color, edgeOp));
+  edges.scale.set(w, h, d);
+  edges.position.set(px, py + h / 2, pz);
+
+  g.add(mesh, edges);
+}
+
+// Fast box helper utilizing custom shared dynamic materials
+function fastBoxMat(g, w, h, d, px, py, pz, customFillMat, customEdgeMat) {
+  const mesh = new THREE.Mesh(unitBoxGeo, customFillMat);
+  mesh.scale.set(w, h, d);
+  mesh.position.set(px, py + h / 2, pz);
+
+  const edges = new THREE.LineSegments(unitBoxEdges, customEdgeMat);
   edges.scale.set(w, h, d);
   edges.position.set(px, py + h / 2, pz);
 
@@ -71,6 +89,7 @@ function labelSprite(text, w = 4.5, op = 0.6) {
 
 // ---- scale ----
 const _lp = new THREE.Vector3();
+const shipCenter = new THREE.Vector3(0, 0, 0);
 const K = 0.2;                       // furniture is modelled in "figure units" (a person ≈ 2.75) and scaled by K
 // decks (fractions of hull height)
 const DECK0 = 0.05, DECK_STEP = 0.021, DECKS = 20;                // DECK 01 … DECK 20
@@ -152,26 +171,26 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Dual personnel office module (2 workstations in 1 enclosure shell)
+  // Dual personnel office module (2 workstations using dynamic dimmable materials)
   function dualOffice(g, W, H, L, px, py, pz, ry = 0) {
     const o = new THREE.Group();
     o.position.set(px, py, pz);
     o.rotation.y = ry;
 
-    fastBox(o, W, H, L, 0, 0, 0, ROOM, 0.35, 0.015);
+    fastBoxMat(o, W, H, L, 0, 0, 0, officeFillMat, officeEdgeMat);
 
     // Workstation 1 (Port side)
-    fastBox(o, W * 0.4, 0.2, 0.22, -W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
-    fastBox(o, W * 0.32, 0.14, 0.02, -W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
-    fastBox(o, 0.18, 0.18, 0.18, -W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
+    fastBoxMat(o, W * 0.4, 0.2, 0.22, -W * 0.22, 0, -L * 0.28, officeFillMat, officeEdgeMat);
+    fastBoxMat(o, W * 0.32, 0.14, 0.02, -W * 0.22, 0.2, -L * 0.34, fillMat(CORE, 0.15), officeCoreMat);
+    fastBoxMat(o, 0.18, 0.18, 0.18, -W * 0.22, 0, -L * 0.05, officeFillMat, officeEdgeMat);
 
     // Workstation 2 (Starboard side)
-    fastBox(o, W * 0.4, 0.2, 0.22, W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
-    fastBox(o, W * 0.32, 0.14, 0.02, W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
-    fastBox(o, 0.18, 0.18, 0.18, W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
+    fastBoxMat(o, W * 0.4, 0.2, 0.22, W * 0.22, 0, -L * 0.28, officeFillMat, officeEdgeMat);
+    fastBoxMat(o, W * 0.32, 0.14, 0.02, W * 0.22, 0.2, -L * 0.34, fillMat(CORE, 0.15), officeCoreMat);
+    fastBoxMat(o, 0.18, 0.18, 0.18, W * 0.22, 0, -L * 0.05, officeFillMat, officeEdgeMat);
 
     // Divider wall
-    fastBox(o, 0.02, H * 0.75, L * 0.7, 0, 0, -L * 0.1, ROOM, 0.3, 0.01);
+    fastBoxMat(o, 0.02, H * 0.75, L * 0.7, 0, 0, -L * 0.1, officeFillMat, officeEdgeMat);
 
     g.add(o);
   }
@@ -257,7 +276,7 @@ export function buildRooms(frame, targets) {
   function decks() {
     const g = new THREE.Group();
 
-    // Reduced column count by half (7 columns total along ship length for ultra-smooth WebGL rendering)
+    // 7 columns along ship length (halved for smooth rendering performance)
     const numCols = 7;
     const globalCols = Array.from({ length: numCols }, (_, i) => -0.70 + i * ((0.42 - (-0.70)) / (numCols - 1)));
 
@@ -268,10 +287,8 @@ export function buildRooms(frame, targets) {
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
       const deckCenter = (a0 + a1) / 2;
 
-      // ---- Floor Separator Planes & Rim Border ----
-      // Solid deck plane separating each floor level vertically
+      // ---- Floor Separator Planes & Perimeter Border ----
       fastBox(d, W, 0.05, L, 0, -0.025, 0, DECK, 0.5, 0.08);
-      // Outer perimeter rim outline for clear deck floor distinction
       lineMesh(d, [
         [-W / 2, 0.02, -L / 2], [W / 2, 0.02, -L / 2],
         [W / 2, 0.02, L / 2], [-W / 2, 0.02, L / 2], [-W / 2, 0.02, -L / 2]
@@ -281,7 +298,7 @@ export function buildRooms(frame, targets) {
       const rL = 1.3;
       const rW = 1.3;
 
-      // 4 row positions (2 Port rows, 2 Starboard rows) across width
+      // 4 row positions (2 Port, 2 Starboard) across width
       const rowXs = [
         -W * 0.35, -0.65, // Port rows
         0.65, W * 0.35    // Starboard rows
@@ -293,7 +310,7 @@ export function buildRooms(frame, targets) {
         // Keep lift shaft clear
         if (Math.abs(globalAlong - TRUNK.along) < 0.032) continue;
 
-        // Reserve specific spaces on ONLY the decks they actually occupy:
+        // Reserved spaces on specific decks:
         // - Engine Room: Decks 01-04 (Decks 05-20 contain offices directly ABOVE the engine)
         if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;
 
@@ -303,7 +320,6 @@ export function buildRooms(frame, targets) {
         // - Command Offices: Deck 16 only
         if (n === 16 && globalAlong >= -0.65 && globalAlong <= -0.55) continue;
 
-        // Local Z coordinate relative to deck center
         const z = (globalAlong - deckCenter) * Lh;
 
         for (let rowIdx = 0; rowIdx < rowXs.length; rowIdx++) {
@@ -315,7 +331,7 @@ export function buildRooms(frame, targets) {
         }
       }
 
-      // ---- Floor Identification Label on EVERY DECK (Decks 01 – 20) ----
+      // ---- Floor Label on EVERY DECK (Decks 01 – 20) ----
       const s = labelSprite('DECK ' + String(n).padStart(2, '0'), 3.0, 0.65);
       s.position.copy(at(a0 + 0.015, -beam - 0.04, u)).add(new THREE.Vector3(0, 0.25, 0));
       g.add(s);
@@ -418,15 +434,26 @@ export function buildRooms(frame, targets) {
       paint(reactorCores, Math.max(0, Math.min(2, (areas.reactor || 0) | 0)));
       paint(aiCores, Math.max(0, Math.min(2, (areas.aiCore || 0) | 0)));
     },
-    // keep map labels from swamping the view up close: full size from ~60 units out
+
+    // Dynamically scales map text labels and smoothly dims office geometry opacity on camera zoom-out
     scaleLabels(camPos) {
+      // 1. Map labels distance scaling
       for (const s of LABELS) {
         if (!s.parent) continue;
         s.getWorldPosition(_lp);
         const k = Math.max(0.06, Math.min(1, camPos.distanceTo(_lp) / 60)), w = s.userData.w * k;
         s.scale.set(w, w * 0.19, 1);
       }
+
+      // 2. Dynamic Office Light Fading based on Camera Distance
+      const dist = camPos.distanceTo(shipCenter);
+      const fade = Math.max(0.05, Math.min(1.0, 1.0 - (dist - 40) / 80));
+
+      officeEdgeMat.opacity = 0.35 * fade;
+      officeFillMat.opacity = 0.015 * fade;
+      officeCoreMat.opacity = 0.85 * fade;
     },
+
     tick(t) {
       const k = 0.65 + 0.35 * Math.sin(t * 2.4);
       reactorCores.forEach(({ mats }) => mats.forEach((m, i) => { m.opacity = i % 2 ? 0.9 * k : 0.18 * k; }));
