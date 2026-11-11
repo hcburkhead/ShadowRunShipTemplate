@@ -25,7 +25,7 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to keep WebGL performance smooth across all 20 floors
+// Shared static geometries to keep WebGL rendering ultra-fast
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
@@ -160,17 +160,17 @@ export function buildRooms(frame, targets) {
 
     fastBox(o, W, H, L, 0, 0, 0, ROOM, 0.35, 0.015);
 
-    // Office 1 workstation (Port side)
+    // Workstation 1 (Port side)
     fastBox(o, W * 0.4, 0.2, 0.22, -W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
     fastBox(o, W * 0.32, 0.14, 0.02, -W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
     fastBox(o, 0.18, 0.18, 0.18, -W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
 
-    // Office 2 workstation (Starboard side)
+    // Workstation 2 (Starboard side)
     fastBox(o, W * 0.4, 0.2, 0.22, W * 0.22, 0, -L * 0.28, ROOM, 0.6, 0.06);
     fastBox(o, W * 0.32, 0.14, 0.02, W * 0.22, 0.2, -L * 0.34, CORE, 0.85, 0.15);
     fastBox(o, 0.18, 0.18, 0.18, W * 0.22, 0, -L * 0.05, ROOM, 0.5, 0.05);
 
-    // Center divider
+    // Divider wall
     fastBox(o, 0.02, H * 0.75, L * 0.7, 0, 0, -L * 0.1, ROOM, 0.3, 0.01);
 
     g.add(o);
@@ -257,9 +257,9 @@ export function buildRooms(frame, targets) {
   function decks() {
     const g = new THREE.Group();
 
-    // 14 evenly spaced longitudinal column positions spanning the entire length of the ship
-    const numCols = 14;
-    const globalCols = Array.from({ length: numCols }, (_, i) => -0.72 + i * ((0.42 - (-0.72)) / (numCols - 1)));
+    // Reduced column count by half (7 columns total along ship length for ultra-smooth WebGL rendering)
+    const numCols = 7;
+    const globalCols = Array.from({ length: numCols }, (_, i) => -0.70 + i * ((0.42 - (-0.70)) / (numCols - 1)));
 
     for (let n = 1; n <= DECKS; n++) {
       const u = deckU(n), span = deckSpan(u); if (!span) continue;
@@ -268,52 +268,57 @@ export function buildRooms(frame, targets) {
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
       const deckCenter = (a0 + a1) / 2;
 
-      // Solid ground plane separating each of the 20 distinct levels visually
-      box(d, W, 0.03, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.4 : 0.2, 0.04);
-      dashed(d, [0, 0.035, -L / 2 + 0.5], [0, 0.035, L / 2 - 0.5], DECK, 0.3, 0.6); // passage spine
+      // ---- Floor Separator Planes & Rim Border ----
+      // Solid deck plane separating each floor level vertically
+      fastBox(d, W, 0.05, L, 0, -0.025, 0, DECK, 0.5, 0.08);
+      // Outer perimeter rim outline for clear deck floor distinction
+      lineMesh(d, [
+        [-W / 2, 0.02, -L / 2], [W / 2, 0.02, -L / 2],
+        [W / 2, 0.02, L / 2], [-W / 2, 0.02, L / 2], [-W / 2, 0.02, -L / 2]
+      ], DECK, 0.6);
+      dashed(d, [0, 0.035, -L / 2 + 0.5], [0, 0.035, L / 2 - 0.5], DECK, 0.35, 0.6); // passage spine
 
       const rL = 1.3;
       const rW = 1.3;
 
-      // 6 row positions across the width (3 Port rows, 3 Starboard rows)
+      // 4 row positions (2 Port rows, 2 Starboard rows) across width
       const rowXs = [
-        -W * 0.38, -W * 0.24, -0.65, // Port rows
-        0.65, W * 0.24, W * 0.38     // Starboard rows
+        -W * 0.35, -0.65, // Port rows
+        0.65, W * 0.35    // Starboard rows
       ];
 
       for (const globalAlong of globalCols) {
-        // Ensure column falls within this deck's current longitudinal hull bounds
         if (globalAlong < a0 + 0.02 || globalAlong > a1 - 0.02) continue;
 
-        // Keep lift / stairwell shaft clear
+        // Keep lift shaft clear
         if (Math.abs(globalAlong - TRUNK.along) < 0.032) continue;
 
         // Reserve specific spaces on ONLY the decks they actually occupy:
-        // - Engine Room: Decks 01-04 (Decks 05-20 contain offices directly ABOVE the engine!)
+        // - Engine Room: Decks 01-04 (Decks 05-20 contain offices directly ABOVE the engine)
         if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;
 
-        // - Bridge: Decks 01-02 (Decks 03-20 contain offices directly ABOVE the bridge!)
+        // - Bridge: Decks 01-02 (Decks 03-20 contain offices directly ABOVE the bridge)
         if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;
 
         // - Command Offices: Deck 16 only
         if (n === 16 && globalAlong >= -0.65 && globalAlong <= -0.55) continue;
 
-        // Calculate exact local Z on deck to maintain straight vertical column lines
+        // Local Z coordinate relative to deck center
         const z = (globalAlong - deckCenter) * Lh;
 
         for (let rowIdx = 0; rowIdx < rowXs.length; rowIdx++) {
           const rx = rowXs[rowIdx];
-          if (Math.abs(rx) > W / 2 - rW / 2) continue; // Keep within hull width
+          if (Math.abs(rx) > W / 2 - rW / 2) continue;
 
-          const facingAngle = rowIdx < 3 ? Math.PI / 2 : -Math.PI / 2; // Face central passage
+          const facingAngle = rowIdx < 2 ? Math.PI / 2 : -Math.PI / 2;
           dualOffice(d, rW, DH * 0.82, rL, rx, 0, z, facingAngle);
         }
       }
 
-      if (n === 1 || n % 5 === 0) { // deck number label
-        const s = labelSprite('DECK ' + String(n).padStart(2, '0'), 3.2, 0.5);
-        s.position.copy(at(a0 + 0.015, -beam - 0.04, u)).add(new THREE.Vector3(0, 0.25, 0)); g.add(s);
-      }
+      // ---- Floor Identification Label on EVERY DECK (Decks 01 – 20) ----
+      const s = labelSprite('DECK ' + String(n).padStart(2, '0'), 3.0, 0.65);
+      s.position.copy(at(a0 + 0.015, -beam - 0.04, u)).add(new THREE.Vector3(0, 0.25, 0));
+      g.add(s);
     }
     return g;
   }
