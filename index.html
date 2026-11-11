@@ -281,7 +281,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
 import { CREW, normCrew } from './ship-model.js?v=5';
-import { buildFigure } from './crew-figures.js?v=11';   // bump ?v when crew-figures.js changes
+import { buildFigure } from './crew-figures.js?v=12';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
          normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=5';   // ?v busts stale caches — bump on change
@@ -724,7 +724,7 @@ function labelTexture(text) {
 }
 // each player is a small hologram figurine (crew-figures.js) standing at the area, with a soft
 // glow disc under the feet and a faint name tag overhead. The perspective copies turn slowly.
-const FIG_SCALE = 0.8;   // close to true scale against the ship (zoom in for detail)
+const FIG_SCALE = 0.6;   // close to true scale against the ship (zoom in for detail)
 function buildCrew(zones, targets) {
   crewAnchors = {}; crewMarks = [];
   zones.forEach(z => { if (z.key) crewAnchors[z.key] = new THREE.Vector3(...z.pos); });
