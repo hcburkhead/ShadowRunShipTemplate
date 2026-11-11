@@ -17,6 +17,8 @@ no build step; just open the files (or host on GitHub Pages).
 - `signal-breaker.js` — the SIGNAL BREAKER code-breaker challenge: the shared
   rules (scoring, sync-state validation) plus the player board. Imported by
   `operator.html`.
+- `ship-rooms.js` — the ship interiors (bridge + AI core, command offices, engine room +
+  reactor) drawn inside the hologram.
 - `crew-figures.js` — the crew hologram figurines (Three.js primitives) shown on the
   ship display.
 - `ship-model.js` — the shared power/damage model (pure functions + sync
@@ -210,13 +212,25 @@ slider, shield arcs ← panel state and shield power. On the **player view** dam
 shows as blinking dots at each area; on the **DM console** the affected part of the
 ship's own wireframe softly pulses yellow / red instead (no dots).
 
+**Ship interiors** (`ship-rooms.js`) are drawn as pale-blue hologram rooms inside the
+wireframe, in every view: the **bridge** in the forward underside gondola (window frame,
+console arc, captain's chair, and the **AI core** at its back), the **command offices** on
+the hull deck above (three partitioned offices with desks, terminals and chairs around a
+holo-table), and the **engine room** on the aft end of the underside keel with the **main
+reactor** (pulsing core, coolant pipes, consoles). The reactor and AI core glow cyan /
+yellow / red with their damage-control state; crew placed there stand on the room floors.
+
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
-battery, a booster or a lift fan, or "— NOT SHOWN". Each placed player shows as a
+battery, a booster, a lift fan, the command offices or the engine room, or "— NOT SHOWN". Each placed player shows as a
 small **hologram figurine** (`crew-figures.js`, wireframe like the ship, one accent
 colour each) standing on a soft glow, with a faint name tag, on both the DM and
 player views, in all five ship views (the perspective copies slowly turn); players
-sharing an area spread out around it:
+sharing an area spread out around it. **Drag to place:** in the GM's ship view on the
+operator console, grab a figure in the perspective view and drag it anywhere — it
+slides at its current height, SHIFT+drag raises / lowers it. The spot is saved and
+synced like any location (the dropdown shows "✥ DRAGGED"); picking a location from
+the dropdown snaps the player back. The figures:
 - **Casper** — tall, slender troll hacker: rounded hoodie hood with horns poking
   through, tusks, eyes glowing in the hood, long cloak, cyberdeck (its screen runs a
   live, scrolling terminal / hack log) + datajack cable.

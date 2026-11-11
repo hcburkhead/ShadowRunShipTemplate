@@ -131,16 +131,24 @@ export const SYNC_KEYS = ['shipPowerLevels', 'shipDamageState', 'shipAux', 'ship
 // '' = not shown. Locations are the damage-control area keys the display already anchors.
 export const CREW = [['casper', 'CASPER'], ['gimli', 'GIMLI'], ['ganbold', 'GANBOLD'], ['ryu', 'RYU']];
 export const CREW_LOCS = [
-  ['', '— NOT SHOWN'], ['bridge', 'BRIDGE'], ['aiCore', 'AI CORE'], ['reactor', 'REACTOR'],
+  ['', '— NOT SHOWN'], ['bridge', 'BRIDGE'], ['aiCore', 'AI CORE'], ['command', 'COMMAND OFFICES'],
+  ['reactor', 'ENGINE ROOM (REACTOR)'],
   ['droneBay', 'DRONE BAY'], ['wpnFwd', 'FWD BATTERY'], ['wpnAft', 'AFT BATTERY'],
   ['boostP', 'BOOSTER PORT'], ['boostS', 'BOOSTER STBD'],
   ['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S'],
 ];
+// a GM-dragged custom spot: 'free:x,y,z' in the display's ship frame (world units)
+const FREE_RE = /^free:(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/;
+/** [x, y, z] for a dragged spot, else null */
+export function crewFreePos(v) {
+  const m = FREE_RE.exec(String(v || ''));
+  return m ? [+m[1], +m[2], +m[3]] : null;
+}
 export function normCrew(raw) {
   const o = {};
   CREW.forEach(([k]) => {
     const v = raw && typeof raw === 'object' ? String(raw[k] || '') : '';
-    o[k] = CREW_LOCS.some(([l]) => l === v) ? v : '';
+    o[k] = CREW_LOCS.some(([l]) => l === v) || crewFreePos(v) ? v : '';
   });
   return o;
 }
