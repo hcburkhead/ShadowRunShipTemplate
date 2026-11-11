@@ -25,11 +25,11 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to keep WebGL rendering performant across all 20 floors
+// Shared static geometries to keep WebGL performance smooth across 1,600 total offices
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
-// Lightweight box helper reusing shared geometry
+// Fast lightweight box helper reusing shared geometry
 function fastBox(g, w, h, d, px, py, pz, color = ROOM, edgeOp = 0.5, fillOp = 0.03) {
   const mesh = new THREE.Mesh(unitBoxGeo, fillMat(color, fillOp));
   mesh.scale.set(w, h, d);
@@ -256,46 +256,55 @@ export function buildRooms(frame, targets) {
   // ---- decks: 20 personnel decks, each clipped to the hull profile ----
   function decks() {
     const g = new THREE.Group();
+
+    // Fixed global 'along' coordinates (10 Aft columns + 10 Fore columns = 20 columns along length)
+    // Combined with 4 rows across the width, this generates exactly 80 offices per deck level (Q1-Q4 quadrants)
+    const alongAft  = Array.from({ length: 10 }, (_, i) => -0.38 + i * 0.033);
+    const alongFore = Array.from({ length: 10 }, (_, i) => 0.02 + i * 0.033);
+    const globalCols = [...alongAft, ...alongFore];
+
     for (let n = 1; n <= DECKS; n++) {
       const u = deckU(n), span = deckSpan(u); if (!span) continue;
       const [a0, a1] = span, beam = u < 0.12 ? 0.17 : 0.26;
       const d = new THREE.Group(); place(d, (a0 + a1) / 2, 0, u); g.add(d);
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
+      const deckCenter = (a0 + a1) / 2;
 
-      // Solid floor plane separating each of the 20 distinct levels visually
+      // Solid ground plane separating each of the 20 levels visually
       box(d, W, 0.03, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.4 : 0.2, 0.04);
       dashed(d, [0, 0.035, -L / 2 + 0.5], [0, 0.035, L / 2 - 0.5], DECK, 0.3, 0.6); // passage spine
 
-      // 4 rows of 20 offices per level (10 offices Port, 10 offices Starboard)
-      const rL = 1.2;                           // Office length along Z
-      const rW = Math.min(1.1, (W - 1.2) / 4);   // Office width across X
-      if (rW >= 0.35) {
-        // Define 4 row positions across X beam (Rows 1 & 2 Port, Rows 3 & 4 Starboard)
-        const rowXs = [
-          -W / 2 + rW / 2 + 0.1,   // Row 1: Outer Port
-          -0.6 - rW / 2,           // Row 2: Inner Port
-          0.6 + rW / 2,            // Row 3: Inner Starboard
-          W / 2 - rW / 2 - 0.1     // Row 4: Outer Starboard
-        ];
+      const rL = 1.1;
+      const rW = 0.9;
 
-        // 5 offices per row along Z = 10 Port + 10 Starboard = 20 total per floor
-        const zStep = (L - 1.6) / 5;
+      // 4 row positions across X beam (Rows 1 & 2 Port, Rows 3 & 4 Starboard)
+      const rowXs = [
+        -W * 0.38,   // Row 1: Q1/Q3 Outer Port
+        -0.62,       // Row 2: Q1/Q3 Inner Port
+        0.62,        // Row 3: Q2/Q4 Inner Starboard
+        W * 0.38     // Row 4: Q2/Q4 Outer Starboard
+      ];
+
+      // Generate up to 80 offices per deck floor (20 columns x 4 rows)
+      for (const globalAlong of globalCols) {
+        // Check if column fits within this deck's profile span
+        if (globalAlong < a0 + 0.02 || globalAlong > a1 - 0.02) continue;
+
+        // Respect reserved core zones (Lift shaft, Engine Room, Bridge, Command Offices)
+        if (Math.abs(globalAlong - TRUNK.along) < 0.032) continue;
+        if (n <= 4 && globalAlong >= -0.14 && globalAlong <= 0.05) continue;
+        if (n <= 2 && globalAlong >= 0.22) continue;
+        if (n === 16 && globalAlong >= -0.65 && globalAlong <= -0.55) continue;
+
+        // Fixed Z offset relative to deck center to maintain straight vertical columns
+        const z = (globalAlong - deckCenter) * Lh;
+
         for (let rowIdx = 0; rowIdx < 4; rowIdx++) {
           const rx = rowXs[rowIdx];
-          const facingAngle = rowIdx < 2 ? Math.PI / 2 : -Math.PI / 2; // Face toward central aisle
+          if (Math.abs(rx) > W / 2 - rW / 2) continue; // Keep within hull width
 
-          for (let i = 0; i < 5; i++) {
-            const z = -L / 2 + 0.8 + i * zStep + zStep / 2;
-            const globalAlong = (a0 + a1) / 2 + (z / Lh);
-
-            // Respect reserved spaces (Lift shaft, Engine Room, Bridge, Command Offices)
-            if (Math.abs(globalAlong - TRUNK.along) < 0.038) continue;
-            if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;
-            if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;
-            if (n === 16 && globalAlong >= -0.64 && globalAlong <= -0.56) continue;
-
-            smallOffice(d, rW, DH * 0.82, rL, rx, 0, z, facingAngle);
-          }
+          const facingAngle = rowIdx < 2 ? Math.PI / 2 : -Math.PI / 2; // Face central aisle
+          smallOffice(d, rW, DH * 0.82, rL, rx, 0, z, facingAngle);
         }
       }
 
