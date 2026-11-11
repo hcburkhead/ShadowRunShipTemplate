@@ -137,13 +137,16 @@ export const CREW_LOCS = [
   ['boostP', 'BOOSTER PORT'], ['boostS', 'BOOSTER STBD'],
   ['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S'],
 ];
+
 // a GM-dragged custom spot: 'free:x,y,z' in the display's ship frame (world units)
 const FREE_RE = /^free:(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/;
+
 /** [x, y, z] for a dragged spot, else null */
 export function crewFreePos(v) {
   const m = FREE_RE.exec(String(v || ''));
   return m ? [+m[1], +m[2], +m[3]] : null;
 }
+
 export function normCrew(raw) {
   const o = {};
   CREW.forEach(([k]) => {
@@ -152,6 +155,7 @@ export function normCrew(raw) {
   });
   return o;
 }
+
 export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAqy2m3QDMYtzjjUUoEki0RSFot69sZwj8",
   authDomain: "shadowrun-ship-db.firebaseapp.com",
@@ -161,6 +165,7 @@ export const FIREBASE_CONFIG = {
   messagingSenderId: "584465229092",
   appId: "1:584465229092:web:d17e05b242a6c99c8c3fb1"
 };
+
 export async function firebaseDb() {
   const base = 'https://www.gstatic.com/firebasejs/10.8.1/';
   const [{ initializeApp }, dbm] = await Promise.all([
@@ -168,4 +173,24 @@ export async function firebaseDb() {
     import(base + 'firebase-database.js'),
   ]);
   return { db: dbm.getDatabase(initializeApp(FIREBASE_CONFIG)), ref: dbm.ref, set: dbm.set, onValue: dbm.onValue };
+}
+
+/**
+ * Converts a location string (named anchor or 'free:x,y,z') into array coordinates [x, y, z].
+ */
+export function getCrewWorldPosition(locStr, anchors) {
+  const free = crewFreePos(locStr);
+  if (free) return free;
+  if (anchors && anchors[locStr]) {
+    const p = anchors[locStr];
+    return [p.x, p.y, p.z];
+  }
+  return null;
+}
+
+/**
+ * Formats coordinates into a GM-dragged custom spot string ('free:x,y,z').
+ */
+export function formatFreePos(x, y, z) {
+  return `free:${Number(x).toFixed(2)},${Number(y).toFixed(2)},${Number(z).toFixed(2)}`;
 }
