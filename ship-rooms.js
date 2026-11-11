@@ -133,7 +133,17 @@ export function buildRooms(frame, targets) {
   const BR = { along: 0.3, u: deckU(1), L: 0.1 * Lh, W: 0.2 * Bh, H: DH * 2 };     // bridge, DECK 01–02
   const ER = { along: -0.04, u: deckU(1), L: 0.14 * Lh, W: 0.26 * Bh, H: DH * 4 };  // engine room, DECK 01–04
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
-  const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
+  const TRUNK = { along: -0.165 };
+  
+  function smallOffice(L, W, H) {
+  const g = new THREE.Group();
+  shell(g, L, W, H);
+  // Abandoned desk console & chair facing into the room
+  console_(g, [0, 0, -L * 0.22], 0, 2.0);
+  chair(g, [0, 0, 0], 0);
+  return g;
+  }
+  // lift + stairwell through every deck
 
   function bridge() {
     const g = new THREE.Group(); shell(g, BR.L, BR.W, BR.H);
@@ -221,8 +231,37 @@ export function buildRooms(frame, targets) {
       const d = new THREE.Group(); place(d, (a0 + a1) / 2, 0, u); g.add(d);
       const L = (a1 - a0) * Lh, W = beam * 2 * Bh;
       box(d, W, 0.02, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.26 : 0.1, 0.005);
-      dashed(d, [0, 0.02, -L / 2 + 0.5], [0, 0.02, L / 2 - 0.5], DECK, 0.22, 0.6);                                    // passage spine
-      if (n === 1 || n % 5 === 0) {                                                                                      // deck number
+      dashed(d, [0, 0.02, -L / 2 + 0.5], [0, 0.02, L / 2 - 0.5], DECK, 0.22, 0.6); // passage spine
+
+      // Populate personnel decks (3 to 19) with small office modules
+      if (n >= 3 && n <= 19) {
+        const rL = 1.6, rW = Math.min((W - 1.0) / 2, 1.8);
+        if (rW > 0.5) {
+          const count = Math.floor((L - 1.5) / (rL + 0.8));
+          for (let i = 0; i < count; i++) {
+            const z = -L / 2 + 1.2 + i * (rL + 0.8) + rL / 2;
+            const globalAlong = (a0 + a1) / 2 + (z / Lh);
+
+            // Avoid placing offices over the trunk shaft, engine room, or bridge
+            if (Math.abs(globalAlong - TRUNK.along) < 0.04) continue;
+            if (n <= 4 && globalAlong > -0.15 && globalAlong < 0.08) continue; // Engine Room area
+            if (n <= 2 && globalAlong > 0.22) continue;                         // Bridge area
+
+            // Port office
+            const port = smallOffice(rL, rW, DH * 0.85);
+            port.position.set(-W / 2 + rW / 2, 0, z);
+            d.add(port);
+
+            // Starboard office
+            const stbd = smallOffice(rL, rW, DH * 0.85);
+            stbd.position.set(W / 2 - rW / 2, 0, z);
+            stbd.rotation.y = Math.PI; // Face inward toward corridor
+            d.add(stbd);
+          }
+        }
+      }
+
+      if (n === 1 || n % 5 === 0) { // deck number
         const s = labelSprite('DECK ' + String(n).padStart(2, '0'), 3.2, 0.5);
         s.position.copy(at(a0 + 0.015, -beam - 0.04, u)).add(new THREE.Vector3(0, 0.25, 0)); g.add(s);
       }
