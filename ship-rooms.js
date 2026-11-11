@@ -25,7 +25,7 @@ const edgeMat = (color, op = 0.55) => new THREE.LineBasicMaterial({ color, trans
 const fillMat = (color, op = 0.035) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 
-// Shared static geometries to keep draw calls minimal & performance smooth
+// Shared static geometries to keep WebGL performance smooth across all 20 decks
 const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const unitBoxEdges = new THREE.EdgesGeometry(unitBoxGeo, 25);
 
@@ -152,7 +152,7 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Discrete personnel office room (4 wireframe walls, desk console, monitor screen, chair)
+  // Discrete personnel office room module (walls, console desk, display, chair)
   function smallOffice(g, W, H, L, px, py, pz, ry = 0) {
     const o = new THREE.Group();
     o.position.set(px, py, pz);
@@ -161,7 +161,7 @@ export function buildRooms(frame, targets) {
     // Room enclosure walls and floor
     fastBox(o, W, H, L, 0, 0, 0, ROOM, 0.35, 0.015);
 
-    // Desk console against rear wall
+    // Desk console against back wall
     fastBox(o, W * 0.65, 0.2, 0.22, 0, 0, -L * 0.28, ROOM, 0.6, 0.06);
 
     // Display screen on desk
@@ -171,32 +171,6 @@ export function buildRooms(frame, targets) {
     fastBox(o, 0.22, 0.18, 0.22, 0, 0, -L * 0.05, ROOM, 0.5, 0.05);
 
     g.add(o);
-  }
-
-  // Fills a specified along-range with side-by-side offices flanking the corridor
-  function fillOfficeGap(d, W, L, a0, a1, minAlong, maxAlong) {
-    const deckCenter = (a0 + a1) / 2;
-    const rL = 1.4;                          // office length along Z
-    const rW = Math.min(1.3, (W - 1.1) / 2);  // office width across X
-    if (rW < 0.5) return;
-
-    const localZMin = Math.max(-L / 2 + 0.3, (minAlong - deckCenter) * Lh);
-    const localZMax = Math.min(L / 2 - 0.3, (maxAlong - deckCenter) * Lh);
-    if (localZMax - localZMin < rL) return;
-
-    const spacing = rL + 0.3;
-    const count = Math.floor((localZMax - localZMin) / spacing);
-
-    for (let i = 0; i < count; i++) {
-      const z = localZMin + 0.15 + i * spacing + rL / 2;
-      const portX = -0.55 - rW / 2;
-      const stbdX = 0.55 + rW / 2;
-
-      // Port side office (entrance facing +X toward central corridor)
-      smallOffice(d, rW, DH * 0.82, rL, portX, 0, z, Math.PI / 2);
-      // Starboard side office (entrance facing -X toward central corridor)
-      smallOffice(d, rW, DH * 0.82, rL, stbdX, 0, z, -Math.PI / 2);
-    }
   }
 
   function bridge() {
@@ -287,14 +261,33 @@ export function buildRooms(frame, targets) {
       box(d, W, 0.02, L, { p: [0, 0, 0] }, DECK, n % 5 === 0 ? 0.26 : 0.1, 0.005);
       dashed(d, [0, 0.02, -L / 2 + 0.5], [0, 0.02, L / 2 - 0.5], DECK, 0.22, 0.6); // passage spine
 
-      // Fill central negative space above Engine Room (Decks 5 to 12)
-      if (n >= 5 && n <= 12) {
-        fillOfficeGap(d, W, L, a0, a1, -0.10, 0.04);
-      }
+      // Populate personnel offices on ALL 20 DECKS along the central corridor
+      const rL = 1.4;                            // office length along Z
+      const rW = Math.min(1.3, (W - 1.1) / 2);    // office width across X
+      if (rW >= 0.45) {
+        const spacing = rL + 0.4;
+        const startZ = -L / 2 + 0.5;
+        const endZ = L / 2 - 0.5;
+        const count = Math.floor((endZ - startZ) / spacing);
 
-      // Fill central negative space above Bridge / AI Core (Decks 3 to 12)
-      if (n >= 3 && n <= 12) {
-        fillOfficeGap(d, W, L, a0, a1, 0.22, 0.35);
+        for (let i = 0; i < count; i++) {
+          const z = startZ + i * spacing + rL / 2;
+          const globalAlong = (a0 + a1) / 2 + (z / Lh);
+
+          // Exclude reserved functional spaces:
+          if (Math.abs(globalAlong - TRUNK.along) < 0.038) continue;             // Lift / Stairwell shaft
+          if (n <= 4 && globalAlong >= -0.12 && globalAlong <= 0.04) continue;   // Engine Room (Decks 1-4)
+          if (n <= 2 && globalAlong >= 0.24 && globalAlong <= 0.36) continue;    // Bridge (Decks 1-2)
+          if (n === 16 && globalAlong >= -0.64 && globalAlong <= -0.56) continue; // Command Offices (Deck 16)
+
+          const portX = -0.55 - rW / 2;
+          const stbdX = 0.55 + rW / 2;
+
+          // Port office (facing +X into central corridor)
+          smallOffice(d, rW, DH * 0.82, rL, portX, 0, z, Math.PI / 2);
+          // Starboard office (facing -X into central corridor)
+          smallOffice(d, rW, DH * 0.82, rL, stbdX, 0, z, -Math.PI / 2);
+        }
       }
 
       if (n === 1 || n % 5 === 0) { // deck number
