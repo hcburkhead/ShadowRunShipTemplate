@@ -152,7 +152,7 @@ export function buildRooms(frame, targets) {
   const CO = { along: -0.6, u: deckU(16), L: 0.07 * Lh, W: 0.14 * Bh, H: DH };      // command offices, DECK 16
   const TRUNK = { along: -0.165 };                                                   // lift + stairwell through every deck
 
-  // Consolidated Office Sector Block (renders a multi-room cluster as 1 light group)
+  // Horizontal Office Sector Block (partitions along Z, dividing across X beam)
   function officeCluster(L, W, H, px, pz) {
     const g = new THREE.Group();
     g.position.set(px, 0, pz);
@@ -160,18 +160,18 @@ export function buildRooms(frame, targets) {
     // Outer sector boundary shell
     fastBox(g, W, H, L, 0, 0, 0, ROOM, 0.25, 0.012);
 
-    // Internal partition walls dividing the cluster into sub-offices
-    const divisions = Math.max(2, Math.floor(L / 3.0));
+    // Internal partition walls running longitudinally (along Z) across width W (X-axis)
+    const divisions = Math.max(2, Math.floor(W / 0.8));
     for (let i = 1; i < divisions; i++) {
-      const z = -L / 2 + (i / divisions) * L;
-      fastBox(g, W * 0.9, H * 0.85, 0.02, 0, 0, z, ROOM, 0.25, 0.008);
+      const x = -W / 2 + (i / divisions) * W;
+      fastBox(g, 0.02, H * 0.85, L * 0.9, x, 0, 0, ROOM, 0.25, 0.008);
     }
 
-    // Workstation consoles & screens per office partition
+    // Horizontal desk rows and displays running along Z
     for (let i = 0; i < divisions; i++) {
-      const z = -L / 2 + (i + 0.5) * (L / divisions);
-      fastBox(g, W * 0.55, 0.22, 0.2, 0, 0, z - 0.2, ROOM, 0.5, 0.04);        // Desk surface
-      fastBox(g, W * 0.45, 0.12, 0.01, 0, 0.22, z - 0.28, CORE, 0.7, 0.08);   // Console display
+      const x = -W / 2 + (i + 0.5) * (W / divisions);
+      fastBox(g, 0.18, 0.22, L * 0.65, x, 0, 0, ROOM, 0.5, 0.04);           // Desk surface
+      fastBox(g, 0.01, 0.14, L * 0.55, x - 0.08, 0.22, 0, CORE, 0.7, 0.08); // Console display
     }
 
     return g;
