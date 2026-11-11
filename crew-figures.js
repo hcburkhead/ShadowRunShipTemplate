@@ -150,13 +150,15 @@ const BUILD = {
     solid(g, new THREE.ConeGeometry(0.05, 0.26, 4), W, { p: [0.15, 5.42, 0.44], r: [0.3, 0, 0.2] });   // right tusk
 
     // open green jacket over hoodie
-    solid(g, new THREE.CylinderGeometry(0.68, 0.78, 2.1, 12, 1, true, 0.5, Math.PI * 2 - 1.0), GREEN, { p: [0, 4.05, 0], s: [1.05, 1, 0.85] });
-    line(g, [[-0.28, 4.9, 0.42], [-0.38, 4.0, 0.48], [-0.38, 3.1, 0.42]], GREEN); // jacket lapels
-    line(g, [[0.28, 4.9, 0.42], [0.38, 4.0, 0.48], [0.38, 3.1, 0.42]], GREEN);
+    // fitted close to the torso, sitting a little lower, tilted so the back hem hangs lower
+    solid(g, new THREE.CylinderGeometry(0.56, 0.64, 2.15, 12, 1, true, 0.5, Math.PI * 2 - 1.0), GREEN,
+      { p: [0, 3.95, -0.04], r: [-0.08, 0, 0], s: [1.02, 1, 0.78] });
+    line(g, [[-0.26, 4.88, 0.36], [-0.31, 3.95, 0.4], [-0.33, 3.0, 0.38]], GREEN); // jacket lapels
+    line(g, [[0.26, 4.88, 0.36], [0.31, 3.95, 0.4], [0.33, 3.0, 0.38]], GREEN);
     box(g, 0.18, 0.45, 0.05, W, { p: [-0.42, 4.5, 0.4], r: [0, 0, -0.15] });     // shoulder patches
     box(g, 0.18, 0.45, 0.05, W, { p: [0.42, 4.5, 0.4], r: [0, 0, 0.15] });
-    box(g, 0.22, 0.28, 0.12, GREEN, { p: [-0.38, 3.25, 0.4] });                 // pockets
-    box(g, 0.22, 0.28, 0.12, GREEN, { p: [0.38, 3.25, 0.4] });
+    box(g, 0.2, 0.26, 0.1, GREEN, { p: [-0.36, 3.2, 0.34] });                  // pockets
+    box(g, 0.2, 0.26, 0.1, GREEN, { p: [0.36, 3.2, 0.34] });
 
     // techno-backpack mounted behind the coat
     box(g, 0.72, 0.95, 0.38, W, { p: [0, 4.25, -0.52] });                       // backpack chassis
