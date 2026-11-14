@@ -280,12 +280,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { FBXLoader } from './vendor/FBXLoader.js';
-import { CREW, normCrew, crewFreePos } from './ship-model.js?v=8';
-import { buildRooms } from './ship-rooms.js?v=4';   // ship interiors (bridge, command offices, engine room)
+import { CREW, normCrew, crewFreePos } from './ship-model.js?v=9';
+import { buildRooms } from './ship-rooms.js?v=5';   // ship interiors (bridge, command offices, engine room)
 import { buildFigure } from './crew-figures.js?v=14';   // bump ?v when crew-figures.js changes
 import { SYS_KEYS, MAXPWR_REDLINE, SYNC_KEYS, clamp, coreFromReactor, normThrottle,
          shieldPower, shipIntegrity, normalizeAux, shipMaxPower, fmtClock,
-         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=8';   // ?v busts stale caches — bump on change
+         normTimerLabel, readJSON, firebaseDb } from './ship-model.js?v=9';   // ?v busts stale caches — bump on change
 
 const GREEN = 0x4ade80, DIM = 0x1c9c52, GLINT = 0xbef9d2;
 const PARAMS = new URLSearchParams(location.search);
@@ -777,9 +777,17 @@ function buildCrew(zones, targets) {
     });
   });
 }
+let crewNow = {}, crewRiding = false;   // last crew state; any player riding a lift?
+const RIDES = ['lift', 'aircraftLift'];
 function updateCrew() {
   if (!crewMarks.length) return;
-  const crew = normCrew(readJSON('shipCrew', {}));
+  crewNow = normCrew(readJSON('shipCrew', {}));
+  crewRiding = CREW.some(([k]) => RIDES.includes(crewNow[k]));
+  placeCrew();
+}
+// put every figure at its spot (called on state changes, and every frame while someone rides a lift)
+function placeCrew() {
+  const crew = crewNow;
   const at = {};                                   // area → players there (for spreading)
   CREW.forEach(([k]) => { const l = crew[k]; if (l && crewAnchors[l]) (at[l] = at[l] || []).push(k); });
   for (const { k, grp } of crewMarks) {
@@ -953,7 +961,8 @@ if (PARAMS.has('drag') && persp) {
   const drop = e => {
     if (!crewDrag) return;
     const { m } = crewDrag, p = m.grp.position;
-    const value = 'free:' + [p.x, p.y, p.z].map(n => n.toFixed(2)).join(',');
+    // dropped onto a lift platform → ride that lift; otherwise a fixed custom spot
+    const value = (shipRooms && shipRooms.liftAt(p)) || 'free:' + [p.x, p.y, p.z].map(n => n.toFixed(2)).join(',');
     crewDrag = null;
     persp.controls.enabled = true; el.style.cursor = '';
     try { el.releasePointerCapture(e.pointerId); } catch (_) {}
@@ -1162,6 +1171,7 @@ loader.load(MODEL_URL, (res) => {
   // ship interiors: bridge (+ AI core), command offices, engine room (+ main reactor); crew stand on their floors
   shipRooms = buildRooms({ at: (a, b, u) => new THREE.Vector3(...apos(a, b, u)), bow: FACINGS[0].clone().normalize(), Lh, Bh, H: sz.y }, sceneTargets);
   Object.assign(crewAnchors, shipRooms.anchors);
+  RIDES.forEach(k => { crewAnchors[k] = shipRooms.liftSpot(k); });   // live points: they move with the lift cars
 
   configureOrthos(model, axes);
 
@@ -1231,7 +1241,10 @@ function tick() {
     const pulse = 0.7 + 0.3 * Math.sin(now / 700);
     for (const ls of shieldRing.userData.arcs) ls.material.opacity = (ls.userData.baseOp || 0.6) * pulse;
   }
-  if (shipRooms) { shipRooms.tick(now / 1000); shipRooms.scaleLabels(persp.cam.position); }
+  if (shipRooms) {
+    shipRooms.tick(now / 1000); shipRooms.scaleLabels(persp.cam.position);
+    if (crewRiding) placeCrew();                         // riders follow their lift car
+  }
   const tinted = TINT && paintTint(now);
   const renderStatic = liveDots || tinted || staticFrames > 0;   // static views idle between changes
   if (staticFrames > 0) staticFrames--;

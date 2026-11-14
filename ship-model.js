@@ -133,6 +133,7 @@ export const CREW = [['casper', 'CASPER'], ['gimli', 'GIMLI'], ['ganbold', 'GANB
 export const CREW_LOCS = [
   ['', '— NOT SHOWN'], ['bridge', 'BRIDGE'], ['aiCore', 'AI CORE'], ['command', 'COMMAND OFFICES'],
   ['reactor', 'ENGINE ROOM (REACTOR)'], ['hangar', 'HANGAR DECK'], ['flightDeck', 'FLIGHT DECK'],
+  ['lift', 'LIFT (riding)'], ['aircraftLift', 'AIRCRAFT LIFT (riding)'],
   ['droneBay', 'DRONE BAY'], ['wpnFwd', 'FWD BATTERY'], ['wpnAft', 'AFT BATTERY'],
   ['boostP', 'BOOSTER PORT'], ['boostS', 'BOOSTER STBD'],
   ['fanFP', 'FAN F·P'], ['fanFS', 'FAN F·S'], ['fanAP', 'FAN A·P'], ['fanAS', 'FAN A·S'],

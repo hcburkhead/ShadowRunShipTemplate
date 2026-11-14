@@ -540,7 +540,7 @@
 import { SYS_KEYS as KEYS, AUX_MAX, BATT_MAX, MAXPWR_REDLINE, clamp,
          coreFromReactor, normThrottle, shieldPower, shipIntegrity,
          normalizeAux as normAux, shipMaxPower, canOverload, fmtClock as fmtT,
-         normTimerLabel, firebaseDb, CREW, CREW_LOCS, normCrew, crewFreePos } from './ship-model.js?v=8';
+         normTimerLabel, firebaseDb, CREW, CREW_LOCS, normCrew, crewFreePos } from './ship-model.js?v=9';
 import { BK_HIST, parseSequence, randomSequence, evaluate, isCracked, normBreaker, newBreaker,
          RESULT_GLYPH, RESULT_CLASS, BreakerBoard, RELAY_SYSTEMS, RELAY_KEYS, RELAY_WORD,
          relayLabel, relayUnlocks, relayText, repairRelay } from './signal-breaker.js?v=5';
@@ -1298,7 +1298,8 @@ function renderCrew() {
 // word applies here.
 // crew spots = every damage area + the rooms that aren't damage areas
 const CREW_SPOT_EXTRA = { COMMAND: 'command', OFFICES: 'command', ENGINEROOM: 'reactor', ENGINE: 'reactor',
-  HANGAR: 'hangar', FLIGHTDECK: 'flightDeck', FLIGHT: 'flightDeck' };
+  HANGAR: 'hangar', FLIGHTDECK: 'flightDeck', FLIGHT: 'flightDeck', LIFT: 'lift', ELEVATOR: 'lift',
+  AIRCRAFTLIFT: 'aircraftLift', PLANELIFT: 'aircraftLift' };
 const AREA_KEYS = { REACTOR: 'reactor', BRIDGE: 'bridge', AI: 'aiCore', AICORE: 'aiCore', DRONEBAY: 'droneBay',
   WPNFWD: 'wpnFwd', WPNAFT: 'wpnAft', BOOSTP: 'boostP', BOOSTS: 'boostS',
   FANFP: 'fanFP', FANFS: 'fanFS', FANAP: 'fanAP', FANAS: 'fanAS' };
@@ -1438,7 +1439,8 @@ $('holo-frame').src = PLAYER ? 'index.html?dots=1&bare=1' : 'index.html?log=1&ti
 if (!PLAYER) addEventListener('message', e => {
   const d = e.data;
   if (e.origin !== location.origin || e.source !== $('holo-frame').contentWindow) return;
-  if (!d || d.type !== 'shipCrewMove' || !CREW.some(([k]) => k === d.key) || !crewFreePos(d.value)) return;
+  if (!d || d.type !== 'shipCrewMove' || !CREW.some(([k]) => k === d.key)) return;
+  if (!crewFreePos(d.value) && !['lift', 'aircraftLift'].includes(d.value)) return;   // a dragged spot, or dropped onto a lift
   state.crew[d.key] = d.value; saveCrew(); renderCrew();
 });
 if (PLAYER) {

@@ -230,7 +230,10 @@ hologram floors like a tabletop dungeon map, in all five views:
   bridge ⇄ engine room; door frames, dashed centre lines, direction chevrons and map labels
   (which shrink as you zoom in).
 Crew can be placed in any of these (CREW LOCATIONS adds HANGAR DECK and FLIGHT DECK;
-remote `CREW <NAME> HANGAR | FLIGHTDECK`), or dragged anywhere.
+remote `CREW <NAME> HANGAR | FLIGHTDECK`), or dragged anywhere. Players can also **ride the
+lifts**: pick LIFT (riding) or AIRCRAFT LIFT (riding) — remote `CREW <NAME> LIFT |
+AIRCRAFTLIFT` — or drag a player into a lift shaft, and they travel up and down with the car
+in every view.
 
 **Crew indicators.** The GM places each player (Casper, Gimli, Ganbold, Ryu) on the
 CREW LOCATIONS card (DM only) — bridge, AI core, reactor, drone bay, a weapon
